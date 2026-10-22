@@ -31,7 +31,7 @@ async function postAgente(path: string, body: unknown): Promise<{ status: number
       body: JSON.stringify(body),
     });
   } catch {
-    return { status: 0, datos: { msg: "No se pudo conectar con el backend propio (¿está arrancado?)" } };
+    return { status: 0, datos: { msg: "No se pudo conectar con el servidor (¿está encendido?)" } };
   }
   const datos = await res.json().catch(() => null);
   return { status: res.status, datos };
@@ -168,7 +168,7 @@ export function SubirPedidoDropi({
     setResultado(null);
     try {
       const { status, datos } = await postAgente(`${url}/validar`, {});
-      if (status === 0) throw new Error(datos?.msg || "No se pudo conectar con el backend propio");
+      if (status === 0) throw new Error(datos?.msg || "No se pudo conectar con el servidor");
       // OJO: /validar responde 200 con `ok:false` cuando el agente frena (el
       // campo `ok` es el veredicto del agente, no el estado del HTTP). Solo un
       // 4xx/5xx es un error real.
@@ -190,7 +190,7 @@ export function SubirPedidoDropi({
     try {
       const { status, datos } = await postAgente(`${url}/subir`, { via: "navegador" });
 
-      if (status === 0) throw new Error(datos?.msg || "No se pudo conectar con el backend propio");
+      if (status === 0) throw new Error(datos?.msg || "No se pudo conectar con el servidor");
 
       if (status === 401 && datos?.requiereLogin) {
         setSubida({ tipo: "login", msg: datos.motivo || "La sesión de Dropi venció", notificacionLucidBot: datos?.notificacionLucidBot });

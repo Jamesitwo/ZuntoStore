@@ -530,6 +530,33 @@ export function PedidosPage() {
     }
   };
 
+  function selectorEstado(p: (typeof rowsVisibles)[number]) {
+    return (
+      <select
+        className="estado-select"
+        value={p.EstadoPedido ?? 0}
+        disabled={guardandoId === p.id}
+        onChange={(e) => {
+          const nuevo = Number(e.target.value);
+          if (nuevo === p.EstadoPedido) return;
+          if (nuevo === 1) {
+            // cancelar siempre pide motivo
+            setCambio({ pedido: p, nuevo });
+            e.target.value = String(p.EstadoPedido ?? 0);
+          } else {
+            setCambio({ pedido: p, nuevo });
+          }
+        }}
+      >
+        {Object.entries(ESTADOS_PEDIDO).map(([code, label]) => (
+          <option key={code} value={code}>
+            {label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
   return (
     <>
       <PageHeader
@@ -779,7 +806,7 @@ export function PedidosPage() {
                 este numero (los demas suelen ser homónimos).
               </p>
             )}
-            <div className="table-wrap">
+            <div className="table-wrap pedidos-tabla">
               <table className="table">
                 <thead>
                   <tr>
@@ -841,28 +868,7 @@ export function PedidosPage() {
                           )}
                         </td>
                         <td>
-                          <select
-                            className="estado-select"
-                            value={p.EstadoPedido ?? 0}
-                            disabled={guardandoId === p.id}
-                            onChange={(e) => {
-                              const nuevo = Number(e.target.value);
-                              if (nuevo === p.EstadoPedido) return;
-                              if (nuevo === 1) {
-                                // cancelar siempre pide motivo
-                                setCambio({ pedido: p, nuevo });
-                                e.target.value = String(p.EstadoPedido ?? 0);
-                              } else {
-                                setCambio({ pedido: p, nuevo });
-                              }
-                            }}
-                          >
-                            {Object.entries(ESTADOS_PEDIDO).map(([code, label]) => (
-                              <option key={code} value={code}>
-                                {label}
-                              </option>
-                            ))}
-                          </select>
+                          {selectorEstado(p)}
                         </td>
                         <td
                           className="hide-sm"
@@ -953,6 +959,76 @@ export function PedidosPage() {
                 </tbody>
               </table>
             </div>
+
+            <ul className="pedidos-cards">
+              {rowsVisibles.map((p) => {
+                const id = p.id ?? p.idPedido;
+                const tel = telefono(p.Movil);
+                const fecha = p.Fecha ?? p.CreatedAt;
+                const mias = et.etiquetasDe(id);
+                const asignado = asig[String(id)];
+                const nombre = [p.Nombre, p.Apellido].filter(Boolean).join(" ") || "Sin nombre";
+                return (
+                  <li key={id} className="pedido-movil">
+                    <div className="pedido-movil-top">
+                      <Link to={`/pedidos/${id}`} className="link-plain pedido-movil-cliente">
+                        <strong>{nombre}</strong>
+                        <span className="muted small">#{p.idPedido ?? p.id}</span>
+                      </Link>
+                      <Link to={`/pedidos/${id}`} className="link-plain pedido-movil-total">
+                        {money(p.Total)} <span aria-hidden="true">›</span>
+                      </Link>
+                    </div>
+                    {p.producto && <div className="pedido-movil-producto">{p.producto}</div>}
+                    {mias.length > 0 && (
+                      <div className="etiqueta-fila">
+                        <ChipsDeEtiquetas etiquetas={mias} />
+                      </div>
+                    )}
+                    <div className="pedido-movil-estado">
+                      {selectorEstado(p)}
+                      <EnvioBadge value={p.EstadoFullfilment} />
+                    </div>
+                    <div className="pedido-movil-meta muted small">
+                      <span title={fmtFecha(fecha)}>{haceCuanto(fecha) || "—"}</span>
+                      {asignado && <span>· {asignado.nombre || asignado.usuario}</span>}
+                    </div>
+                    <div className="pedido-movil-acciones">
+                      {tel && (
+                        <a className="btn sm" href={`tel:${tel.tel}`} title="Llamar">
+                          📞
+                        </a>
+                      )}
+                      {tel && (
+                        <a className="btn sm" href={`https://wa.me/${tel.wa}`} target="_blank" rel="noreferrer" title="WhatsApp">
+                          WhatsApp
+                        </a>
+                      )}
+                      {inbox(p.Movil) && (
+                        <a className="btn sm" href={inbox(p.Movil)!} target="_blank" rel="noreferrer" title="Chat del bot">
+                          💬
+                        </a>
+                      )}
+                      <button
+                        className="btn sm"
+                        title="Etiquetas"
+                        onClick={() => setPickerPara({ id, numero: p.idPedido ?? p.id })}
+                      >
+                        🏷
+                      </button>
+                      <button
+                        type="button"
+                        className="btn sm"
+                        title={asignado ? `Asignado a ${asignado.usuario}` : "Asignar este pedido"}
+                        onClick={() => void abrirAsignacion(p)}
+                      >
+                        {asignado ? "Reasignar" : "Asignar"}
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
 
             <div className="pagination">
               <span className="muted small">
@@ -1048,8 +1124,7 @@ export function PedidosPage() {
       >
         <p className="muted small" style={{ marginTop: 0 }}>
           La asignación <strong>manual</strong> respeta tu elección aunque el usuario esté fuera de
-          horario o con el horario pausado (el reparto automático sí mira los horarios). Va por{" "}
-          <code>POST /api/asignacion/repartir</code> con <code>modo: "manual"</code>.
+          horario o con el horario pausado (el reparto automático sí mira los horarios).
         </p>
 
         <div className="row gap" style={{ marginBottom: 8 }}>
@@ -1137,8 +1212,7 @@ export function PedidosPage() {
       >
         <p className="muted small" style={{ marginTop: 0 }}>
           Cada pedido se le da al usuario con <strong>menos asignaciones</strong> (las que ya
-          tiene cuentan), por eso el reparto queda parejo. Lo guarda el backend propio con{" "}
-          <code>POST /api/asignacion/repartir</code>.
+          tiene cuentan), por eso el reparto queda parejo.
         </p>
 
         <div className="form-grid">

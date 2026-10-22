@@ -5134,3 +5134,28 @@ input::placeholder, textarea::placeholder { color: #a09da7; }
     grid-column: 1 / -1;
   }
 }
+
+/* ---------- Pedidos: tarjetas en el celular ---------- */
+.pedidos-cards { display: none; list-style: none; margin: 0; padding: 0; }
+@media (max-width: 640px) {
+  .pedidos-tabla { display: none; }
+  .pedidos-cards { display: grid; gap: 10px; }
+  .pedido-movil {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 12px; display: grid; gap: 8px; min-width: 0;
+  }
+  .pedido-movil-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .pedido-movil-cliente { display: grid; gap: 2px; min-width: 0; }
+  .pedido-movil-cliente strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pedido-movil-total { font-size: 16px; white-space: nowrap; }
+  .pedido-movil-producto {
+    font-size: 13px; color: var(--muted); overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .pedido-movil-estado { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .pedido-movil-estado .estado-select { flex: 1 1 140px; min-width: 0; }
+  .pedido-movil-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pedido-movil-acciones { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+  .pedido-movil-acciones .btn { min-height: 34px; padding-left: 9px; padding-right: 9px; }
+  .pedido-movil-total { font-weight: 700; }
+}

@@ -588,7 +588,7 @@ export function MetricasPage() {
             </div>
 
             <p className="muted small" style={{ marginTop: 6 }}>
-              <code>GET /meta/metrics/1</code> · del {aDia(rango.desde)} al {aDia(rango.hasta)} ·{" "}
+              Del {aDia(rango.desde)} al {aDia(rango.hasta)} ·{" "}
               {filasMeta ? `${filasMeta.length} registros` : "…"}
               {busqAplicada ? ` · búsqueda: «${busqAplicada}»` : ""}
             </p>

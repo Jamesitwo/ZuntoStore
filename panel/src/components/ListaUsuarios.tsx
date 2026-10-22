@@ -1155,10 +1155,8 @@ export function ListaUsuarios({ tick = 0 }: { tick?: number }) {
           }}
         >
           <p className="muted small" style={{ marginTop: 0 }}>
-            Se guarda en el backend propio (<code>PUT /api/asignacion/horario</code>) y es lo que
-            usa el reparto <strong>solo en horario</strong>. Días: 1 = lunes … 7 = domingo; la
-            hora se evalúa en la zona del servidor (<code>TZ_ASIGNACION</code>, por defecto
-            Bogotá).
+            Es el horario que usa el reparto <strong>solo en horario</strong>. Días: 1 = lunes … 7
+            = domingo, en hora de Colombia.
           </p>
 
           <label className="switch" htmlFor="hor-activo" style={{ marginBottom: 12 }}>

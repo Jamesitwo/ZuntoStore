@@ -160,8 +160,7 @@ export function ImportarDropi({
       }
     >
       <p className="muted small" style={{ marginTop: 0 }}>
-        <code>POST /productos/listProducts/dropi</code> → seleccionas →{" "}
-        <code>import-external-products &#123;platform: "dropi"&#125;</code>. Los que ya están
+        Elige los productos de Dropi que quieres traer a tu catálogo. Los que ya están
         importados salen marcados y no se pueden volver a elegir.
       </p>
 

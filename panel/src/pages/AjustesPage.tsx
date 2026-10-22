@@ -433,11 +433,9 @@ function NegocioTab({ idEmpresa }: { idEmpresa: number }) {
 
   return (
     <>
-      <div className="banner info">
-        Se carga la ficha real de la tienda (<code>POST /auth/getshopname</code>) y al guardar
-        se envia completa a <code>POST /business/update</code>, así no se pierde lo que no se
-        muestra aqui.
-      </div>
+      <p className="muted small" style={{ marginTop: 0 }}>
+        Estos son los datos actuales de tu tienda. Al guardar se conserva todo lo que no aparece aquí.
+      </p>
 
       {origen === null && !cargando ? (
         <div className="banner warn">
@@ -1187,12 +1185,10 @@ function BotTab({ idEmpresa }: { idEmpresa: number }) {
 
   return (
     <>
-      <div className="banner info">
-        Se lee <code>POST /business/bot</code> (la config real del asistente) y al guardar se
-        envía <strong>la ficha completa de la tienda + esta configuración</strong> a{" "}
-        <code>POST /business/update</code>, igual que el panel oficial: así no se pierde nada de
-        lo que no se muestra aquí.
-      </div>
+      <p className="muted small" style={{ marginTop: 0 }}>
+        Esta es la configuración actual de tu asistente. Al guardar se conserva todo lo que no
+        aparece aquí.
+      </p>
 
       <div className="acciones-form" style={{ marginTop: 0 }}>
         <button
@@ -1372,8 +1368,7 @@ function BotTab({ idEmpresa }: { idEmpresa: number }) {
       <section className="card">
         <div className="card-title">Flujo activo</div>
         <p className="muted small">
-          El flujo de LucidBot que usa la tienda (<code>botFlow</code>). La lista sale de{" "}
-          <code>POST /tools/bot/flows</code> con la API key de la tienda.
+          El flujo de Lucid Bot que atiende a tus clientes.
         </p>
         <Campo id="bot-flujo" label="Flujo">
           <select id="bot-flujo" value={f.botFlow} onChange={cambiaTexto("botFlow")}>
@@ -1636,9 +1631,8 @@ function BotTab({ idEmpresa }: { idEmpresa: number }) {
           prefijo="del bot"
           nota={
             <>
-              Hasta <strong>20</strong> archivos (imagen, vídeo, audio o documento) del tipo{" "}
-              <code>{"{image|video|audio|file: url}"}</code>, igual que en la ficha de producto.
-              Aquí no subimos archivos: se pegan sus urls y se ve la vista previa.
+              Hasta <strong>20</strong> imágenes, vídeos, audios o documentos. Pega el enlace de
+              cada archivo y verás la vista previa.
             </>
           }
           testimonios={f.testimonios}
@@ -1784,8 +1778,7 @@ function BotTab({ idEmpresa }: { idEmpresa: number }) {
         <section className="card">
           <div className="card-title">{prompt.name || "Plantilla del bot"}</div>
           <p className="muted small">
-            Solo lectura: <code>GET /tools/bot/get-template</code> (type{" "}
-            {String(prompt.type)}).
+            Solo lectura: es la plantilla que usa el bot.
           </p>
           <pre className="json-view">{String(prompt.value)}</pre>
         </section>
@@ -1977,7 +1970,7 @@ function UsuariosTab() {
 
       <Seccion
         titulo="Buscar usuario por token"
-        nota="POST /users/show/{token}: recibe el token del usuario (el del flujo de contraseña), no un id."
+        nota="Pega el código que recibió el usuario para crear su contraseña."
         boton={buscando ? "Buscando..." : "Buscar"}
         cargando={buscando}
         onEnviar={buscar}
@@ -2003,7 +1996,7 @@ function UsuariosTab() {
 
       <Seccion
         titulo="Crear usuario"
-        nota="POST /users/create. Manda el cuerpo del formulario oficial (nombre, usuario, telefono, direccion, permisos) mas las claves name/email/rol por compatibilidad. El usuario queda pendiente de definir contraseña (siguiente tarjeta)."
+        nota="El usuario queda pendiente de crear su contraseña (siguiente tarjeta)."
         boton={creando ? "Creando..." : "Crear usuario"}
         cargando={creando}
         onEnviar={crear}
@@ -2093,7 +2086,7 @@ function UsuariosTab() {
 
       <Seccion
         titulo="Crear contraseña"
-        nota="POST /users/create-password. El teléfono se envía con el prefijo del país (Colombia 57) y el usuario en minúsculas, igual que el panel oficial."
+        nota="Define la contraseña de un usuario nuevo."
         boton={creandoPw ? "Creando..." : "Crear contraseña"}
         cargando={creandoPw}
         onEnviar={crearPassword}
@@ -2138,7 +2131,7 @@ function UsuariosTab() {
 
       <Seccion
         titulo="Restablecer contraseña"
-        nota="POST /users/reset-password: LucidSales envía el correo de recuperación al usuario indicado."
+        nota="Le llega al usuario un correo para recuperar su contraseña."
         boton={enviando ? "Enviando..." : "Enviar correo"}
         cargando={enviando}
         onEnviar={restablecer}

@@ -305,7 +305,7 @@ export function ClientesPage() {
           <div className="card">
             <div className="card-title row between">
               <span>
-                Clientes <code>GET /clientes/getclientes</code>
+                Clientes
               </span>
               <span className="muted small">{totalClientes} en total</span>
             </div>
@@ -531,7 +531,7 @@ export function ClientesPage() {
               </>
             ) : (
               <p className="muted">
-                Sin clientes (o el endpoint no devolvio una lista reconocible).
+                Sin clientes por ahora.
               </p>
             )}
           </div>
@@ -549,14 +549,14 @@ export function ClientesPage() {
         <>
           <div className="card">
             <div className="card-title">
-              <code>GET /clientes/getIntegrations</code>
+              Integraciones
             </div>
             {cargandoIntegraciones ? <Spinner /> : <JsonView data={integraciones} />}
           </div>
 
           <div className="card">
             <div className="card-title">
-              Actualizar integracion · <code>POST /clientes/updateIntegration/{"{nombre}"}</code>
+              Actualizar integración
             </div>
             <div className="toolbar">
               {INTEGRACIONES.map((nombre) => (

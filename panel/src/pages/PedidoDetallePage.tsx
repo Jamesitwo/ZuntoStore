@@ -997,8 +997,7 @@ export function PedidoDetallePage() {
       <details className="card pedido-card pedido-cotizador-card">
         <summary className="card-title">Cotizador de envios (este pedido)</summary>
         <p className="muted small">
-          Elige transportador y pulsa <strong>Cotizar</strong>: se llamara a{" "}
-          <code>POST /pedidos/quote/{"{transportador}"}</code> con los datos de{" "}
+          Elige transportador y pulsa <strong>Cotizar</strong> para ver el precio del envío de{" "}
           <strong>este</strong> pedido.
         </p>
         <CotizadorPedido
@@ -1042,7 +1041,7 @@ export function PedidoDetallePage() {
       </section>
 
       <details className="card pedido-card pedido-json-card">
-        <summary className="card-title">Respuesta cruda del endpoint</summary>
+        <summary className="card-title">Datos técnicos del pedido</summary>
         <JsonView data={original} />
       </details>
 

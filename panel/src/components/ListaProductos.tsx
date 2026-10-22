@@ -1457,11 +1457,9 @@ export function ListaProductos({
 
             <h4 className="subtitulo-form">Bundles</h4>
             <p className="muted small">
-              <code>bundle</code> = paquetes de venta («1 Unidad», «2 Unidades»…) con su precio;{" "}
-              <code>bundleVariantes</code> guarda las variantes de cada paquete (los precios por
-              variante se tocan arriba, en <em>Precio por variante</em>). Se guardan con su
-              propio botón porque van por <code>POST /productos/updatebundle</code>, que es otro
-              endpoint.
+              Paquetes de venta («1 Unidad», «2 Unidades»…) con su precio y sus variantes (los
+              precios por variante se cambian arriba, en <em>Precio por variante</em>). Tienen su
+              propio botón de guardar.
             </p>
             {bundles.length === 0 ? <p className="muted">Sin bundles todavía.</p> : null}
             {bundles.map((b, i) => {
@@ -2249,7 +2247,7 @@ export function ListaProductos({
               <p className="muted small">
                 Lo marcado <span className="chip ok">sí</span> está entre las 87 claves de{" "}
                 <code>updateproducto</code> y se guarda con este formulario;{" "}
-                <span className="chip">no</span> significa que el endpoint no lo acepta (se queda
+                <span className="chip">no</span> significa que LucidSales no lo acepta (se queda
                 como está en la base de datos).
               </p>
               <div className="table-wrap">
