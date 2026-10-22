@@ -150,11 +150,15 @@ export function Reporte({ datos }: { datos: Datos }) {
       <footer className="ads-reporte-pie">
         <p>
           <strong>Método:</strong> margen = compras que atribuye Meta (omni_purchase, sin duplicar)
-          × ganancia promedio del producto; neto = margen − gasto; ROI = margen / gasto;
-          CPA = gasto / compras. Se ignora el número de pedidos del tablero.
+          × ganancia por pedido entregado × efectividad de entrega (
+          {Math.round(datos.entrega.tasa * 100)}%); neto = margen − gasto; ROI = margen / gasto;
+          CPA = gasto / compras.
+          {datos.totales.gastoSinDato > 0
+            ? ` Hay ${dinero(datos.totales.gastoSinDato)} de gasto en campañas sin producto o sin ganancia: no entra en neto ni ROI.`
+            : ""}
         </p>
         <p>
-          Los importes de Pizdo (USD) se convierten a COP con TRM {datos.trm.toLocaleString("es-CO", {
+          Las cuentas en USD se convierten a COP con TRM {datos.trm.toLocaleString("es-CO", {
             minimumFractionDigits: 2,
           })}
           {datos.fuente === "snapshot" ? " · datos de respaldo (Meta no respondió)" : ""}.

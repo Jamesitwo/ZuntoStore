@@ -6,10 +6,13 @@
 //                                       ganancias.json  ultimo traido de pedidos
 //                                       datos_<N>d_<fecha>.json  (cache)
 //
-// Quien NO conecto su cuenta trabaja sobre el espacio COMPARTIDO (los
-// archivos de la raiz de `ANUNCIOS_DIR` + `ANUNCIOS_CONFIG`), que es como
-// funcionaba antes: Pizdo + Orenar. Si `compartida: false` en el ajuste
-// compartido, cada usuario debe conectar la suya para ver algo.
+// Cada usuario del panel configura lo suyo: conecta su token de Meta, elige
+// sus cuentas, importa los productos de su tienda y vincula sus campanas.
+// Quien no conecto nada NO ve datos de nadie (enUso "ninguna").
+//
+// El espacio de la raiz de `ANUNCIOS_DIR` + `ANUNCIOS_CONFIG` solo lo usan
+// las integraciones sin usuario (x-api-key sin x-usuario). De ese ajuste se
+// leen tambien los datos de la APP de Meta (appId/appSecret) y la version.
 //
 // La conexion es con el token que pega el usuario (Graph API Explorer, 60
 // dias): aqui solo se valida contra `/me`, se listan sus cuentas con
@@ -158,12 +161,12 @@ export function crearRegistroAnuncios({
   const compartido = () =>
     leerJson(rutaCompartida, { token: "", trm: 1, cuentas: [], version: "v25.0" });
 
-  /** Instancia del espacio donde trabaja este usuario. */
+  /** Instancia del espacio donde trabaja este usuario (nunca el de otro). */
   function instancia(usuario) {
     const slug = slugDe(usuario);
     const propio = Boolean(slug && fs.existsSync(rutaPersonal(slug)));
-    const dir = propio ? dirPersonal(slug) : baseDir;
-    const rutaAjustes = propio ? rutaPersonal(slug) : rutaCompartida;
+    const dir = slug ? dirPersonal(slug) : baseDir;
+    const rutaAjustes = slug ? rutaPersonal(slug) : rutaCompartida;
     if (!instancias.has(dir)) {
       instancias.set(dir, crearAnalisisAnuncios({ dir, rutaAjustes, fetcher, lucid }));
     }
@@ -175,7 +178,8 @@ export function crearRegistroAnuncios({
     const slug = slugDe(usuario);
     const cfg = slug && fs.existsSync(rutaPersonal(slug)) ? leerJson(rutaPersonal(slug), null) : null;
     const comp = compartido();
-    const compartidaDisponible = comp.compartida !== false;
+    // el compartido solo existe para las integraciones sin usuario
+    const compartidaDisponible = !slug && comp.compartida !== false;
     const base = { usuario: usuario ?? null, compartidaDisponible };
 
     if (cfg?.token) {
@@ -329,7 +333,7 @@ export function crearRegistroAnuncios({
     instancias.delete(dir);
     return {
       ok: true,
-      msg: "Cuenta desconectada. Vuelves a ver la cuenta compartida; tus productos y tu plan se guardan por si reconectas.",
+      msg: "Cuenta desconectada. Tus productos y tu plan se guardan por si reconectas.",
     };
   }
 
@@ -337,8 +341,10 @@ export function crearRegistroAnuncios({
    * Fachada del espacio del usuario: la misma API del modulo de analisis mas
    * los metodos de conexion.
    */
-  function para(usuario) {
+  function para(usuario, contexto = {}) {
     const { slug, propio, tenant } = instancia(usuario);
+    // la tienda activa y la sesion de LucidSales de ESTA peticion
+    tenant.contexto({ lucid: contexto.lucid ?? null, tienda: contexto.tienda ?? null });
     return {
       usuario: slug,
       propio,
@@ -354,6 +360,10 @@ export function crearRegistroAnuncios({
       traerGanancias: (v) => tenant.traerGanancias(v),
       gananciasAjustes: (v) => tenant.gananciasAjustes(v),
       gananciasAuto: (v) => tenant.gananciasAuto(v),
+      importarProductos: () => tenant.importarProductos(),
+      vincular: (v) => tenant.vincular(v),
+      efectividad: () => tenant.efectividad(),
+      guardarEntrega: (v) => tenant.guardarEntrega(v),
       estado: () => estado(usuario),
       conectar: (token) => conectar(usuario, token),
       guardarCuentas: (v) => guardarCuentas(usuario, v),

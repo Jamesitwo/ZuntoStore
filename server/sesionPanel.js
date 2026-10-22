@@ -81,7 +81,10 @@ export function crearVerificadorSesion({
   async function verificar(token, tienda) {
     const tk = String(token ?? "").trim();
     if (!tk) throw new ErrorApi(401, "Falta la sesión de LucidSales (inicia sesión en el panel)");
-    const payload = payloadJWT(tk);
+    // LucidSales guarda al usuario DENTRO de `uid` ({id, email, name, rol,
+    // tiendaActiva, ...}); algunos tokens viejos lo traen plano.
+    const crudo = payloadJWT(tk);
+    const payload = crudo?.uid && typeof crudo.uid === "object" ? { ...crudo, ...crudo.uid } : crudo;
     const tiendaPedida = String(tienda || payload?.tiendaActiva || "").trim();
     if (!/^\d{1,12}$/.test(tiendaPedida)) {
       throw new ErrorApi(401, "La sesión no tiene una tienda activa: vuelve a elegir la tienda en el panel");
@@ -130,7 +133,7 @@ export function crearVerificadorSesion({
     const email = String(payload.email ?? payload.correo ?? payload.usuario ?? "").trim().toLowerCase();
     const sesion = {
       usuario: {
-        id: payload.id ?? payload.uid ?? payload.sub ?? null,
+        id: payload.id ?? (typeof payload.uid === "object" ? null : payload.uid) ?? payload.sub ?? null,
         email: email || null,
         nombre: payload.name ?? payload.nombre ?? null,
       },

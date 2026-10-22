@@ -5159,3 +5159,29 @@ input::placeholder, textarea::placeholder { color: #a09da7; }
   .pedido-movil-acciones .btn { min-height: 34px; padding-left: 9px; padding-right: 9px; }
   .pedido-movil-total { font-weight: 700; }
 }
+
+/* ---------- Anuncios: configuración por usuario ---------- */
+.btn-link {
+  background: none; border: 0; padding: 0 4px; color: var(--primary);
+  cursor: pointer; text-decoration: underline; font: inherit;
+}
+.ads-vinculo { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.ads-vinculo.editando { display: grid; gap: 6px; min-width: 200px; }
+.ads-vinculo.editando select { max-width: 260px; }
+.ads-vinculo-botones { display: flex; gap: 4px; flex-wrap: wrap; }
+.ads-pasos ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ads-pasos li {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+}
+.ads-pasos li.listo { opacity: 0.6; }
+.ads-paso-marca {
+  width: 22px; height: 22px; flex: 0 0 22px; border-radius: 50%;
+  border: 2px solid var(--border); display: grid; place-items: center;
+  font-size: 13px; color: #fff;
+}
+.ads-pasos li.listo .ads-paso-marca { background: var(--ok); border-color: var(--ok); }
+.ads-paso-texto { display: grid; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.ads-efectividad-opciones { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+.ads-efectividad-manual { display: inline-flex; align-items: center; gap: 6px; }
+.ads-efectividad-manual input[type="number"] { width: 72px; }

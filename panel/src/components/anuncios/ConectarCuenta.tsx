@@ -1,7 +1,7 @@
 // Modal de la cuenta de Meta del usuario: pega su token, elige sus cuentas
 // publicitarias, ve cuando vence y puede desconectarse. Cada usuario del
 // panel tiene su propio espacio (productos, plan y caches); quien no
-// conecta nada trabaja sobre el compartido (Pizdo + Orenar).
+// conecta nada no ve datos de nadie.
 import { useEffect, useState } from "react";
 import { anuncios, fechaCorta, type CuentaMeta, type EstadoCuenta } from "../../api/anuncios";
 import { errMsg } from "../../api/client";
@@ -158,12 +158,6 @@ export function ConectarCuenta({
             <code>ads_mcp_management</code>). Vigencia típica: 60 días. El token se guarda solo en
             tu espacio y solo tú lo usas.
           </p>
-          {estado?.enUso === "compartida" ? (
-            <div className="banner info">
-              Ahora estás viendo <strong>{estado.nombre ?? "la cuenta compartida"}</strong>. Al
-              conectar la tuya, este módulo pasa a analizar solo tus campañas.
-            </div>
-          ) : null}
           <Campo
             id="cta-token"
             label="Token de acceso de Meta"

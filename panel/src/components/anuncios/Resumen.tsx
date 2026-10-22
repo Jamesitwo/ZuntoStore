@@ -1,7 +1,7 @@
 // Resumen: KPIs de la ventana, reparto por clasificacion y las tres barras
 // que mas se miran (perdidas, donde se va el gasto y lo que arranco reciente).
 import type { Clase, Datos } from "../../api/anuncios";
-import { CLASES, ETIQUETAS, dinero, haceCuanto, veces } from "../../api/anuncios";
+import { CLASES, ETIQUETAS, dinero, haceCuanto, pct, veces } from "../../api/anuncios";
 
 const COLOR: Record<Clase, string> = {
   RENTABLE: "#16a34a",
@@ -143,13 +143,13 @@ export function Resumen({ datos }: { datos: Datos }) {
         <Kpi
           label="Margen estimado"
           valor={dinero(t.margen)}
-          ayuda="Compras x ganancia promedio de cada producto"
+          ayuda={`Compras × ganancia por entregado × efectividad de entrega (${pct(datos.entrega.tasa)})`}
         />
         <Kpi
           label="Neto estimado"
           valor={dinero(t.neto)}
           tono={t.neto >= 0 ? "ok" : "malo"}
-          ayuda="Margen estimado - gasto en anuncios"
+          ayuda={`Margen estimado − gasto de las campañas que se pueden medir (${dinero(t.gastoMedido)})`}
         />
         <Kpi
           label="ROI"
@@ -157,7 +157,29 @@ export function Resumen({ datos }: { datos: Datos }) {
           tono={t.roi >= 3 ? "ok" : t.roi < 1.5 ? "malo" : undefined}
           ayuda="Margen estimado / gasto. Rentable >= 3x · Ajustada 1.5-3x · Riesgo < 1.5x"
         />
+        <Kpi
+          label="Efectividad de entrega"
+          valor={pct(datos.entrega.tasa)}
+          tono={datos.entrega.origen === "sin datos" ? "malo" : undefined}
+          ayuda={
+            datos.entrega.origen === "manual"
+              ? "Fijada a mano en la pestaña Productos"
+              : datos.entrega.origen === "pedidos"
+                ? `${datos.entrega.entregados} entregados de ${datos.entrega.entregados + datos.entrega.fallidos + (datos.entrega.contarSinEnvio ? datos.entrega.sinEnvio : 0)} pedidos ya cerrados`
+                : "Sin datos de entregas: se supone 100% (trae las ganancias de los pedidos)"
+          }
+        />
       </div>
+
+      {t.gastoSinDato > 0 ? (
+        <div className="banner warn">
+          <strong>{dinero(t.gastoSinDato)}</strong> de gasto no se puede medir
+          {t.campanasSinProducto ? ` · ${t.campanasSinProducto} campaña(s) sin producto vinculado` : ""}
+          {t.campanasSinGanancia ? ` · ${t.campanasSinGanancia} con productos sin ganancia` : ""}. No
+          entra en el neto ni en el ROI: vincúlalas en <em>Campañas</em> y completa la ganancia en{" "}
+          <em>Productos</em>.
+        </div>
+      ) : null}
 
       <div className="grid-2">
         <section className="card ads-dona-tarjeta">
@@ -190,8 +212,8 @@ export function Resumen({ datos }: { datos: Datos }) {
           </div>
           <p className="muted small">
             {datos.conteos.SINDATO
-              ? `${datos.conteos.SINDATO} campaña(s) sin ganancia promedio cargada: no se pueden medir (pestaña Productos).`
-              : "Todos los productos tienen ganancia promedio cargada."}
+              ? `${datos.conteos.SINDATO} campaña(s) sin producto o sin ganancia: no se pueden medir.`
+              : "Todas las campañas tienen producto y ganancia."}
           </p>
           {t.perdidas < 0 ? (
             <p className="ads-perdida-resumen">

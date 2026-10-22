@@ -1,7 +1,8 @@
 // Pruebas del espacio multiusuario de rentabilidad de anuncios:
 // cada usuario del panel conecta SU token de Meta (cabecera x-usuario) y
 // sus datos (productos, plan, caches) viven en anuncios/usuarios/<email>/.
-// Quien no conecta nada trabaja sobre el espacio compartido.
+// Quien no conecta nada no ve datos de nadie (el compartido es solo para
+// integraciones sin usuario).
 //   node --test   (o npm test dentro de server/)
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -221,20 +222,22 @@ test("anuncios usuarios: sin x-usuario se trabaja en el espacio compartido", asy
   }
 });
 
-test("anuncios usuarios: un usuario sin conexion cae en el compartido", async () => {
+test("anuncios usuarios: un usuario sin conexion NO ve el espacio compartido", async () => {
   const m = montar();
   const puerto = await m.abrir();
   try {
     const e = await llamar(puerto, "GET", "/api/anuncios/cuenta", { usuario: USUARIO });
     assert.equal(e.status, 200);
-    assert.equal(e.datos.enUso, "compartida");
-    assert.equal(e.datos.conectada, true); // el token compartido esta activo
+    assert.equal(e.datos.enUso, "ninguna");
+    assert.equal(e.datos.conectada, false);
+    assert.equal(e.datos.compartidaDisponible, false);
 
+    // ni datos, ni productos, ni plan de otro: tiene que conectar su cuenta
     const d = await llamar(puerto, "GET", "/api/anuncios?dias=15", { usuario: USUARIO });
-    assert.equal(d.status, 200);
-    assert.ok(d.datos.campanas.some((c) => c.nombre === "Taladro Pro"));
-    // no ha creado nada propio todavia
-    assert.equal(fs.existsSync(path.join(m.dir, "usuarios", USUARIO)), false);
+    assert.equal(d.status, 409);
+    const p = await llamar(puerto, "GET", "/api/anuncios/plan", { usuario: USUARIO });
+    assert.equal(p.status, 409);
+    assert.equal(fs.existsSync(path.join(m.dir, "usuarios", USUARIO, "config.json")), false);
   } finally {
     await m.cerrar();
   }
@@ -252,7 +255,7 @@ test("anuncios usuarios: conectar con un token invalido devuelve 400", async () 
     assert.match(String(r.datos.msg), /token|Meta/i);
 
     const e = await llamar(puerto, "GET", "/api/anuncios/cuenta", { usuario: USUARIO });
-    assert.equal(e.datos.enUso, "compartida"); // nada se guardo
+    assert.equal(e.datos.enUso, "ninguna"); // nada se guardo
     assert.equal(fs.existsSync(path.join(m.dir, "usuarios", USUARIO, "config.json")), false);
   } finally {
     await m.cerrar();
@@ -352,7 +355,7 @@ test("anuncios usuarios: las ganancias que guarda un usuario no se mezclan", asy
   }
 });
 
-test("anuncios usuarios: desconectar vuelve al compartido y borrar limpia su carpeta", async () => {
+test("anuncios usuarios: desconectar deja al usuario sin datos y borrar limpia su carpeta", async () => {
   const m = montar();
   const puerto = await m.abrir();
   try {
@@ -366,9 +369,9 @@ test("anuncios usuarios: desconectar vuelve al compartido y borrar limpia su car
     });
     assert.equal(d1.status, 200);
     const e1 = await llamar(puerto, "GET", "/api/anuncios/cuenta", { usuario: USUARIO });
-    assert.equal(e1.datos.enUso, "compartida");
+    assert.equal(e1.datos.enUso, "ninguna");
     const comp = await llamar(puerto, "GET", "/api/anuncios?dias=15", { usuario: USUARIO });
-    assert.ok(comp.datos.campanas.some((x) => x.nombre === "Taladro Pro"));
+    assert.equal(comp.status, 409, "no debe caer en los datos de otro");
     // su carpeta sigue ahi: productos/plan/caches son suyos
     assert.equal(fs.existsSync(carpeta), true);
 

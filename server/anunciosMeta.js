@@ -1,6 +1,7 @@
-// Rentabilidad de las campanas de Meta Ads (cuentas Pizdo y Orenar).
+// Rentabilidad de las campanas de Meta Ads de las cuentas que conecta cada usuario.
 //
-//   margen  = compras que atribuye Meta (omni_purchase) x ganancia promedio
+//   ganancia por compra = ganancia por pedido ENTREGADO x efectividad de entrega
+//   margen  = compras que atribuye Meta (omni_purchase) x ganancia por compra
 //   neto    = margen - gasto de la campana en la ventana
 //   ROI     = margen / gasto      CPA = gasto / compras
 //
@@ -48,10 +49,70 @@ export function escribirJson(ruta, datos) {
   fs.writeFileSync(ruta, JSON.stringify(datos, null, 1), "utf8");
 }
 
-export function hoy() {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+// Las fechas van en hora de Colombia (no en la del servidor: en Railway el
+// reloj es UTC y desde las 7 p. m. "hoy" ya seria manana).
+const ZONA = process.env.TZ_ANUNCIOS || process.env.TZ_ASIGNACION || "America/Bogota";
+
+export function hoy(ahora = new Date()) {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: ZONA,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(ahora);
+  } catch {
+    const p = (n) => String(n).padStart(2, "0");
+    return `${ahora.getFullYear()}-${p(ahora.getMonth() + 1)}-${p(ahora.getDate())}`;
+  }
+}
+
+/** "2026-10-21" - 14 dias -> "2026-10-07" (aritmetica de calendario, sin zonas). */
+export function restarDias(iso, n) {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Tipo de un estado de envio para la efectividad de entrega:
+ *   entregado · fallido (cancelado, devolucion, rechazado, guia anulada) · curso
+ */
+export function tipoEstadoEnvio(nombre) {
+  const k = String(nombre ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+  if (k === "entregado") return "entregado";
+  if (/cancel|devoluc|devuelt|rechaz|anulad/.test(k)) return "fallido";
+  return "curso";
+}
+
+const PALABRAS_VACIAS = new Set([
+  "de", "del", "la", "las", "el", "los", "y", "para", "con", "por", "en", "un", "una",
+  "copia", "nuevo", "nueva", "campana", "replicante", "act", "test", "prueba",
+]);
+
+/** Producto que mas se parece al nombre de una campana (o null). */
+export function sugerirProducto(nombreCampana, nombres) {
+  const enCampana = new Set(normalizar(nombreCampana).split(" ").filter(Boolean));
+  let mejor = null;
+  let mejorPuntaje = 0;
+  for (const nombre of nombres) {
+    const fichas = normalizar(nombre)
+      .split(" ")
+      .filter((t) => t.length >= 3 && !PALABRAS_VACIAS.has(t));
+    if (!fichas.length) continue;
+    const comunes = fichas.filter((t) => enCampana.has(t));
+    if (!comunes.some((t) => t.length >= 4)) continue;
+    const puntaje = comunes.length / fichas.length + comunes.length * 0.01;
+    if (puntaje > mejorPuntaje) {
+      mejor = nombre;
+      mejorPuntaje = puntaje;
+    }
+  }
+  return mejorPuntaje >= 0.5 ? mejor : null;
 }
 
 /** "2026-09-23" + hoy -> dias incluyendo ambos extremos (15). */
@@ -127,9 +188,13 @@ function sugerir(f, ventanaDias, minDiasAlerta = MIN_DIAS_ALERTA) {
     titulo = "Esperar: todavia no se puede juzgar";
     detalle = `Lleva ${f.diasMedidos} dia(s) con datos (minimo ${minDiasAlerta} para opinar). Recien el dia ${minDiasAlerta} empieza a medirse.`;
     prioridad = 5;
+  } else if (f.sinProducto) {
+    titulo = "Vincular a un producto";
+    detalle = `Gasto ${dinero(f.gasto)} y Meta le atribuye ${f.compras} compras, pero la campana no esta vinculada a ningun producto: no se puede medir.${f.sugerido ? ` Parece ser «${f.sugerido}».` : ""}`;
+    prioridad = 1;
   } else if (f.clase === "SINDATO") {
-    titulo = "Completar la ganancia promedio del producto";
-    detalle = `Meta le atribuye ${f.compras} compras pero la ganancia promedio esta en 0; sin ese dato no se puede medir.`;
+    titulo = "Completar la ganancia del producto";
+    detalle = `Meta le atribuye ${f.compras} compras pero ${f.faltaGanancia?.length ? `«${f.faltaGanancia.join("», «")}» no tiene` : "el producto no tiene"} ganancia cargada; sin ese dato no se puede medir.`;
     prioridad = 1;
   } else if (f.clase === "PERDIDA") {
     if (activa) {
@@ -160,10 +225,8 @@ function sugerir(f, ventanaDias, minDiasAlerta = MIN_DIAS_ALERTA) {
   }
 
   const extras = [];
-  const desde = new Date(`${hoy()}T00:00:00`);
-  desde.setDate(desde.getDate() - ventanaDias);
-  const creada = f.creada ? new Date(`${f.creada}T00:00:00`) : null;
-  if (!nuevaDemasiado && creada && creada >= desde) {
+  const desde = restarDias(hoy(), ventanaDias);
+  if (!nuevaDemasiado && f.creada && f.creada >= desde) {
     extras.push(`campana nueva (${f.creada}, ${f.diasActivos} dias)`);
   }
   if (f.compartida) extras.push(`compartida entre ${f.productos.length} productos`);
@@ -270,8 +333,35 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
   const graph = crearGraph({ ajustes, fetcher });
   const enCurso = new Map();
 
+  // Contexto de quien pide: su tienda activa y un cliente de LucidSales con
+  // SU sesion. Sin contexto (pruebas, integraciones) se usa `lucid`.
+  let ctx = { lucid: null, tienda: null };
+  function contexto(c = {}) {
+    ctx = { lucid: c.lucid ?? null, tienda: Number(c.tienda) || null };
+  }
+  const lucidActual = () => ctx.lucid ?? lucid;
+
   function productos() {
     return leerJson(rutas.productos, []);
+  }
+  const nombreDe = (p) => p?.nombre ?? p?.name ?? "";
+  const gananciaDe = (p) => Number(p?.ganancia ?? p?.unit ?? 0) || 0;
+
+  /** Ids de las cuentas elegidas, para saber si la cache sigue valiendo. */
+  const idsCuentas = (cfg) =>
+    (cfg.cuentas ?? []).map((c) => String(c.id)).sort().join(",");
+
+  /** Borra las caches de dias viejos (una por ventana y por dia). */
+  function limpiarCaches() {
+    const limite = restarDias(hoy(), 3);
+    try {
+      for (const f of fs.readdirSync(dir)) {
+        const m = /^datos_\d+d_(\d{4}-\d{2}-\d{2})\.json$/.exec(f);
+        if (m && m[1] < limite) fs.rmSync(path.join(dir, f), { force: true });
+      }
+    } catch {
+      /* limpiar es opcional */
+    }
   }
 
   function indiceProductos(lista, manual) {
@@ -296,23 +386,23 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
   async function crudo(dias, { forzar = false } = {}) {
     const cfg = ajustes();
     if (!cfg.token) {
-      throw new Error("Falta el token de Meta en config/anuncios.json");
+      throw new Error("Conecta tu cuenta de Meta para ver tus campanas");
     }
     if (!forzar) {
       const cache = leerJson(rutas.cache(dias), null);
-      if (cache && Array.isArray(cache.cuentas)) return cache;
+      // si cambiaron las cuentas elegidas, la cache de hoy ya no sirve
+      const mismas =
+        cache?.cuentasIds === undefined
+          ? cache?.cuentas?.length === (cfg.cuentas ?? []).length
+          : cache.cuentasIds === idsCuentas(cfg);
+      if (cache && Array.isArray(cache.cuentas) && mismas) return cache;
     }
     const llave = String(dias);
     if (enCurso.has(llave)) return enCurso.get(llave);
 
     const promesa = (async () => {
-      const desde = (() => {
-        const d = new Date();
-        d.setDate(d.getDate() - (dias - 1));
-        const p = (n) => String(n).padStart(2, "0");
-        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-      })();
       const hasta = hoy();
+      const desde = restarDias(hasta, dias - 1);
 
       const cuentas = [];
       let error = null;
@@ -332,6 +422,9 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
             for (const f of filas) {
               if (!f.campaign_id) continue;
               salida[f.campaign_id] = {
+                // el nombre sirve para las campanas archivadas o borradas, que
+                // ya no salen en /campaigns pero si gastaron en la ventana
+                nombre: f.campaign_name ?? "",
                 gasto: Number(f.spend ?? 0) || 0,
                 compras: comprasDe(f.actions),
                 roas: roasDe(f.purchase_roas),
@@ -356,21 +449,14 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
               ? mapear(
                   await graph.paginar(`act_${cuenta.id}/insights`, {
                     level: "campaign",
-                    time_range: JSON.stringify({
-                      since: (() => {
-                        const d = new Date();
-                        d.setDate(d.getDate() - 6);
-                        const p = (n) => String(n).padStart(2, "0");
-                        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-                      })(),
-                      until: hasta,
-                    }),
+                    time_range: JSON.stringify({ since: restarDias(hasta, 6), until: hasta }),
                     fields: campos,
                   }),
                 )
               : insights;
 
           cuentas.push({
+            id: String(cuenta.id),
             nombre: cuenta.nombre,
             moneda: cuenta.moneda ?? "COP",
             campanas,
@@ -384,15 +470,22 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
       }
 
       if (error || cuentas.length !== (cfg.cuentas ?? []).length) {
-        const respaldo = conSnapshot(error, dias);
+        const respaldo = { ...conSnapshot(error, dias), cuentasIds: idsCuentas(cfg) };
         // se guarda tambien para que la siguiente consulta sea inmediata;
         // "Actualizar" (forzar) vuelve a intentarlo contra Meta
         escribirJson(rutas.cache(dias), respaldo);
         return respaldo;
       }
 
-      const datos = { ventana: [desde, hasta], obtenido: new Date().toISOString(), fuente: "live", cuentas };
+      const datos = {
+        ventana: [desde, hasta],
+        obtenido: new Date().toISOString(),
+        fuente: "live",
+        cuentasIds: idsCuentas(cfg),
+        cuentas,
+      };
       escribirJson(rutas.cache(dias), datos);
+      limpiarCaches();
       return datos;
     })();
 
@@ -414,7 +507,7 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
     const trm = Number(cfg.trm) || 1;
     const porCuenta = new Map();
     for (const c of snap.campaigns ?? []) {
-      const nombre = c.account ?? "Pizdo";
+      const nombre = c.account ?? cfg.cuentas?.[0]?.nombre ?? "Cuenta";
       const cuentaCfg = (cfg.cuentas ?? []).find((x) => x.nombre === nombre) ?? { moneda: "USD" };
       const gasto = cuentaCfg.moneda === "USD" ? (c.spend_cop ?? 0) / trm : (c.spend_cop ?? 0);
       if (!porCuenta.has(nombre)) {
@@ -452,6 +545,98 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
     };
   }
 
+  /**
+   * Efectividad de entrega: de cada compra que Meta cuenta, que parte termina
+   * ENTREGADA (y deja ganancia). Sale de los estados de envio de los pedidos
+   * que trajo el traedor de ganancias:
+   *
+   *   efectividad = entregados / (entregados + cancelados, devoluciones,
+   *                 rechazados y guias anuladas)
+   *
+   * Los que siguen en camino no cuentan (todavia no se sabe como terminan).
+   * Los pedidos SIN envio (nunca se confirmaron) solo cuentan como no
+   * entregados si el usuario lo pide (`contarSinEnvio`). Tambien se puede
+   * fijar a mano.
+   */
+  function efectividad() {
+    const cfg = ajustes().entrega ?? {};
+    const contarSinEnvio = Boolean(cfg.contarSinEnvio);
+    let entregados = 0;
+    let fallidos = 0;
+    let enCamino = 0;
+    let sinEnvio = 0;
+    for (const p of productos()) {
+      const e = p?.pedidos?.estados;
+      if (!e || typeof e !== "object") continue;
+      let suma = 0;
+      for (const [nombre, n] of Object.entries(e)) {
+        const v = Number(n) || 0;
+        suma += v;
+        const tipo = tipoEstadoEnvio(nombre);
+        if (tipo === "entregado") entregados += v;
+        else if (tipo === "fallido") fallidos += v;
+        else enCamino += v;
+      }
+      sinEnvio += Math.max(0, (Number(p.pedidos.nTotal) || 0) - suma);
+    }
+    const tasaDe = (base) => (base >= 20 ? entregados / base : null);
+    const tasaSinContar = tasaDe(entregados + fallidos);
+    const tasaContando = tasaDe(entregados + fallidos + sinEnvio);
+    const delPedidos = contarSinEnvio ? tasaContando : tasaSinContar;
+    const manual = Number(cfg.tasa);
+    let tasa;
+    let origen;
+    if (cfg.modo === "manual" && manual > 0 && manual <= 1) {
+      tasa = manual;
+      origen = "manual";
+    } else if (delPedidos !== null) {
+      tasa = delPedidos;
+      origen = "pedidos";
+    } else {
+      tasa = 1;
+      origen = "sin datos";
+    }
+    return {
+      tasa: Math.round(tasa * 10000) / 10000,
+      origen,
+      modo: cfg.modo === "manual" ? "manual" : "auto",
+      manual: manual > 0 && manual <= 1 ? manual : null,
+      contarSinEnvio,
+      entregados,
+      fallidos,
+      enCamino,
+      sinEnvio,
+      tasaSinContarSinEnvio: tasaSinContar,
+      tasaContandoSinEnvio: tasaContando,
+    };
+  }
+
+  /** {modo: "auto"|"manual", tasa? (0-1 o 1-100), contarSinEnvio?} */
+  function guardarEntrega(v = {}) {
+    const cfg = leerJson(rutaAjustes, {});
+    const actual = cfg.entrega ?? {};
+    const prox = { ...actual };
+    if (v.modo !== undefined) {
+      if (!["auto", "manual"].includes(v.modo)) throw new Error("El modo debe ser auto o manual");
+      prox.modo = v.modo;
+    }
+    if (v.tasa !== undefined && v.tasa !== null && String(v.tasa).trim() !== "") {
+      let t = Number(v.tasa);
+      if (t > 1) t = t / 100; // aceptan 65 o 0.65
+      if (!Number.isFinite(t) || t <= 0 || t > 1) {
+        throw new Error("La efectividad debe estar entre 1% y 100%");
+      }
+      prox.tasa = Math.round(t * 10000) / 10000;
+    }
+    if (v.contarSinEnvio !== undefined) prox.contarSinEnvio = Boolean(v.contarSinEnvio);
+    if (prox.modo === "manual" && !(prox.tasa > 0)) {
+      throw new Error("Para fijarla a mano escribe el porcentaje de entrega");
+    }
+    cfg.entrega = prox;
+    escribirJson(rutaAjustes, cfg);
+    return efectividad();
+  }
+
   /** Dataset completo (lo que consume el panel). */
   function calcular(datos) {
     const cfg = ajustes();
@@ -459,27 +644,48 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
     const lista = productos();
     const manual = leerJson(rutas.manual, []);
     const indice = indiceProductos(lista, manual);
+    const nombres = lista.map(nombreDe).filter(Boolean);
     const [desde, hasta] = datos.ventana;
     const ventanaDias = diasEntre(desde, hasta);
     // dias minimos de datos de la campana para poder opinar sobre ella
     const minDiasAlerta = Math.max(1, Math.round(Number(cfg.minDiasAlerta) || MIN_DIAS_ALERTA));
+    const entrega = efectividad();
+    const avisos = datos.aviso ? [datos.aviso] : [];
 
     const filas = [];
     for (const cuenta of datos.cuentas) {
-      const fx = cuenta.moneda === "USD" ? trm : 1;
-      for (const c of cuenta.campanas) {
+      // pesos: COP tal cual, USD con la TRM; otra moneda no se puede convertir
+      const moneda = cuenta.moneda ?? "COP";
+      const fx = moneda === "COP" ? 1 : moneda === "USD" ? trm : null;
+      if (fx === null) {
+        avisos.push(
+          `La cuenta ${cuenta.nombre} esta en ${moneda}: solo se convierten COP y USD, asi que quedo fuera del analisis.`,
+        );
+        continue;
+      }
+      // las archivadas o borradas no salen en /campaigns pero si gastaron
+      const conocidas = new Set(cuenta.campanas.map((c) => c.id));
+      const extra = Object.entries(cuenta.insights ?? {})
+        .filter(([id]) => !conocidas.has(id))
+        .map(([id, ins]) => ({ id, nombre: ins?.nombre || id, estado: "ARCHIVED", creada: "" }));
+
+      for (const c of [...cuenta.campanas, ...extra]) {
         const ins = cuenta.insights?.[c.id];
         if (!ins?.gasto) continue; // sin gasto en la ventana
         const gasto = ins.gasto * fx;
         const compras = ins.compras ?? 0;
         const coincidencias = indice.get(normalizar(c.nombre)) ?? [];
         const vinculados = coincidencias.map((i) => lista[i]).filter(Boolean);
-        const unidad = vinculados.length
-          ? vinculados.reduce((a, p) => a + (Number(p.ganancia ?? p.unit ?? 0) || 0), 0) /
-            vinculados.length
+        const faltaGanancia = vinculados.filter((p) => gananciaDe(p) <= 0).map(nombreDe);
+        // con un solo producto sin ganancia la cuenta ya no es confiable
+        const completo = vinculados.length > 0 && faltaGanancia.length === 0;
+        // ganancia por pedido ENTREGADO (promedio de los productos vinculados)
+        const unidad = completo
+          ? vinculados.reduce((a, p) => a + gananciaDe(p), 0) / vinculados.length
           : 0;
-        // sin ganancia promedio no hay margen medible -> cuenta como SINDATO
-        const margen = unidad ? compras * unidad : null;
+        // lo que deja en promedio CADA compra que cuenta Meta
+        const porCompra = unidad * entrega.tasa;
+        const margen = completo ? compras * porCompra : null;
         const neto = margen === null ? null : margen - gasto;
         const roi = margen === null || !gasto ? null : margen / gasto;
         const ins7 = cuenta.insights7?.[c.id];
@@ -502,13 +708,17 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
           impresiones: ins.impresiones ?? 0,
           clics: ins.clics ?? 0,
           unidad,
+          porCompra: Math.round(porCompra * 100) / 100,
           margen,
           neto,
           roi,
           cpa: compras ? gasto / compras : null,
           clase: clasificar(margen, neto, roi),
-          productos: vinculados.map((p) => p.nombre ?? p.name),
+          productos: vinculados.map(nombreDe),
           compartida: vinculados.length > 1,
+          sinProducto: vinculados.length === 0,
+          faltaGanancia,
+          sugerido: vinculados.length ? null : sugerirProducto(c.nombre, nombres),
         };
         const activa = f.estado === "ACTIVE";
         const suficiente = f.diasMedidos >= minDiasAlerta;
@@ -533,6 +743,7 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
     filas.sort((a, b) => b.gasto - a.gasto);
 
     const conMargen = filas.filter((f) => f.margen !== null);
+    const sinDato = filas.filter((f) => f.margen === null);
     const gastoCon = conMargen.reduce((a, f) => a + f.gasto, 0);
     const margenTotal = conMargen.reduce((a, f) => a + f.margen, 0);
     const gastoTotal = filas.reduce((a, f) => a + f.gasto, 0);
@@ -547,82 +758,104 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
       .filter((f) => f.clase === "PERDIDA")
       .reduce((a, f) => a + Math.abs(f.neto) / (f.diasMedidos || 1), 0);
 
-    const productosFila = lista
-      .map((p) => {
-        const mias = filas.filter((f) => f.productos.includes(p.nombre ?? p.name));
-        if (!mias.length) return null;
-        const gasto = mias.reduce((a, f) => a + f.gasto, 0);
-        const compras = mias.reduce((a, f) => a + f.compras, 0);
-        const unidad = Number(p.ganancia ?? p.unit ?? 0) || 0;
-        const margen = unidad ? compras * unidad : null;
-        const neto = margen === null ? null : margen - gasto;
-        const roi = margen === null || !gasto ? null : margen / gasto;
-        const ped = p.pedidos ?? null;
-        return {
-          nombre: p.nombre ?? p.name,
-          precio: p.precio ?? p.price ?? 0,
-          unidad,
-          // promedio que salio de los PEDIDOS (no se usa en el calculo salvo
-          // que se adopte a mano): esta a la vista para compararlo
-          pedidosProm: ped && ped.n > 0 && ped.prom > 0 ? ped.prom : null,
-          pedidosN: ped?.n ?? 0,
-          // total de pedidos en la ventana (incluye los sin envio, que no
-          // entran al promedio): sirve para enseñar «n=746 (de 834)»
-          pedidosNTotal: ped?.nTotal ?? ped?.n ?? 0,
-          pedidosDesde: ped?.desde ?? null,
-          pedidosHasta: ped?.hasta ?? null,
-          origenGanancia: p.origenGanancia ?? null,
-          campanas: mias.length,
-          gasto: Math.round(gasto * 100) / 100,
-          compras,
-          margen,
-          neto,
-          roi,
-          compartida: mias.some((f) => f.compartida),
-          clase: clasificar(margen, neto, roi ?? 0),
-        };
-      })
-      .filter(Boolean)
-      .sort((a, b) => (b.neto ?? -Infinity) - (a.neto ?? -Infinity));
-
-    const cuentasFila = datos.cuentas.map((c) => {
-      const mias = filas.filter((f) => f.cuenta === c.nombre);
-      const gasto = mias.reduce((a, f) => a + f.gasto, 0);
-      const compras = mias.reduce((a, f) => a + f.compras, 0);
-      const conDatos = mias.filter((f) => f.margen !== null);
-      const margen = conDatos.reduce((a, f) => a + f.margen, 0);
-      const gastoConDatos = conDatos.reduce((a, f) => a + f.gasto, 0);
+    // Por producto: una campana compartida entre N productos reparte su gasto
+    // y sus compras en N partes iguales (si no, se contaria N veces).
+    const filaProducto = (p) => {
+      const nombre = nombreDe(p);
+      const mias = filas.filter((f) => f.productos.includes(nombre));
+      const parte = (f) => 1 / Math.max(1, f.productos.length);
+      const gasto = mias.reduce((a, f) => a + f.gasto * parte(f), 0);
+      const compras = mias.reduce((a, f) => a + f.compras * parte(f), 0);
+      const unidad = gananciaDe(p);
+      const margen = unidad ? compras * unidad * entrega.tasa : null;
+      const neto = margen === null ? null : margen - gasto;
+      const roi = margen === null || !gasto ? null : margen / gasto;
+      const ped = p.pedidos ?? null;
       return {
-        nombre: c.nombre,
-        moneda: c.moneda,
+        nombre,
+        precio: p.precio ?? p.price ?? 0,
+        unidad,
+        // promedio que salio de los PEDIDOS (no se usa en el calculo salvo
+        // que se adopte a mano): esta a la vista para compararlo
+        pedidosProm: ped && ped.n > 0 && ped.prom > 0 ? ped.prom : null,
+        pedidosN: ped?.n ?? 0,
+        // total de pedidos en la ventana (incluye los sin envio, que no
+        // entran al promedio): sirve para enseñar «n=746 (de 834)»
+        pedidosNTotal: ped?.nTotal ?? ped?.n ?? 0,
+        pedidosDesde: ped?.desde ?? null,
+        pedidosHasta: ped?.hasta ?? null,
+        origenGanancia: p.origenGanancia ?? null,
         campanas: mias.length,
         gasto: Math.round(gasto * 100) / 100,
-        compras,
-        cpa: compras ? gasto / compras : null,
+        compras: Math.round(compras * 10) / 10,
         margen,
-        neto: margen - gastoConDatos,
-        roi: gastoConDatos ? margen / gastoConDatos : 0,
-        perdidas: mias.filter((f) => f.clase === "PERDIDA").reduce((a, f) => a + f.neto, 0),
-        conteos: Object.fromEntries(
-          CLASES.map((k) => [k, mias.filter((f) => f.clase === k).length]),
-        ),
+        neto,
+        roi,
+        compartida: mias.some((f) => f.compartida),
+        clase: clasificar(margen, neto, roi ?? 0),
       };
-    });
+    };
+    const todas = lista.filter((p) => nombreDe(p)).map(filaProducto);
+    const productosFila = todas
+      .filter((p) => p.campanas > 0)
+      .sort((a, b) => (b.neto ?? -Infinity) - (a.neto ?? -Infinity));
+    const productosSinCampana = todas
+      .filter((p) => p.campanas === 0)
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+
+    const cuentasFila = datos.cuentas
+      .filter((c) => ["COP", "USD", undefined].includes(c.moneda))
+      .map((c) => {
+        const mias = filas.filter((f) => f.cuenta === c.nombre);
+        const gasto = mias.reduce((a, f) => a + f.gasto, 0);
+        const compras = mias.reduce((a, f) => a + f.compras, 0);
+        const conDatos = mias.filter((f) => f.margen !== null);
+        const margen = conDatos.reduce((a, f) => a + f.margen, 0);
+        const gastoConDatos = conDatos.reduce((a, f) => a + f.gasto, 0);
+        return {
+          nombre: c.nombre,
+          moneda: c.moneda ?? "COP",
+          campanas: mias.length,
+          gasto: Math.round(gasto * 100) / 100,
+          gastoSinDato: Math.round((gasto - gastoConDatos) * 100) / 100,
+          compras,
+          cpa: compras ? gasto / compras : null,
+          margen,
+          neto: margen - gastoConDatos,
+          roi: gastoConDatos ? margen / gastoConDatos : 0,
+          perdidas: mias.filter((f) => f.clase === "PERDIDA").reduce((a, f) => a + f.neto, 0),
+          conteos: Object.fromEntries(
+            CLASES.map((k) => [k, mias.filter((f) => f.clase === k).length]),
+          ),
+        };
+      });
+
+    if (entrega.origen === "sin datos" && filas.length) {
+      avisos.push(
+        "Todavía no hay datos de entregas: se supone que el 100% de las compras se entrega. Trae las ganancias de los pedidos (pestaña Productos) o fija la efectividad a mano.",
+      );
+    }
 
     return {
       generado: new Date().toISOString(),
       fuente: datos.fuente,
-      aviso: datos.aviso ?? null,
+      aviso: avisos.length ? avisos.join(" ") : null,
       ventana: { desde, hasta, dias: ventanaDias },
       minDiasAlerta,
       trm,
+      entrega,
       totales: {
         gasto: Math.round(gastoTotal * 100) / 100,
         compras: comprasTotal,
         cpa: comprasTotal ? gastoTotal / comprasTotal : 0,
         margen: margenTotal,
+        // neto y ROI solo de lo que se puede medir; el gasto sin dato va aparte
         neto: margenTotal - gastoCon,
         roi: gastoCon ? margenTotal / gastoCon : 0,
+        gastoMedido: Math.round(gastoCon * 100) / 100,
+        gastoSinDato: Math.round(sinDato.reduce((a, f) => a + f.gasto, 0) * 100) / 100,
+        campanasSinProducto: filas.filter((f) => f.sinProducto).length,
+        campanasSinGanancia: filas.filter((f) => !f.sinProducto && f.margen === null).length,
         campanas: filas.length,
         gasto7: Math.round(filas.reduce((a, f) => a + f.gasto7, 0) * 100) / 100,
         compras7: filas.reduce((a, f) => a + f.compras7, 0),
@@ -632,6 +865,7 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
       conteos,
       campanas: filas,
       productos: productosFila,
+      productosSinCampana,
       cuentas: cuentasFila,
     };
   }
@@ -680,7 +914,8 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
   const AJUSTES_GANANCIAS = {
     auto: true,
     minPedidos: 20,
-    tienda: 3682,
+    // sin tienda fija: se usa la tienda activa del panel de quien pide
+    tienda: null,
     dias: 15,
     // estados que CUENTAN para el promedio: la muestra son solo los pedidos
     // que traen ganancia. Dropi calcula el flete y el costo del proveedor al
@@ -707,7 +942,9 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
     return {
       auto: g.auto === undefined ? AJUSTES_GANANCIAS.auto : Boolean(g.auto),
       minPedidos: Math.round(n(g.minPedidos, AJUSTES_GANANCIAS.minPedidos)),
-      tienda: Math.round(n(g.tienda, AJUSTES_GANANCIAS.tienda)),
+      // la tienda activa del panel manda; el ajuste guardado queda para las
+      // integraciones sin sesion (x-api-key)
+      tienda: Number(ctx.tienda) || (Number(g.tienda) > 0 ? Math.round(Number(g.tienda)) : null),
       dias: [7, 15, 30].includes(Number(g.dias)) ? Number(g.dias) : AJUSTES_GANANCIAS.dias,
       incluirEstados: listaEstados(g.incluirEstados, AJUSTES_GANANCIAS.incluirEstados),
     };
@@ -724,7 +961,8 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
       }
       prox.minPedidos = Math.round(m);
     }
-    if (v.tienda !== undefined) {
+    // la tienda no se elige aqui: es la que esta activa en el panel
+    if (v.tienda !== undefined && !ctx.tienda) {
       const t = Number(v.tienda);
       if (!Number.isFinite(t) || t <= 0) throw new Error("La tienda de LucidSales no es un id valido");
       prox.tienda = Math.round(t);
@@ -741,7 +979,9 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
       }
     }
     const cfg = leerJson(rutaAjustes, {});
-    cfg.ganancias = prox;
+    const guardar = { ...prox };
+    if (ctx.tienda) guardar.tienda = cfg.ganancias?.tienda ?? null;
+    cfg.ganancias = guardar;
     escribirJson(rutaAjustes, cfg);
     return prox;
   }
@@ -792,10 +1032,8 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
 
   /** [desde, hasta] de la ventana de pedidos (mismos dias que el analisis). */
   function ventanaPedidos(dias) {
-    const d = new Date();
-    d.setDate(d.getDate() - (dias - 1));
-    const p = (n) => String(n).padStart(2, "0");
-    return [`${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`, hoy()];
+    const h = hoy();
+    return [restarDias(h, dias - 1), h];
   }
 
   /** Casa el producto del espacio con el de la tienda (nombre normalizado). */
@@ -876,7 +1114,7 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
     const vivo = trabajos.get(TRABAJO) ?? null;
     const u = leerJson(rutas.ganancias, null);
     return {
-      disponible: Boolean(lucid),
+      disponible: Boolean(lucidActual()),
       ajustes: ajustesGanancias(),
       estados: estadosGanancias(),
       enCurso: Boolean(vivo),
@@ -909,6 +1147,8 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
   /** Un producto por vez: pide su analitica y anota el promedio en productos.json. */
   async function gananciasEjecutar(dias) {
     const aj = ajustesGanancias();
+    // se fija al arrancar: la corrida sigue con la sesion de quien la pidio
+    const cli = lucidActual();
     const [desde, hasta] = ventanaPedidos(dias);
     const registro = {
       estado: "enCurso",
@@ -926,11 +1166,14 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
     const vivo = { total: 0, listos: 0, dias, inicio: registro.ejecutado };
     trabajos.set(TRABAJO, vivo);
     try {
-      if (!lucid) throw new Error("Este servidor no tiene credenciales de LucidSales");
+      if (!cli) throw new Error("No hay sesion de LucidSales para leer los pedidos");
+      if (!aj.tienda) throw new Error("Elige una tienda en el panel para traer sus pedidos");
       const local = productos();
-      if (!local.length) throw new Error("Este espacio no tiene productos cargados");
+      if (!local.length) {
+        throw new Error("Todavia no tienes productos: usa «Importar productos de mi tienda»");
+      }
 
-      const catalogo = await lucid.productosTienda(aj.tienda);
+      const catalogo = await cli.productosTienda(aj.tienda);
       const pareja = casarProductos(local, catalogo);
       // Un catalogo vacio (o en el que ni un producto casa) NO se guarda:
       // borraria todos los promedios que ya se tenian. Paso en la practica
@@ -968,7 +1211,7 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
           };
           return;
         }
-        const a = await lucid.analitica({
+        const a = await cli.analitica({
           idShop: aj.tienda,
           desde,
           hasta,
@@ -1060,9 +1303,9 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
    * cuando termine; sin el, el panel consulta el progreso con GET.
    */
   async function traerGanancias({ dias, forzar = false, esperar = false } = {}) {
-    if (!lucid) {
+    if (!lucidActual()) {
       throw new Error(
-        "Este servidor no tiene credenciales de LucidSales: no se pueden traer las ganancias de los pedidos",
+        "No hay sesion de LucidSales: no se pueden traer las ganancias de los pedidos",
       );
     }
     const d = [7, 15, 30].includes(Number(dias)) ? Number(dias) : ajustesGanancias().dias;
@@ -1070,7 +1313,13 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
     if (!forzar) {
       const u = leerJson(rutas.ganancias, null);
       const [desde] = ventanaPedidos(d);
-      if (u?.estado === "listo" && u?.fecha === hoy() && u?.dias === d && u?.desde === desde) {
+      if (
+        u?.estado === "listo" &&
+        u?.fecha === hoy() &&
+        u?.dias === d &&
+        u?.desde === desde &&
+        Number(u?.tienda) === Number(ajustesGanancias().tienda)
+      ) {
         return { ...estadoGanancias(), yaActualizado: true };
       }
     }
@@ -1085,12 +1334,20 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
    */
   function gananciasAuto() {
     const aj = ajustesGanancias();
-    if (!lucid) return { ok: false, motivo: "sin credenciales de LucidSales" };
+    if (!lucidActual()) return { ok: false, motivo: "sin sesion de LucidSales" };
     if (!aj.auto) return { ok: false, motivo: "automatico apagado" };
+    if (!aj.tienda) return { ok: false, motivo: "sin tienda" };
+    if (!productos().length) return { ok: false, motivo: "sin productos" };
     if (trabajos.has(TRABAJO)) return { ok: false, enCurso: true };
     const u = leerJson(rutas.ganancias, null);
     const [desde] = ventanaPedidos(aj.dias);
-    if (u?.estado === "listo" && u?.fecha === hoy() && u?.dias === aj.dias && u?.desde === desde) {
+    if (
+      u?.estado === "listo" &&
+      u?.fecha === hoy() &&
+      u?.dias === aj.dias &&
+      u?.desde === desde &&
+      Number(u?.tienda) === Number(aj.tienda)
+    ) {
       return { ok: false, motivo: "ya se ejecuto hoy" };
     }
     const intento = u?.intentado ? Date.parse(u.intentado) : 0;
@@ -1099,6 +1356,71 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
     }
     traerGanancias({ dias: aj.dias, forzar: true }).catch(() => {});
     return { ok: true };
+  }
+
+  // ------------------------------------------------------------ productos
+
+  /**
+   * Trae el catalogo de la tienda activa y agrega los productos que falten
+   * (con ganancia 0: la llena el traedor de ganancias o el usuario a mano).
+   * No toca los que ya estaban.
+   */
+  async function importarProductos() {
+    const cli = lucidActual();
+    const tienda = ajustesGanancias().tienda;
+    if (!cli) throw new Error("No hay sesion de LucidSales para leer tu catalogo");
+    if (!tienda) throw new Error("Elige una tienda en el panel");
+    const catalogo = await cli.productosTienda(tienda);
+    if (!Array.isArray(catalogo) || !catalogo.length) {
+      throw new Error(`La tienda ${tienda} no devolvio productos`);
+    }
+    const lista = productos();
+    const vistos = new Set(lista.map((p) => normalizar(nombreDe(p))));
+    let nuevos = 0;
+    for (const p of catalogo) {
+      const nombre = String(p?.Nombre ?? p?.nombre ?? "").trim();
+      const k = normalizar(nombre);
+      if (!k || vistos.has(k)) continue;
+      vistos.add(k);
+      lista.push({
+        nombre,
+        precio: Number(p?.Precio ?? p?.precio ?? 0) || 0,
+        ganancia: 0,
+        campanas: [],
+      });
+      nuevos++;
+    }
+    escribirJson(rutas.productos, lista);
+    return { nuevos, total: lista.length, enTienda: catalogo.length, tienda };
+  }
+
+  /**
+   * Vincula una campana a uno o varios productos (lista vacia = desvincular).
+   * Reemplaza cualquier vinculo anterior de esa campana.
+   */
+  function vincular({ campana, productos: elegidos } = {}) {
+    const nombreCampana = String(campana ?? "").trim();
+    if (!nombreCampana) throw new Error("Falta el nombre de la campana");
+    const k = normalizar(nombreCampana);
+    const lista = productos();
+    const porNombre = new Map(lista.map((p) => [nombreDe(p), p]));
+    const nuevos = Array.isArray(elegidos) ? [...new Set(elegidos.map(String))] : [];
+    for (const n of nuevos) {
+      if (!porNombre.has(n)) throw new Error(`Producto no encontrado: ${n}`);
+    }
+    // fuera los vinculos viejos (en la lista del producto o en el manual)
+    for (const p of lista) {
+      for (const campo of ["campanas", "campaigns"]) {
+        if (Array.isArray(p[campo])) p[campo] = p[campo].filter((c) => normalizar(c) !== k);
+      }
+    }
+    const manual = leerJson(rutas.manual, []).filter(
+      (m) => normalizar(m.campana ?? m.campaign) !== k,
+    );
+    for (const n of nuevos) manual.push({ campana: nombreCampana, producto: n });
+    escribirJson(rutas.productos, lista);
+    escribirJson(rutas.manual, manual);
+    return { campana: nombreCampana, productos: nuevos };
   }
 
   const plan = () => leerJson(rutas.plan, {});
@@ -1123,7 +1445,7 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
 
       if (vista === "productos") {
         filas.push([
-          "Producto", "Precio", "Ganancia promedio", "Promedio pedidos", "Pedidos (n)",
+          "Producto", "Precio", "Ganancia por entregado", "Promedio pedidos", "Pedidos (n)",
           "Campanas", "Gasto", "Compras", "Margen", "Neto", "ROI", "Clasificacion",
         ]);
         for (const p of d.productos) {
@@ -1145,14 +1467,16 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
         }
         filas.push([
           "Campana", "Producto(s)", "Cuenta", "Estado", "Creada", "Dias", "Gasto", "Compras",
-          "CPA", "Ganancia prom.", "Margen", "Neto", "ROI", "Clasificacion", "Accion sugerida",
+          "CPA", "Ganancia por entregado", "Ganancia por compra", "Margen", "Neto", "ROI",
+          "Clasificacion", "Accion sugerida",
         ]);
         for (const f of campanas) {
           filas.push([
             f.nombre, f.productos.join(" + "), f.cuenta, f.estado, f.creada, f.diasMedidos,
             f.gasto, f.compras,
             f.cpa === null ? "" : Math.round(f.cpa),
-            f.unidad,
+            red(f.unidad),
+            red(f.porCompra),
             red(f.margen),
             red(f.neto),
             f.roi === null || f.roi === undefined ? "" : f.roi.toFixed(2),
@@ -1186,6 +1510,11 @@ export function crearAnalisisAnuncios({ dir, rutaAjustes, fetcher = globalThis.f
     traerGanancias,
     gananciasAjustes,
     gananciasAuto,
+    contexto,
+    importarProductos,
+    vincular,
+    efectividad,
+    guardarEntrega,
     /** para pruebas: recalcular sin volver a Meta */
     _calcular: calcular,
   };

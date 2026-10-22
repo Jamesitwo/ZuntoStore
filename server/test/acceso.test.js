@@ -102,6 +102,19 @@ test("rutas publicas no piden sesion", async () => {
   assert.equal(r.status, 200);
 });
 
+test("el usuario sale de uid (asi firma LucidSales sus tokens)", async () => {
+  const token = jwt({ uid: { id: 77, email: "Vende@Tienda.co", name: "Ana", rol: "2", tiendaActiva: 6881 }, iat: 1, exp: 2 });
+  const v = crearVerificadorSesion({
+    log: { log() {} },
+    fetcher: async () => ({ ok: true, status: 200, json: async () => ({ ok: true, rol: "2", idEmpresa: "6881" }) }),
+  });
+  const s = await v.verificar(token, "6881");
+  assert.equal(s.usuario.email, "vende@tienda.co");
+  assert.equal(s.usuario.id, 77);
+  assert.equal(s.usuario.nombre, "Ana");
+  assert.deepEqual(s.rol, { total: false, numeros: ["2"] });
+});
+
 test("leerRol y payloadJWT", () => {
   assert.deepEqual(leerRol("all"), { total: true, numeros: [] });
   assert.deepEqual(leerRol(null), { total: true, numeros: [] });

@@ -78,12 +78,12 @@ const subidaAuto = crearSubidaAutomatica({
   resolverProductoDropi,
 });
 // rentabilidad de las campanas de Meta: UN espacio por usuario del panel
-// (cada quien conecta su token) + el compartido de Pizdo / Orenar
+// (cada quien conecta su token, sus cuentas, sus productos y sus vinculos)
 const anuncios = crearRegistroAnuncios({
   baseDir: config.ANUNCIOS_DIR,
   rutaCompartida: config.ANUNCIOS_CONFIG,
-  // el mismo cliente con el que se maneja el panel: de ahi salen los pedidos
-  // y la analitica por producto que alimentan las ganancias automaticas
+  // solo para integraciones sin sesion (x-api-key): los usuarios del panel
+  // leen su catalogo y sus pedidos con SU propia sesion de LucidSales
   lucid: cliente,
 });
 const server = crearServidor({

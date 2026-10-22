@@ -321,3 +321,57 @@ export function crearClienteLucid(config, fetchImpl = globalThis.fetch) {
     },
   };
 }
+
+/**
+ * Cliente de LucidSales con la sesion del USUARIO del panel (su x-token, ya
+ * con la tienda activa). Lo usa la rentabilidad de anuncios: cada quien lee
+ * el catalogo y la analitica de SU tienda, nunca con las credenciales del
+ * servidor. Expone solo lo que necesita ese modulo.
+ */
+export function crearLucidDeSesion(config, token, fetchImpl = globalThis.fetch) {
+  const tk = String(token ?? "").trim();
+  async function llamar(ruta, opciones = {}) {
+    let res;
+    try {
+      res = await fetchImpl(`${config.LUCID_BASE}${ruta}`, {
+        ...opciones,
+        headers: { ...(opciones.headers ?? {}), "x-token": tk },
+        signal: AbortSignal.timeout(config.TIMEOUT_MS ?? 30000),
+      });
+    } catch (err) {
+      throw new ErrorApi(504, `Sin respuesta de LucidSales (${ruta}): ${err?.message ?? err}`);
+    }
+    const datos = await res.json().catch(() => null);
+    if (res.status === 401) {
+      throw new ErrorApi(401, "Tu sesión de LucidSales venció: vuelve a iniciar sesión en el panel");
+    }
+    if (res.status >= 400 || datos?.ok === false) {
+      throw new ErrorApi(502, `LucidSales respondió con error en ${ruta.split("?")[0]}: ${datos?.msg ?? `HTTP ${res.status}`}`);
+    }
+    return datos ?? {};
+  }
+  return {
+    async productosTienda(idEmpresa) {
+      const id = Number(idEmpresa);
+      const datos = await llamar("/productos/getproductos", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ idEmpresa: id }),
+      });
+      const lista = datos?.productos ?? datos?.data ?? [];
+      if (!Array.isArray(lista)) throw new ErrorApi(502, "El catálogo de LucidSales vino ilegible");
+      return lista;
+    },
+    async analitica({ idShop, desde, hasta, productId }) {
+      const q = new URLSearchParams({
+        startDate: `${desde}T05:00:00.000Z`,
+        endDate: `${hasta}T05:00:00.000Z`,
+        idShop: String(Number(idShop)),
+      });
+      if (productId !== undefined && productId !== null && String(productId) !== "") {
+        q.set("productId", String(productId));
+      }
+      return llamar(`/analitica/get-analytics-data?${q.toString()}`, { method: "GET" });
+    },
+  };
+}

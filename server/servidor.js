@@ -49,6 +49,7 @@ import crypto from "node:crypto";
 import { ErrorApi } from "./errores.js";
 import { cambiarEstado, mensajeDeError, ESTADOS_PEDIDO } from "./estado.js";
 import { crearClienteInter, normalizar } from "./interrapidisimo.js";
+import { crearLucidDeSesion } from "./lucidsales.js";
 import { crearAsignacion } from "./asignacion.js";
 import { crearCredenciales } from "./credenciales.js";
 import { crearConversaciones } from "./conversacion.js";
@@ -248,7 +249,10 @@ export function crearServidor({
     // panel: el usuario VERIFICADO (no se cree a la cabecera)
     if (req.__acceso && !req.__acceso.interna) {
       const u = req.__acceso.usuario;
-      return u?.email ?? (u?.id != null ? `id:${u.id}` : null);
+      const id = u?.id;
+      // nunca "[object Object]": si no hay email ni id simple, no hay usuario
+      const idSimple = typeof id === "string" || typeof id === "number" ? String(id) : null;
+      return u?.email ?? (idSimple ? `id:${idSimple}` : null);
     }
     const u = req.headers["x-usuario"];
     const v = typeof u === "string" ? u.trim() : "";
@@ -256,16 +260,27 @@ export function crearServidor({
   }
 
   /**
-   * Espacio de trabajo de anuncios del usuario que pide: el registro
-   * multiusuario resuelve por `x-usuario` (si no conecto su cuenta, cae en el
-   * compartido). Sin modulo montado no hay endpoint; tambien se acepta un
-   * modulo suelto, que es como montan las pruebas aisladas.
+   * Espacio de trabajo de anuncios del usuario que pide: cada usuario del
+   * panel tiene el suyo (si no conecto su cuenta, no ve datos de nadie). Va
+   * con SU tienda activa y SU sesion de LucidSales para leer catalogo y
+   * pedidos. Sin modulo montado no hay endpoint; tambien se acepta un modulo
+   * suelto, que es como montan las pruebas aisladas.
    */
   function analisis(req) {
     if (!anuncios) {
       throw new ErrorApi(503, "El modulo de anuncios no esta montado en este servidor");
     }
-    return typeof anuncios.para === "function" ? anuncios.para(usuarioDe(req)) : anuncios;
+    if (typeof anuncios.para !== "function") return anuncios;
+    const acceso = req.__acceso;
+    const delPanel = acceso && !acceso.interna;
+    const tiendaCabecera = Number(String(req.headers["x-tienda"] ?? "").trim()) || null;
+    const contexto = delPanel
+      ? {
+          tienda: Number(acceso.tienda) || null,
+          lucid: crearLucidDeSesion(config, req.headers["x-token"]),
+        }
+      : { tienda: tiendaCabecera, lucid: null };
+    return anuncios.para(usuarioDe(req), contexto);
   }
 
   /**
@@ -1391,7 +1406,7 @@ export function crearServidor({
     // ---- GET /api/anuncios/cuenta ----
     // Estado de la conexion de Meta de ESTE usuario: si tiene token propio,
     // que cuentas ve, la TRM y cuando vence. `enUso` es "propia" (conecto la
-    // suya), "compartida" (trabaja sobre Pizdo + Orenar) o "ninguna".
+    // suya) o "ninguna"; "compartida" solo para integraciones sin usuario.
     if (req.method === "GET" && ruta === "/api/anuncios/cuenta") {
       autorizar(req);
       json(res, 200, { ok: true, ...analisis(req).estado() });
@@ -1432,6 +1447,49 @@ export function crearServidor({
       const cuerpo = await leerCuerpo(req);
       const r = analisis(req).desconectar({ borrar: Boolean(cuerpo?.borrar) });
       json(res, 200, r);
+      return;
+    }
+
+    // ---- POST /api/anuncios/productos/importar ----
+    // Agrega al espacio los productos del catalogo de la tienda activa que
+    // falten (con ganancia 0). No toca los que ya estaban.
+    if (req.method === "POST" && ruta === "/api/anuncios/productos/importar") {
+      autorizar(req);
+      try {
+        json(res, 200, { ok: true, ...(await analisisDatos(req).importarProductos()) });
+      } catch (e) {
+        if (e instanceof ErrorApi) throw e;
+        throw new ErrorApi(400, e.message);
+      }
+      return;
+    }
+
+    // ---- POST /api/anuncios/vincular  {campana, productos[]} ----
+    if (req.method === "POST" && ruta === "/api/anuncios/vincular") {
+      autorizar(req);
+      const cuerpo = await leerCuerpo(req);
+      try {
+        json(res, 200, { ok: true, ...analisisDatos(req).vincular(cuerpo ?? {}) });
+      } catch (e) {
+        throw new ErrorApi(400, e.message);
+      }
+      return;
+    }
+
+    // ---- GET|POST /api/anuncios/entrega  {modo?, tasa?, contarSinEnvio?} ----
+    if (ruta === "/api/anuncios/entrega" && (req.method === "GET" || req.method === "POST")) {
+      autorizar(req);
+      const a = analisisDatos(req);
+      if (req.method === "GET") {
+        json(res, 200, { ok: true, entrega: a.efectividad() });
+        return;
+      }
+      const cuerpo = await leerCuerpo(req);
+      try {
+        json(res, 200, { ok: true, entrega: a.guardarEntrega(cuerpo ?? {}) });
+      } catch (e) {
+        throw new ErrorApi(400, e.message);
+      }
       return;
     }
 

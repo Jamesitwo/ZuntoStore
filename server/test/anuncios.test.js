@@ -252,11 +252,12 @@ test("anuncios: calcula gasto en COP, compras sin duplicar y clasifica", async (
     assert.equal(porId.c1.estado, "ACTIVE");
     assert.equal(porId.c1.accion.titulo, "Escalar: subir presupuesto +20%");
 
-    // Sin producto asociado -> sin ganancia promedio -> SINDATO (margen null)
+    // Sin producto vinculado -> SINDATO (margen null) y la accion es vincularla
     assert.equal(porId.c2.clase, "SINDATO");
     assert.equal(porId.c2.margen, null);
     assert.equal(porId.c2.estado, "PAUSED");
-    assert.match(porId.c2.accion.titulo, /ganancia promedio/i);
+    assert.equal(porId.c2.sinProducto, true);
+    assert.match(porId.c2.accion.titulo, /vincular/i);
 
     // Orenar opera en COP: 50000 de gasto con 40000 de margen -> perdida
     assert.equal(porId.c3.gasto, 50000, "Orenar NO se multiplica por la trm");

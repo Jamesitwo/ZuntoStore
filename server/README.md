@@ -37,8 +37,8 @@ Desde el panel tambien puedes usar `npm run api`.
 | `REPARTO_AUTOMATICO` | no | Semilla del interruptor de reparto automatico (`1`/`true` = encendido) |
 | `REPARTO_CADA` | no | Cada cuantos segundos mira pedidos nuevos (10..3600, defecto `60`) |
 | `CREDENCIALES` | no | JSON con las credenciales que guarda el panel (defecto `server/credenciales.json`) |
-| `ANUNCIOS_CONFIG` | no | JSON **compartido** de rentabilidad: token de Meta, TRM, cuentas y `compartida` (defecto `server/config/anuncios.json`) |
-| `ANUNCIOS_DIR` | no | Carpeta de datos de rentabilidad: espacio compartido + `usuarios/<email>/` de cada usuario (defecto `server/anuncios/`) |
+| `ANUNCIOS_CONFIG` | no | JSON de la app de Meta para rentabilidad: `appId`/`appSecret`, `version`, TRM por defecto (defecto `server/config/anuncios.json`) |
+| `ANUNCIOS_DIR` | no | Carpeta de datos de rentabilidad: `usuarios/<email>/` de cada usuario (defecto `server/anuncios/`) |
 | `TIMEOUT_MS` | no | Timeout por llamada a LucidSales (defecto `15000`) |
 | `INTER_BASE` | no | API de Inter Rapidísimo (defecto `https://www3.interrapidisimo.com/Apicanalesventa/api`) |
 | `TIMEOUT_INTER_LENTO_MS` | no | Timeout de las consultas lentas a Inter: listado y horarios (defecto `45000`) |
@@ -321,38 +321,65 @@ Errores: `400` sin municipio / `idCiudad` invalido · `502` Inter rechazo ·
 
 ### Rentabilidad de anuncios (Meta Ads)
 
-Modulo `anunciosMeta.js`: baja las campañas de **Pizdo** (USD) y **Orenar**
-(COP) con el Graph API de Meta, las cruza con el producto de cada una y
-estima la rentabilidad.
+Modulo `anunciosMeta.js`: baja las campañas de las cuentas que **cada
+usuario** conecta (Graph API de Meta, COP tal cual y USD con su TRM), las
+cruza con el producto de cada una y estima la rentabilidad.
 
 ```
-margen = compras (omni_purchase, sin duplicar) x ganancia promedio
-neto   = margen - gasto        ROI = margen / gasto       CPA = gasto / compras
+por compra = ganancia por pedido ENTREGADO x efectividad de entrega
+margen     = compras (omni_purchase, sin duplicar) x por compra
+neto       = margen - gasto        ROI = margen / gasto       CPA = gasto / compras
 ```
+
+- **Efectividad de entrega** = entregados / (entregados + cancelados,
+  devoluciones, rechazados, guias anuladas), de los estados de envio que
+  trae el traedor de ganancias. Los que van en camino no cuentan; los que
+  nunca se enviaron solo si `entrega.contarSinEnvio`. Se puede fijar a mano
+  (`entrega.modo: "manual"`, `entrega.tasa`). Sin datos se supone 100% y sale
+  un aviso. `GET|POST /api/anuncios/entrega`.
+- Una campana de **varios productos** usa el promedio de sus ganancias y, en
+  la vista por producto, reparte gasto y compras en partes iguales (la suma
+  da el total, no el doble). Si alguno de sus productos no tiene ganancia, la
+  campana queda **Sin dato**.
+- Las campanas **archivadas o borradas** que gastaron en la ventana tambien
+  cuentan (salen de los insights aunque ya no esten en `/campaigns`).
+- Cuentas en una moneda que no sea COP ni USD quedan fuera con aviso.
+- Fechas en hora de Colombia (`TZ_ANUNCIOS`, por defecto la de
+  `TZ_ASIGNACION` o `America/Bogota`), no la del servidor.
+- El gasto **sin dato** (campanas sin producto o sin ganancia) no entra en
+  neto ni ROI y se informa aparte (`totales.gastoSinDato`).
 
 Clasificacion: **Rentable** ROI >= 3x · **Ajustada** 1,5-3x · **Por vigilar**
-< 1,5x con neto positivo · **Perdida** con neto negativo · **Sin dato** si el
-producto no tiene ganancia promedio cargada. Se ignora el numero de pedidos
-del tablero: las compras son las que atribuye Meta.
+< 1,5x con neto positivo · **Perdida** con neto negativo · **Sin dato** si la
+campana no tiene producto vinculado o el producto no tiene ganancia.
 
-- **Ajustes** (`ANUNCIOS_CONFIG`, `server/config/anuncios.json`): `token`,
-  `version`, `trm` (USD -> COP), `cuentas[]`, `appId`/`appSecret` (para saber
-  cuando vence el token), `compartida` y `nombreEspacio`. Se relee en cada
-  consulta, asi que se puede cambiar el token sin reiniciar.
+- **Ajuste de la app** (`ANUNCIOS_CONFIG`, `server/config/anuncios.json`):
+  `appId`/`appSecret` (para saber cuando vence cada token), `version` y la
+  `trm` por defecto. Si tiene `token`/`cuentas`, solo los usan las
+  integraciones sin usuario (x-api-key sin x-usuario), nunca el panel.
 - **Datos** (`ANUNCIOS_DIR`, `server/anuncios/`): `datos_7d|15d|30d_FECHA.json`
   (cache del dia, `actualizar=1` lo salta), `productos.json` (ganancia
   promedio, editable desde el panel), `manual.json` (mapeo campana ->
   producto), `plan.json` (acciones marcadas) y `snapshot.json` (respaldo: si
   Meta no responde se sirve el ultimo corte y sale un aviso).
-- **Un espacio por usuario** (`anunciosTenant.js`): la cabecera `x-usuario`
-  (el email del panel) resuelve el espacio de trabajo. Quien conecto su token
-  vive en `server/anuncios/usuarios/<email>/` (`config.json` con su token,
-  `productos.json`, `plan.json` y sus caches); quien no, trabaja sobre el
-  **compartido** de la raiz (Pizdo + Orenar). Si `compartida: false`, sin
-  token no hay datos (`409`). Cada quien ve solo lo suyo.
+- **Un espacio por usuario** (`anunciosTenant.js`): el email de la sesion
+  verificada del panel resuelve el espacio, en
+  `server/anuncios/usuarios/<email>/` (`config.json` con su token, cuentas,
+  TRM y ajustes; `productos.json`, `manual.json`, `plan.json` y sus caches).
+  Quien no conecto su token **no ve datos de nadie** (`409`). Cada usuario
+  configura lo suyo: conecta Meta y elige cuentas, importa los productos de
+  su tienda activa (`POST /api/anuncios/productos/importar`), trae la
+  ganancia de sus pedidos y vincula cada campana a su producto
+  (`POST /api/anuncios/vincular {campana, productos[]}`; si el nombre se
+  parece a un producto, el panel lo sugiere).
+- **Migrar el espacio compartido de antes** a un usuario:
+  `node migrarAnuncios.js correo@usuario.com` (copia productos, vinculos,
+  plan y ganancias a su carpeta, le pasa el token y las cuentas, y deja el
+  compartido solo con los datos de la app; guarda `anuncios.json.bak`).
 - **Ganancias de los pedidos** (`POST /api/anuncios/ganancias`): por cada
   producto le pide a LucidSales su analitica (`/analitica/get-analytics-data`
-  de la tienda `ganancias.tienda`, sin ventana de comparacion porque la hace
+  de la **tienda activa del panel**, con la **sesion de LucidSales del propio
+  usuario** (no con las credenciales del servidor), sin ventana de comparacion porque la hace
   15 veces mas lenta y los numeros actuales salen iguales) y calcula
 
   ```
@@ -391,7 +418,7 @@ del tablero: las compras son las que atribuye Meta.
   panel sondea `GET /api/anuncios/ganancias` cada 2 s. Si casi toda la
   analitica falla no se guarda nada. Ajustes (`ganancias` en el config del
   espacio): `auto` (se recalcula solo una vez al dia cuando se piden datos,
-  con corte de 10 min si fallo), `minPedidos`, `tienda`, `dias` (7|15|30) y
+  con corte de 10 min si fallo), `minPedidos`, `dias` (7|15|30) y
   `incluirEstados` (por defecto `["ENTREGADO"]`). El
   `GET /api/anuncios/ganancias` agrega ademas `estados`, el desglose
   agregado de todos los productos (`[{nombre, n, excluido}]`, ordenado por
@@ -408,8 +435,8 @@ del tablero: las compras son las que atribuye Meta.
   de Metricas). Resumen con KPIs, alertas con casilla *Hecho*, tabla de
   campanas con filtros, productos con ganancia editable, cuentas y reporte
   imprimible (PDF) + CSV, mas el modal **Cuenta de Meta** (conectar / elegir
-  cuentas / TRM / desconectar) y el aviso de si estas en el espacio
-  compartido.
+  cuentas / TRM / desconectar) y la lista de pasos que le faltan al usuario
+  para que los numeros sean confiables.
 
 ## Como funciona por dentro
 
@@ -505,7 +532,7 @@ Del agente de Dropi (`test/agente.test.js`, `test/dropi.test.js`,
 De rentabilidad de anuncios (`test/anuncios.test.js`, 12 pruebas en verde):
 
 - `x-api-key` obligatoria y `503` si el servidor no tiene el modulo.
-- Calculo: USD x TRM para Pizdo, COP tal cual para Orenar, compras **sin
+- Calculo: USD x TRM, COP tal cual, compras **sin
   duplicar** (una compra repetida en tres `action_type` cuenta una vez),
   clasificacion + accion sugerida y roll-ups por producto y por cuenta.
 - **Alerta solo para campanas que se pueden juzgar**: la bandera `alerta` se
@@ -529,17 +556,29 @@ De rentabilidad de anuncios (`test/anuncios.test.js`, 12 pruebas en verde):
 
 De multiusuario (`test/anunciosUsuarios.test.js`, 8 pruebas en verde):
 
-- Sin `x-usuario` se trabaja en el **compartido**; un usuario sin conexion
-  tambien cae ahi y no crea nada suyo.
+- Sin `x-usuario` (integraciones) se trabaja en el **compartido**; un usuario
+  sin conexion **no** cae ahi: `enUso: "ninguna"` y `409` en datos y plan.
 - `conectar` con token invalido -> `400` (nada se guarda); con token valido
   guarda su `config.json` en `usuarios/<email>/` y devuelve sus cuentas (aun
   sin elegir: `datos` sale vacio).
 - Cada quien analiza **sus** cuentas con **su** TRM: los del usuario no se
   mezclan con las del compartido y las ganancias que guarda uno no aparecen en
   el otro.
-- `desconectar` devuelve al compartido conservando sus datos; `borrar: true`
-  elimina la carpeta.
+- `desconectar` lo deja sin datos (`409`) conservando sus archivos; `borrar:
+  true` elimina la carpeta.
 - `compartida: false` -> `409` en los endpoints de datos hasta que conecte.
+
+De calculos y configuracion por usuario (`test/anunciosCalculo.test.js`):
+
+- `hoy()` en hora de Colombia aunque el servidor este en UTC.
+- Efectividad de entrega desde los estados de envio, contando o no los que
+  nunca se enviaron, y fijada a mano.
+- Campana compartida: gasto y compras repartidos sin contar doble; un
+  producto sin ganancia deja la campana sin dato.
+- Campanas archivadas que gastaron, cuentas en otra moneda (aviso), cache que
+  se invalida al cambiar de cuentas.
+- Vincular / cambiar / quitar el producto de una campana y la sugerencia por
+  nombre; importar productos y traer ganancias con la tienda de la sesion.
 
 ## Estructura
 

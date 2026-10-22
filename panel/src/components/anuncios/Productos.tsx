@@ -9,18 +9,43 @@
 import { useState } from "react";
 import type { AjustesGanancias, Datos, EstadoGanancias } from "../../api/anuncios";
 import { CLASE_CLS, ETIQUETAS, dinero, haceCuanto, veces } from "../../api/anuncios";
+import { Efectividad } from "./Efectividad";
 
-export function Productos({ datos, onGuardar, guardando, ganancias, onTraer, onAjustes }: {
+export function Productos({
+  datos,
+  onGuardar,
+  guardando,
+  ganancias,
+  onTraer,
+  onAjustes,
+  onImportar,
+  onEntrega,
+}: {
   datos: Datos;
   onGuardar: (nombre: string, ganancia: number) => Promise<void>;
   guardando: boolean;
   ganancias: EstadoGanancias | null;
   onTraer: () => Promise<void>;
   onAjustes: (ajustes: Partial<AjustesGanancias>) => Promise<void>;
+  onImportar: () => Promise<void>;
+  onEntrega: Parameters<typeof Efectividad>[0]["onGuardar"];
 }) {
   const [borradores, setBorradores] = useState<Record<string, string>>({});
-  const sinMapear = datos.campanas.filter((c) => !c.productos.length);
+  const [verTodos, setVerTodos] = useState(false);
+  const [importando, setImportando] = useState(false);
+  const sinMapear = datos.campanas.filter((c) => c.sinProducto);
   const sinGanancia = datos.productos.filter((p) => p.unidad === 0);
+  const totalProductos = datos.productos.length + datos.productosSinCampana.length;
+  const filasTabla = verTodos ? [...datos.productos, ...datos.productosSinCampana] : datos.productos;
+
+  const importar = async () => {
+    setImportando(true);
+    try {
+      await onImportar();
+    } finally {
+      setImportando(false);
+    }
+  };
   const minimo = ganancias?.ajustes.minPedidos ?? 20;
   const progreso = ganancias?.progreso;
 
@@ -66,17 +91,31 @@ export function Productos({ datos, onGuardar, guardando, ganancias, onTraer, onA
           <strong>{sinGanancia.length} producto(s) sin ganancia promedio:</strong>{" "}
           {sinGanancia.map((p) => p.nombre).join(" · ")}. Mientras esté en 0, sus campañas salen
           como <em>Sin dato</em> y no se pueden medir. El botón “Traer ganancias de pedidos” los
-          llena solos cuando alcanzan {minimo} pedidos con ganancia.
+          llena solos cuando alcanzan {minimo} pedidos entregados; si no, escríbela a mano.
         </div>
       ) : null}
 
       {sinMapear.length ? (
         <div className="banner info">
-          <strong>{sinMapear.length} campaña(s) sin producto mapeado.</strong> Ninguna compra se
-          asigna a un margen: se calcula con 0. Se arreglan en el mapeo campaña → producto del
-          servidor (manual.json).
+          <strong>{sinMapear.length} campaña(s) sin producto vinculado.</strong> No se pueden
+          medir hasta que elijas su producto en la pestaña <em>Campañas</em>.
         </div>
       ) : null}
+
+      {totalProductos === 0 ? (
+        <section className="card ads-vacio">
+          <h3>Carga tus productos</h3>
+          <p className="muted">
+            Trae el catálogo de la tienda que tienes activa en el panel. Después vincula cada
+            campaña a su producto y trae la ganancia real de tus pedidos.
+          </p>
+          <button type="button" className="btn primary" disabled={importando} onClick={() => void importar()}>
+            {importando ? "Importando…" : "Importar productos de mi tienda"}
+          </button>
+        </section>
+      ) : null}
+
+      <Efectividad entrega={datos.entrega} onGuardar={onEntrega} />
 
       <section className="card ads-productos-panel">
         {ganancias ? (
@@ -102,8 +141,18 @@ export function Productos({ datos, onGuardar, guardando, ganancias, onTraer, onA
                 Automático al actualizar
               </label>
               <span className="muted small">
-                ventana {ganancias.ajustes.dias} días · mínimo {minimo} pedidos
+                tienda #{ganancias.ajustes.tienda ?? "—"} · ventana {ganancias.ajustes.dias} días ·
+                mínimo {minimo} pedidos
               </span>
+              <button
+                type="button"
+                className="btn sm"
+                disabled={importando}
+                onClick={() => void importar()}
+                title="Agrega los productos de tu tienda que todavía no están aquí (no toca los que ya tienes)"
+              >
+                {importando ? "Importando…" : "Importar productos de mi tienda"}
+              </button>
             </div>
 
             {ganancias.enCurso ? (
@@ -176,7 +225,16 @@ export function Productos({ datos, onGuardar, guardando, ganancias, onTraer, onA
         ) : null}
 
         <div className="ads-product-summary">
-          <span><strong>{datos.productos.length}</strong> productos con campañas en esta ventana</span>
+          <span>
+            <strong>{datos.productos.length}</strong> productos con campañas en esta ventana
+            {datos.productosSinCampana.length ? ` · ${datos.productosSinCampana.length} sin campañas` : ""}
+          </span>
+          {datos.productosSinCampana.length ? (
+            <label className="ads-switch">
+              <input type="checkbox" checked={verTodos} onChange={(e) => setVerTodos(e.target.checked)} />
+              Ver también los que no tienen campañas
+            </label>
+          ) : null}
           <span className="muted small">Edita la ganancia y los resultados se recalculan al guardar.</span>
         </div>
         <div className="table-wrap">
@@ -185,7 +243,9 @@ export function Productos({ datos, onGuardar, guardando, ganancias, onTraer, onA
               <tr>
                 <th>Producto</th>
                 <th className="meta-num">Precio</th>
-                <th className="meta-num">Ganancia manual (COP)</th>
+                <th className="meta-num" title="Lo que deja un pedido cuando se ENTREGA (ya sin envío ni costo del proveedor)">
+                  Ganancia por entregado (COP)
+                </th>
                 <th className="meta-num">Promedio pedido (COP)</th>
                 <th className="meta-num">Campañas</th>
                 <th className="meta-num">Gasto</th>
@@ -197,7 +257,7 @@ export function Productos({ datos, onGuardar, guardando, ganancias, onTraer, onA
               </tr>
             </thead>
             <tbody>
-              {datos.productos.map((p) => {
+              {filasTabla.map((p) => {
                 const borrado = borradores[p.nombre];
                 const sucio = borrado !== undefined && Number(borrado.replace(",", ".")) !== p.unidad;
                 const prom = p.pedidosProm;
@@ -269,7 +329,7 @@ export function Productos({ datos, onGuardar, guardando, ganancias, onTraer, onA
                     </td>
                     <td className="meta-num">{p.campanas}</td>
                     <td className="meta-num">{dinero(p.gasto)}</td>
-                    <td className="meta-num">{p.compras}</td>
+                    <td className="meta-num">{p.compras.toLocaleString("es-CO")}</td>
                     <td className="meta-num">{p.margen === null ? "—" : dinero(p.margen)}</td>
                     <td className={`meta-num${(p.neto ?? 0) < 0 ? " ads-malo" : ""}`}>
                       {p.neto === null ? "—" : dinero(p.neto)}
@@ -281,10 +341,11 @@ export function Productos({ datos, onGuardar, guardando, ganancias, onTraer, onA
                   </tr>
                 );
               })}
-              {!datos.productos.length ? (
+              {!filasTabla.length ? (
                 <tr>
                   <td colSpan={11} className="muted">
-                    Ningún producto tiene campaña con gasto en esta ventana.
+                    Ningún producto tiene campaña con gasto en esta ventana. Vincula tus campañas en la
+                    pestaña Campañas.
                   </td>
                 </tr>
               ) : null}

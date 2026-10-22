@@ -86,6 +86,8 @@ function montar({ lucid = lucidFalso(), productos = null } = {}) {
       trm: 3000,
       compartida: true,
       cuentas: [{ id: "111", nombre: "Pizdo", moneda: "COP" }],
+      // las integraciones sin sesion (x-api-key) usan la tienda guardada
+      ganancias: { tienda: 3682 },
     }),
     "utf8",
   );
@@ -247,7 +249,7 @@ test("ganancias: el analisis expone el promedio al lado del valor manual", async
     const csv = await llamar(puerto, "GET", "/api/anuncios/csv?dias=15&vista=productos");
     assert.equal(csv.status, 200);
     const cabecera = csv.texto.split("\r\n")[0];
-    assert.match(cabecera, /Ganancia promedio/);
+    assert.match(cabecera, /Ganancia por entregado/);
     assert.match(cabecera, /Promedio pedidos/);
     assert.match(cabecera, /Pedidos \(n\)/);
   } finally {

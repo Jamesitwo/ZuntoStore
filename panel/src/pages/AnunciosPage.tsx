@@ -1,8 +1,9 @@
-// Rentabilidad de las campañas de Meta Ads (Pizdo + Orenar).
+// Rentabilidad de las campañas de Meta Ads de CADA usuario del panel: conecta
+// su token, elige sus cuentas, importa sus productos, vincula sus campañas y
+// trae la ganancia real de sus pedidos. Nadie ve los datos de otro.
 //
 // Todo el calculo vive en el backend (server/anunciosMeta.js): aqui solo se
-// piden los datos, se pintan y se guardan las dos cosas editables (ganancia
-// promedio de cada producto y el plan de acciones).
+// piden los datos, se pintan y se guarda lo editable.
 import { useCallback, useEffect, useState } from "react";
 import {
   anuncios,
@@ -79,7 +80,7 @@ export function AnunciosPage() {
     void refrescarGanancias();
   }, [refrescarGanancias]);
 
-  /** Primero: en que espacio trabaja este usuario (propia | compartida | ninguna). */
+  /** Primero: si este usuario ya conecto su cuenta (propia | ninguna). */
   const cargarEstado = useCallback(async () => {
     try {
       const e = await anuncios.estado();
@@ -181,6 +182,42 @@ export function AnunciosPage() {
     try {
       const r = await anuncios.ajustesGanancias(a);
       setGanancias((g) => (g ? { ...g, ajustes: r.ajustes } : g));
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  /** Agrega los productos de la tienda activa que falten. */
+  const importarProductos = async () => {
+    try {
+      const r = await anuncios.importarProductos();
+      toast.success(
+        r.nuevos
+          ? `${r.nuevos} producto(s) nuevos de la tienda #${r.tienda}`
+          : `Ya tenías todos los productos de la tienda #${r.tienda}`,
+      );
+      await cargar(dias);
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  /** Vincula una campaña a su producto (o la desvincula). */
+  const vincular = async (campana: string, productos: string[]) => {
+    try {
+      await anuncios.vincular(campana, productos);
+      toast.success(productos.length ? `Vinculada a ${productos.join(" + ")}` : "Vínculo quitado");
+      await cargar(dias);
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  /** Efectividad de entrega (automatica o a mano). */
+  const guardarEntrega = async (v: { modo?: "auto" | "manual"; tasa?: number; contarSinEnvio?: boolean }) => {
+    try {
+      await anuncios.guardarEntrega(v);
+      await cargar(dias);
     } catch (e) {
       toast.error(errMsg(e));
     }
@@ -301,18 +338,15 @@ export function AnunciosPage() {
 
       <ErrorBanner error={error} />
 
-      {cuenta?.enUso === "compartida" ? (
-        <div className="banner info">
-          Estás viendo <strong>{cuenta.nombre ?? "el espacio compartido"}</strong>
-          {!cuenta.nombre && cuenta.cuentas.length
-            ? ` (${cuenta.cuentas.map((c) => c.nombre).join(" + ")})`
-            : ""}
-          . Cada usuario del panel puede conectar su propia cuenta de Meta: los productos, el plan
-          y los datos de cada uno viven separados.{" "}
-          <button type="button" className="btn sm" onClick={() => setModalCuenta(true)}>
-            Conectar la mía
-          </button>
-        </div>
+      {cuenta?.enUso === "propia" && datos ? (
+        <PasosConfiguracion
+          datos={datos}
+          ganancias={ganancias}
+          onCuentas={() => setModalCuenta(true)}
+          onIr={(p) => setPestana(p)}
+          onImportar={importarProductos}
+          onTraer={traerGanancias}
+        />
       ) : null}
 
       {cuenta?.enUso === "propia" && !cuenta.cuentas.some((c) => c.seleccionada) ? (
@@ -356,11 +390,12 @@ export function AnunciosPage() {
 
         {cuenta && cuenta.enUso === "ninguna" ? (
           <div className="ads-vacio">
-            <h3>Conectá tu cuenta de Meta</h3>
+            <h3>Conecta tu cuenta de Meta</h3>
             <p className="muted">
-              Pegá tu token de Meta para analizar tus propias campañas: compras × ganancia promedio,
-              alertas de pérdida, reportes y plan de acciones. Tus productos y tu plan se guardan en
-              tu espacio, separados de los demás usuarios del panel.
+              Para ver la rentabilidad de tus campañas: 1) conecta tu token de Meta y elige tus
+              cuentas publicitarias, 2) importa los productos de tu tienda, 3) trae la ganancia real
+              de tus pedidos y 4) vincula cada campaña a su producto. Todo queda en tu espacio,
+              separado de los demás usuarios del panel.
             </p>
             <button type="button" className="btn primary" onClick={() => setModalCuenta(true)}>
               Conectar mi cuenta
@@ -388,7 +423,12 @@ export function AnunciosPage() {
         ) : null}
 
         {!cargando && datos && pestana === "campanas" ? (
-          <Campanas datos={datos} plan={plan} onMarcar={(id, hecho) => void marcarPlan(id, hecho)} />
+          <Campanas
+            datos={datos}
+            plan={plan}
+            onMarcar={(id, hecho) => void marcarPlan(id, hecho)}
+            onVincular={vincular}
+          />
         ) : null}
 
         {!cargando && datos && pestana === "productos" ? (
@@ -399,6 +439,8 @@ export function AnunciosPage() {
             ganancias={ganancias}
             onTraer={traerGanancias}
             onAjustes={ajustarGanancias}
+            onImportar={importarProductos}
+            onEntrega={guardarEntrega}
           />
         ) : null}
 
@@ -458,13 +500,16 @@ export function AnunciosPage() {
 
       <p className="muted small ads-pie">
         <strong>Cómo se calcula:</strong> margen = compras de Meta (omni_purchase, sin duplicar) ×
-        ganancia promedio · neto = margen − gasto · ROI = margen / gasto · CPA = gasto / compras.
-        Rentable ≥ 3x · Ajustada 1,5–3x · Por vigilar &lt; 1,5x con neto positivo · Pérdida con
-        neto negativo · Sin dato cuando el producto no tiene ganancia cargada.
+        ganancia por pedido entregado × efectividad de entrega · neto = margen − gasto · ROI =
+        margen / gasto · CPA = gasto / compras. Una campaña de varios productos reparte su gasto y
+        sus compras entre ellos. Rentable ≥ 3x · Ajustada 1,5–3x · Por vigilar &lt; 1,5x con neto
+        positivo · Pérdida con neto negativo · Sin dato cuando la campaña no tiene producto o el
+        producto no tiene ganancia (ese gasto no entra en el neto).
         {datos ? (
           <>
             {" "}
-            · Ventana {datos.ventana.desde} → {datos.ventana.hasta} · TRM {datos.trm.toLocaleString("es-CO")}
+            · Ventana {datos.ventana.desde} → {datos.ventana.hasta} · efectividad{" "}
+            {Math.round(datos.entrega.tasa * 100)}% · TRM {datos.trm.toLocaleString("es-CO")}
             {datos.fuente === "snapshot" ? " · respaldo local (Meta no respondió)" : ""} ·{" "}
             {haceCuanto(datos.generado)}
           </>
@@ -478,5 +523,83 @@ export function AnunciosPage() {
         onCambio={() => void cargarEstado()}
       />
     </div>
+  );
+}
+
+type PasoId = "cuentas" | "productos" | "ganancias" | "vincular";
+
+/**
+ * Lo que le falta a este usuario para que los numeros sean confiables. Se
+ * esconde solo cuando todo esta listo.
+ */
+function PasosConfiguracion({ datos, ganancias, onCuentas, onIr, onImportar, onTraer }: {
+  datos: Datos;
+  ganancias: EstadoGanancias | null;
+  onCuentas: () => void;
+  onIr: (p: Pestana) => void;
+  onImportar: () => Promise<void>;
+  onTraer: () => Promise<void>;
+}) {
+  const productos = datos.productos.length + datos.productosSinCampana.length;
+  const pasos: Array<{ id: PasoId; listo: boolean; titulo: string; detalle: string; boton: string; accion: () => void }> = [
+    {
+      id: "cuentas",
+      listo: datos.cuentas.length > 0,
+      titulo: "Elige tus cuentas publicitarias",
+      detalle: "Las cuentas de Meta que entran al análisis.",
+      boton: "Elegir cuentas",
+      accion: onCuentas,
+    },
+    {
+      id: "productos",
+      listo: productos > 0,
+      titulo: "Importa tus productos",
+      detalle: "Del catálogo de la tienda que tienes activa en el panel.",
+      boton: "Importar",
+      accion: () => void onImportar(),
+    },
+    {
+      id: "ganancias",
+      listo: datos.entrega.origen !== "sin datos" && !datos.totales.campanasSinGanancia,
+      titulo: "Trae la ganancia de tus pedidos",
+      detalle: "Ganancia real por pedido entregado y efectividad de entrega.",
+      boton: ganancias?.enCurso ? "Calculando…" : "Traer ganancias",
+      accion: () => {
+        onIr("productos");
+        if (!ganancias?.enCurso) void onTraer();
+      },
+    },
+    {
+      id: "vincular",
+      listo: datos.totales.campanasSinProducto === 0,
+      titulo: "Vincula tus campañas",
+      detalle: datos.totales.campanasSinProducto
+        ? `${datos.totales.campanasSinProducto} campaña(s) sin producto.`
+        : "Cada campaña con su producto.",
+      boton: "Vincular",
+      accion: () => onIr("campanas"),
+    },
+  ];
+  if (pasos.every((p) => p.listo)) return null;
+  return (
+    <section className="card ads-pasos">
+      <h3 className="card-title">Termina de configurar tu análisis</h3>
+      <ol>
+        {pasos.map((p) => (
+          <li key={p.id} className={p.listo ? "listo" : ""}>
+            <span className="ads-paso-marca" aria-hidden="true">{p.listo ? "✓" : ""}</span>
+            <span className="ads-paso-texto">
+              <strong>{p.titulo}</strong>
+              <span className="muted small">{p.detalle}</span>
+            </span>
+            {!p.listo ? (
+              <button type="button" className="btn sm" onClick={p.accion} disabled={p.id === "ganancias" && ganancias?.enCurso}>
+                {p.boton}
+              </button>
+            ) : null}
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }

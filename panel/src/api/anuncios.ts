@@ -45,8 +45,11 @@ export interface Campana {
   roas: number;
   impresiones: number;
   clics: number;
+  /** ganancia por pedido ENTREGADO (promedio de sus productos) */
   unidad: number;
-  /** null = producto sin ganancia promedio cargada (SINDATO). */
+  /** lo que deja cada compra de Meta: unidad x efectividad de entrega */
+  porCompra: number;
+  /** null = sin producto vinculado o producto sin ganancia (SINDATO). */
   margen: number | null;
   neto: number | null;
   roi: number | null;
@@ -64,6 +67,12 @@ export interface Campana {
   alertaMotivo: "" | "pausada" | "nueva";
   productos: string[];
   compartida: boolean;
+  /** no esta vinculada a ningun producto */
+  sinProducto: boolean;
+  /** productos vinculados que no tienen ganancia cargada */
+  faltaGanancia: string[];
+  /** producto que mas se parece por nombre (solo si no esta vinculada) */
+  sugerido: string | null;
   accion: Accion;
 }
 
@@ -104,6 +113,7 @@ export interface CuentaFila {
   moneda: string;
   campanas: number;
   gasto: number;
+  gastoSinDato: number;
   compras: number;
   cpa: number | null;
   margen: number;
@@ -120,11 +130,32 @@ export interface Totales {
   margen: number;
   neto: number;
   roi: number;
+  /** gasto de las campanas que si se pueden medir (base de neto y ROI) */
+  gastoMedido: number;
+  /** gasto de campanas sin producto o sin ganancia: no entra en neto/ROI */
+  gastoSinDato: number;
+  campanasSinProducto: number;
+  campanasSinGanancia: number;
   campanas: number;
   gasto7: number;
   compras7: number;
   perdidas: number;
   perdidasDia: number;
+}
+
+/** Que parte de las compras de Meta termina entregada. */
+export interface Entrega {
+  tasa: number;
+  origen: "pedidos" | "manual" | "sin datos";
+  modo: "auto" | "manual";
+  manual: number | null;
+  contarSinEnvio: boolean;
+  entregados: number;
+  fallidos: number;
+  enCamino: number;
+  sinEnvio: number;
+  tasaSinContarSinEnvio: number | null;
+  tasaContandoSinEnvio: number | null;
 }
 
 export interface Datos {
@@ -136,10 +167,13 @@ export interface Datos {
   /** Días mínimos de datos de la campaña antes de poder juzgarla. */
   minDiasAlerta: number;
   trm: number;
+  entrega: Entrega;
   totales: Totales;
   conteos: Record<Clase, number>;
   campanas: Campana[];
   productos: ProductoFila[];
+  /** productos cargados que no tuvieron campanas con gasto en la ventana */
+  productosSinCampana: ProductoFila[];
   cuentas: CuentaFila[];
 }
 
@@ -160,8 +194,8 @@ export interface CuentaMeta {
 /**
  * Estado de la cuenta de Meta del usuario que pide:
  *   enUso "propia"      -> conecto su token y analiza sus cuentas
- *   enUso "compartida"  -> trabaja sobre el espacio compartido (Pizdo + Orenar)
- *   enUso "ninguna"     -> sin token y sin espacio compartido: hay que conectar
+ *   enUso "ninguna"     -> todavia no conecto nada: no ve datos de nadie
+ *   enUso "compartida"  -> solo integraciones sin usuario (no el panel)
  */
 export interface EstadoCuenta {
   usuario: string | null;
@@ -182,8 +216,8 @@ export interface AjustesGanancias {
   auto: boolean;
   /** pedidos minimos en la ventana para confiar en un promedio */
   minPedidos: number;
-  /** tienda de LucidSales de la que salen los pedidos */
-  tienda: number;
+  /** tienda de LucidSales de la que salen los pedidos (la activa del panel) */
+  tienda: number | null;
   /** ventana usada para promediar: 7 | 15 | 30 dias */
   dias: number;
   /**
@@ -314,7 +348,28 @@ export const anuncios = {
       body: opts,
     }),
 
-  /** Guarda {auto, minPedidos, tienda, dias} en el config del espacio. */
+  /** Agrega los productos del catalogo de la tienda activa que falten. */
+  importarProductos: () =>
+    backend<{ ok: boolean; nuevos: number; total: number; enTienda: number; tienda: number }>(
+      `/api/anuncios/productos/importar`,
+      { method: "POST", body: {} },
+    ),
+
+  /** Vincula una campana a productos (lista vacia = desvincular). */
+  vincular: (campana: string, productos: string[]) =>
+    backend<{ ok: boolean; campana: string; productos: string[] }>(`/api/anuncios/vincular`, {
+      method: "POST",
+      body: { campana, productos },
+    }),
+
+  /** Efectividad de entrega: automatica (de los pedidos) o fijada a mano. */
+  guardarEntrega: (v: { modo?: "auto" | "manual"; tasa?: number; contarSinEnvio?: boolean }) =>
+    backend<{ ok: boolean; entrega: Entrega }>(`/api/anuncios/entrega`, {
+      method: "POST",
+      body: v,
+    }),
+
+  /** Guarda {auto, minPedidos, dias} en el config del espacio. */
   ajustesGanancias: (ajustes: Partial<AjustesGanancias>) =>
     backend<{ ok: boolean; ajustes: AjustesGanancias }>(`/api/anuncios/ganancias/ajustes`, {
       method: "POST",
