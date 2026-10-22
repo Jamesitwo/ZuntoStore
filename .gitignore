@@ -1,0 +1,25 @@
+# ---- dependencias y compilados ----
+node_modules/
+panel/dist/
+*.log
+*.tmp
+
+# ---- SECRETOS: nunca al repositorio ----
+.env
+.env.*
+!.env.example
+# credenciales de LucidSales guardadas desde el panel
+server/credenciales.json
+# tokens/claves guardados desde el panel: Meta (anuncios.json), IA (llm.json),
+# Lucid Bot (lucidbot-contactos.json)
+server/config/
+# sesion de Dropi (perfil de Chrome y copias del localStorage)
+server/.dropi-perfil/
+server/.dropi-*
+
+# ---- DATOS DE CLIENTES Y ESTADO (telefonos, direcciones, chats) ----
+server/conversacion.jsonl
+server/historial.jsonl
+server/asignacion.json
+server/subidaAutomatica.json
+server/anuncios/

@@ -1,0 +1,16 @@
+node_modules
+test
+.env
+.env.*
+!.env.example
+credenciales.json
+asignacion.json
+historial.jsonl
+conversacion.jsonl
+subidaAutomatica.json
+config
+anuncios
+.dropi-perfil
+.dropi-*
+*.log
+coverage

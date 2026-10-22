@@ -1,0 +1,740 @@
+// Pruebas del motor de subida automatica a Dropi.
+//   node --test   (o npm test dentro de server/)
+//
+// Sin red ni navegador: cliente, conversacion y navegador van inyectados.
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { crearSubidaAutomatica } from "../subidaAutomatica.js";
+
+/** Cliente de LucidSales falso. */
+function clienteFalso(pedidos) {
+  return {
+    async listarPedidos() {
+      return { pedidos };
+    },
+    async obtenerPedido(id) {
+      const p = pedidos.find((x) => String(x.id) === String(id));
+      if (!p) throw new Error("no existe");
+      return p.completo;
+    },
+  };
+}
+
+function armar(overrides = {}) {
+  const ruta = path.join(os.tmpdir(), `subida-${Date.now()}-${Math.random()}.json`);
+  const subidos = [];
+  const conv = {
+    porPedido(id) {
+      return overrides.sinConversacion
+        ? null
+        : {
+            mensajes: [
+              { de: "cliente", texto: "quiero el taladro de 68v", ts: "2026-10-20T10:00:00" },
+              { de: "bot", texto: "queda en 105.690 con envio", ts: "2026-10-20T10:01:00" },
+              { de: "cliente", texto: "confirmo, a la Carrera 92 #78b-02", ts: "2026-10-20T10:02:00" },
+            ],
+          };
+    },
+  };
+  const dropiNav = {
+    async subirPedido(datos) {
+      subidos.push(datos);
+      if (overrides.respuestaDropi) return overrides.respuestaDropi(datos);
+      return { ok: true, creado: !datos.soloPreparar, preparado: !!datos.soloPreparar, seguro: true };
+    },
+  };
+  const s = crearSubidaAutomatica({
+    cliente: overrides.cliente ?? clienteFalso(overrides.pedidos ?? []),
+    conversacion: conv,
+    extraer: async () => overrides.extraerFalla ? { incertidumbre: ["x"], falloTecnico: "la IA no respondió en 90 s" } : (overrides.alExtraer?.(), {
+      producto: "Taladro Inalambrico 68V",
+      cantidad: 1,
+      precioAcordado: 105690,
+      direccion: "Carrera 92 #78b-02",
+      clienteConfirmo: true,
+      entregaFutura: false,
+      incertidumbre: [],
+    }),
+    dropiNav,
+    lucidBotContactos: overrides.lucidBotContactos,
+    config: { LUCID_TIENDA: "3682" },
+    ruta,
+    log: { log() {}, warn() {} },
+    resolverUbicacion: overrides.resolverUbicacion,
+    // por defecto devuelve un link falso (asi los tests que no lo definen no
+    // se frenan por falta de producto)
+    resolverProductoDropi:
+      overrides.resolverProductoDropi ?? (async (id) => `https://dropi.test/${id}`),
+  });
+  // tienda de Dropi configurada por defecto (salvo que la prueba la quite)
+  if (overrides.tiendasDropi !== null) {
+    s.configurar({ tiendasDropi: overrides.tiendasDropi ?? { 3682: "Pizdo Store" } });
+    s.detener();
+  }
+  return { s, ruta, subidos };
+}
+
+const COMPLETO = {
+  id: 1,
+  idPedido: 111,
+  EstadoPedido: 0,
+  Nombre: "Ana",
+  Apellido: "Gomez",
+  Movil: "+573009998877",
+  Direccion: "Carrera 92 #78b-02",
+  Departamento: "Antioquia",
+  Ciudad: "Medellin",
+  Total: "105.690",
+  SubTotal: "84.900",
+  CostoEnvio: "20.790,5",
+  Json: JSON.stringify([{ product_id: "2291039", name: "Taladro Inalambrico 68V", price: "84.900", quantity: 1 }]),
+};
+
+test("configurar guarda y se lee de vuelta", () => {
+  const { s, ruta } = armar();
+  const c = s.configurar({ automatico: true, cadaSegundos: 60, dryRun: false, transportadoraId: 5 });
+  assert.equal(c.automatico, true);
+  assert.equal(c.cadaSegundos, 60);
+  assert.equal(c.dryRun, false);
+  assert.equal(s.config().transportadoraId, 5);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick no hace nada si esta apagado", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+  });
+  const r = await s.tick();
+  assert.equal(r.saltado, "desactivado");
+  assert.equal(subidos.length, 0);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick con forzar lo ejecuta aunque este apagado", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  const r = await s.tick({ forzar: true });
+  assert.equal(r.ok, true);
+  assert.equal(subidos.length, 1);
+  assert.equal(subidos[0].seguro, true);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("oficina de Inter Rapidísimo: queda para un humano, sin chat ni IA ni reintentos", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 12, EstadoPedido: 0, completo: { ...COMPLETO, Direccion: "Oficina Inter Rapidísimo, Medellín" } }],
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 0);
+  assert.equal(s.ultimos(5)[0].accion, "requiere-humano");
+  assert.match(s.ultimos(5)[0].detalle, /recoge en oficina de Inter Rapidísimo/i);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("oficina de Coordinadora: queda para un humano, sin chat ni IA ni reintentos", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 13, EstadoPedido: 0, completo: { ...COMPLETO, Direccion: "RECOGER EN OFICINA COORDINADORA" } }],
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 0);
+  assert.equal(s.ultimos(5)[0].accion, "requiere-humano");
+  assert.match(s.ultimos(5)[0].detalle, /recoge en oficina de Coordinadora/i);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick no repite un pedido ya subido", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 2, completo: { ...COMPLETO, EstadoPedido: 2 } }],
+  });
+  s.configurar({ automatico: true, dryRun: false, estados: [2] });
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  assert.equal(s.estadoPedido(1).accion, "subido");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick vuelve a revisar los pedidos solo preparados en dryRun", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 2);
+  assert.equal(s.estadoPedido(1).accion, "preparado");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick avisa el fallo a Lucid Bot una sola vez aunque reintente", async () => {
+  const avisos = [];
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    respuestaDropi: () => ({ ok: false, creado: false, detalle: "Dropi rechazo el formulario" }),
+    lucidBotContactos: { async notificar(a) { avisos.push(a.resultado); return { ok: true }; } },
+  });
+  s.configurar({ automatico: true, dryRun: false });
+  await s.tick({ forzar: true });
+  assert.equal(s.estadoPedido(1).accion, "error");
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 2); // 2 intentos y se detiene
+  // el fallo se avisa una vez y luego que quedo para revision
+  assert.deepEqual(avisos, ["fallido", "requiere-revision"]);
+  assert.equal(s.estadoPedido(1).accion, "requiere-revision");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick avisa el exito aunque antes se haya avisado un fallo", async () => {
+  const avisos = [];
+  let intento = 0;
+  const { s, ruta } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 2, completo: { ...COMPLETO, EstadoPedido: 2 } }],
+    respuestaDropi: () =>
+      ++intento === 1
+        ? { ok: false, creado: false, detalle: "fallo temporal" }
+        : { ok: true, creado: true, seguro: true, idDropi: 99 },
+    lucidBotContactos: { async notificar(a) { avisos.push(a.resultado); return { ok: true }; } },
+  });
+  s.configurar({ automatico: true, dryRun: false, estados: [2] });
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  assert.deepEqual(avisos, ["fallido", "exitoso"]);
+  assert.equal(s.estadoPedido(1).accion, "subido");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick corta la vuelta y no avisa al contacto si la sesion de Dropi vencio", async () => {
+  const avisos = [];
+  const { s, ruta, subidos } = armar({
+    pedidos: [
+      { id: 1, EstadoPedido: 0, completo: COMPLETO },
+      { id: 2, EstadoPedido: 0, completo: { ...COMPLETO, id: 2, idPedido: 222 } },
+    ],
+    respuestaDropi: () => ({ ok: false, creado: false, requiereLogin: true, detalle: "sesion vencida" }),
+    lucidBotContactos: { async notificar(a) { avisos.push(a.resultado); return { ok: true }; } },
+  });
+  s.configurar({ automatico: true, dryRun: false });
+  const r = await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1); // el segundo pedido ni se intenta
+  // ningun aviso de pedido ("fallido"): solo el aviso de sesion al admin
+  assert.deepEqual(avisos, ["sesion-vencida"]);
+  assert.match(r.detenido, /sesion/i);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick no marca error ni avisa si el navegador esta ocupado", async () => {
+  const avisos = [];
+  const { s, ruta } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    respuestaDropi: () => ({ ok: false, creado: false, ocupado: true, detalle: "Ya hay otra subida" }),
+    lucidBotContactos: { async notificar(a) { avisos.push(a.resultado); return { ok: true }; } },
+  });
+  s.configurar({ automatico: true, dryRun: false });
+  const r = await s.tick({ forzar: true });
+  assert.deepEqual(avisos, []);
+  assert.equal(s.estadoPedido(1), null);
+  assert.match(r.detenido, /ocupado/i);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick marca como pendiente si el bot no mando la conversacion", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 2, EstadoPedido: 0, completo: COMPLETO }],
+    sinConversacion: true,
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  const r = await s.tick({ forzar: true });
+  assert.equal(subidos.length, 0);
+  const u = s.ultimos(5);
+  assert.equal(u[0].accion, "sin-conversacion");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick frena y no sube si la validacion no calza", async () => {
+  const { s, ruta, subidos } = armar({
+    // el precio del chat no coincide con el Total del pedido
+    cliente: clienteFalso([
+      { id: 3, EstadoPedido: 0, completo: { ...COMPLETO, Total: "999.999", SubTotal: "999.999" } },
+    ]),
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  const r = await s.tick({ forzar: true });
+  assert.equal(subidos.length, 0);
+  assert.equal(r.frenados, 1);
+  assert.equal(s.ultimos(5)[0].accion, "frenado");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick filtra por los estados configurados", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 4, EstadoPedido: 5, completo: COMPLETO }],
+  });
+  s.configurar({ automatico: true, dryRun: true, estados: [0] });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 0);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick resuelve ciudad/depto a nombres antes de subir", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 5, EstadoPedido: 0, completo: { ...COMPLETO, Departamento: "2", Ciudad: "36", Pais: 47 } }],
+    resolverUbicacion: async ({ idDepartamento, idCiudad }) => ({
+      departamento: `dep-${idDepartamento}`,
+      ciudad: `ciu-${idCiudad}`,
+    }),
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  assert.equal(subidos[0].departamento, "dep-2");
+  assert.equal(subidos[0].ciudad, "ciu-36");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick frena la subida si no se puede resolver la ubicacion", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 6, EstadoPedido: 0, completo: { ...COMPLETO, Departamento: "2", Ciudad: "36", Pais: 47 } }],
+    resolverUbicacion: async () => {
+      throw new Error("catalogo caido");
+    },
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 0);
+  assert.equal(s.ultimos(5)[0].accion, "error");
+  assert.match(s.ultimos(5)[0].detalle, /catalogo caido/);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick resuelve el link de Dropi del producto antes de subir", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 7, EstadoPedido: 0, completo: COMPLETO }],
+    resolverProductoDropi: async (idProducto) => `https://dropi.test/producto/${idProducto}`,
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  // COMPLETO trae Json con product_id "2291039"
+  assert.equal(subidos[0].productoUrl, "https://dropi.test/producto/2291039");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick marca error si el producto no tiene id de Dropi", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 8, EstadoPedido: 0, completo: COMPLETO }],
+    resolverProductoDropi: async () => null,
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 0);
+  assert.equal(s.ultimos(5)[0].accion, "error");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick frena el pedido sin recaudo (prepago) para que lo suba un humano", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 9, EstadoPedido: 0, completo: { ...COMPLETO, TipoPago: 2 } }],
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 0);
+  assert.equal(s.ultimos(5)[0].accion, "requiere-humano");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick manda cantidad, precio y tipo de pago a la subida", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 10, EstadoPedido: 0, completo: { ...COMPLETO, TipoPago: 1 } }],
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  assert.equal(subidos[0].tipoPago, 1);
+  assert.equal(subidos[0].productos[0].cantidad, 1);
+  assert.equal(subidos[0].productos[0].precio, 84900); // price "84.900"
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick no sube ni gasta el LLM si la tienda no tiene tienda de Dropi", async () => {
+  let llamadasLLM = 0;
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    tiendasDropi: null,
+    alExtraer: () => llamadasLLM++,
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 0);
+  assert.equal(llamadasLLM, 0);
+  assert.equal(s.estadoPedido(1).accion, "sin-tienda-dropi");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick manda la tienda de Dropi configurada para la tienda revisada", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos[0].tienda, "Pizdo Store");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tick usa la tienda del propio pedido si trae idEmpresa", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: { ...COMPLETO, idEmpresa: 9999 } }],
+    tiendasDropi: { 3682: "Pizdo Store", 9999: "Orenar" },
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos[0].tienda, "Orenar");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("configurar guarda el mapa de tiendas de Dropi y descarta vacias", () => {
+  const { s, ruta } = armar({ tiendasDropi: null });
+  const c = s.configurar({ tiendasDropi: { 3682: "  Pizdo Store ", 1: "" } });
+  s.detener();
+  assert.deepEqual(c.tiendasDropi, { 3682: "Pizdo Store" });
+  assert.equal(s.tiendaDropiPara(3682), "Pizdo Store");
+  assert.equal(s.tiendaDropiPara(1), "");
+  fs.rmSync(ruta, { force: true });
+});
+
+function armarSesion(respuesta) {
+  const avisos = [];
+  const estado = { r: respuesta };
+  const { s, ruta, subidos } = armar({
+    pedidos: [
+      { id: 1, EstadoPedido: 0, completo: COMPLETO },
+      { id: 2, EstadoPedido: 0, completo: { ...COMPLETO, id: 2, idPedido: 222 } },
+    ],
+    respuestaDropi: (d) => estado.r(d),
+    lucidBotContactos: {
+      async notificar(a) {
+        avisos.push(a);
+        return { ok: true };
+      },
+    },
+  });
+  return { s, ruta, subidos, avisos, estado };
+}
+const VENCIDA = () => ({ ok: false, creado: false, requiereLogin: true, detalle: "sesion vencida" });
+
+test("sesion vencida: avisa al admin una sola vez aunque sigan las vueltas", async () => {
+  const { s, ruta, avisos } = armarSesion(VENCIDA);
+  s.configurar({ automatico: true, dryRun: false });
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  assert.equal(avisos.length, 1);
+  assert.equal(avisos[0].resultado, "sesion-vencida");
+  assert.equal(avisos[0].pedido, null); // no es aviso de un pedido
+  assert.match(avisos[0].detalle, /al menos 2 pedido/);
+  assert.equal(s.sesion().estado, "requiere-login");
+  assert.equal(s.sesion().avisado, true);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("sesion vencida: tambien avisa en modo preparacion", async () => {
+  const { s, ruta, avisos } = armarSesion(VENCIDA);
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  assert.deepEqual(avisos.map((a) => a.resultado), ["sesion-vencida"]);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("sesion vencida: los pedidos quedan pendientes y se suben al volver la sesion", async () => {
+  const { s, ruta, subidos, estado } = armarSesion(VENCIDA);
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  estado.r = (d) => ({ ok: true, preparado: !!d.soloPreparar, seguro: true });
+  const r = await s.tick({ forzar: true });
+  assert.equal(r.subidos, 2); // los dos pendientes
+  assert.equal(s.sesion().estado, "ok");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("sesion vencida: tras restablecerla, una nueva caida vuelve a avisar", async () => {
+  const { s, ruta, avisos } = armarSesion(VENCIDA);
+  s.configurar({ automatico: true, dryRun: false });
+  await s.tick({ forzar: true });
+  s.sesionRestablecida("panel");
+  await s.tick({ forzar: true });
+  assert.equal(avisos.length, 2);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("captcha: avisa con su propio tipo", async () => {
+  const { s, ruta, avisos } = armarSesion(() => ({ ok: false, requiereCaptcha: true, detalle: "captcha" }));
+  s.configurar({ automatico: true, dryRun: false });
+  await s.tick({ forzar: true });
+  assert.deepEqual(avisos.map((a) => a.resultado), ["captcha"]);
+  assert.match(avisos[0].detalle, /captcha/i);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("si el aviso de sesion falla, se reintenta en la siguiente vuelta", async () => {
+  const avisos = [];
+  let intento = 0;
+  const { s, ruta } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    respuestaDropi: VENCIDA,
+    lucidBotContactos: {
+      async notificar(a) {
+        avisos.push(a.resultado);
+        return ++intento === 1 ? { ok: false, detalle: "HTTP 500" } : { ok: true };
+      },
+    },
+  });
+  s.configurar({ automatico: true, dryRun: false });
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  assert.deepEqual(avisos, ["sesion-vencida", "sesion-vencida"]);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("sin tiendas marcadas revisa las que tienen tienda de Dropi y consulta con su tienda", async () => {
+  const listadas = [];
+  const consultas = [];
+  const cliente = {
+    async listarPedidos({ idEmpresa }) {
+      listadas.push(String(idEmpresa));
+      return { pedidos: [{ id: 1, EstadoPedido: 0 }] };
+    },
+    async obtenerPedido(id, tienda) {
+      consultas.push(String(tienda));
+      return COMPLETO;
+    },
+  };
+  const { s, ruta } = armar({ cliente, tiendasDropi: { 6881: "1928380" } });
+  s.configurar({ automatico: true, dryRun: true, tiendas: [] });
+  await s.tick({ forzar: true });
+  assert.deepEqual(listadas, ["6881"]); // no la 3682 de LUCID_TIENDA
+  assert.ok(consultas.length && consultas.every((t) => t === "6881"));
+  fs.rmSync(ruta, { force: true });
+});
+
+test("el registro guarda telefono, nombre y el analisis con la evidencia del chat", async () => {
+  const { s, ruta } = armar({
+    cliente: clienteFalso([
+      { id: 3, EstadoPedido: 0, Movil: "+573009998877", completo: { ...COMPLETO, Total: "999.999", SubTotal: "999.999" } },
+    ]),
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  const u = s.ultimos(5)[0];
+  assert.equal(u.accion, "frenado");
+  assert.match(u.detalle, /^\[intento 1 de 2\] precio: /); // explica, no solo nombra el campo
+  assert.equal(u.cliente.telefono, "+573009998877");
+  assert.equal(u.cliente.nombre, "Ana Gomez");
+  const precio = u.analisis.checks.find((c) => c.campo === "precio");
+  assert.equal(precio.ok, false);
+  assert.equal(u.analisis.extraido.precioAcordado, 105690);
+  assert.equal(u.analisis.checks.length, 8);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("sin conversacion igual guarda el telefono para abrir el chat", async () => {
+  const { s, ruta } = armar({
+    pedidos: [{ id: 2, EstadoPedido: 0, completo: COMPLETO }],
+    sinConversacion: true,
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  const u = s.ultimos(5)[0];
+  assert.equal(u.accion, "sin-conversacion");
+  assert.equal(u.cliente.telefono, "+573009998877");
+  assert.equal(u.analisis, undefined);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("tras 2 intentos fallidos pasa a revision, explica el motivo y ya no se toca", async () => {
+  let llamadasLLM = 0;
+  const { s, ruta } = armar({
+    cliente: clienteFalso([
+      { id: 3, EstadoPedido: 0, completo: { ...COMPLETO, Total: "999.999", SubTotal: "999.999" } },
+    ]),
+    alExtraer: () => llamadasLLM++,
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  assert.equal(s.estadoPedido(3).accion, "frenado");
+  const r2 = await s.tick({ forzar: true });
+  assert.equal(r2.revision, 1);
+  const u = s.estadoPedido(3);
+  assert.equal(u.accion, "requiere-revision");
+  assert.equal(u.intentos, 2);
+  assert.match(u.detalle, /No se subió tras 2 intento\(s\).*\(frenado\): precio/);
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  assert.equal(llamadasLLM, 2); // ni una llamada mas a la IA
+  fs.rmSync(ruta, { force: true });
+});
+
+test("los problemas de sesion no gastan intentos del pedido", async () => {
+  let n = 0;
+  const { s, ruta } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    respuestaDropi: () => (++n <= 3 ? { ok: false, requiereLogin: true, detalle: "vencida" } : { ok: false, creado: false, detalle: "error real" }),
+  });
+  s.configurar({ automatico: true, dryRun: false });
+  for (let i = 0; i < 3; i++) await s.tick({ forzar: true });
+  assert.equal(s.estadoPedido(1).accion, "requiere-login");
+  await s.tick({ forzar: true });
+  assert.equal(s.estadoPedido(1).accion, "error"); // primer intento real
+  assert.equal(s.estadoPedido(1).intentos, 1);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("el limite se puede configurar", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    respuestaDropi: () => ({ ok: false, creado: false, detalle: "error" }),
+  });
+  s.configurar({ automatico: true, dryRun: false, maxIntentos: 1 });
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  assert.equal(s.estadoPedido(1).accion, "requiere-revision");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("reintentar un pedido en revision lo vuelve a intentar desde cero", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    respuestaDropi: () => ({ ok: false, creado: false, detalle: "error" }),
+  });
+  s.configurar({ automatico: true, dryRun: false });
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  assert.equal(s.estadoPedido(1).accion, "requiere-revision");
+  assert.deepEqual(s.rearmar(1), { ok: true, id: "1" }); // sin confirmacion extra
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 3);
+  assert.equal(s.estadoPedido(1).intentos, 1);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("reintentar todos los que estan en revision", async () => {
+  const { s, ruta } = armar({
+    pedidos: [
+      { id: 1, EstadoPedido: 0, completo: COMPLETO },
+      { id: 2, EstadoPedido: 0, completo: { ...COMPLETO, id: 2 } },
+    ],
+    respuestaDropi: () => ({ ok: false, creado: false, detalle: "error" }),
+  });
+  s.configurar({ automatico: true, dryRun: false, maxIntentos: 1 });
+  await s.tick({ forzar: true });
+  assert.equal(s.ultimos(5).filter((u) => u.accion === "requiere-revision").length, 2);
+  assert.deepEqual(s.rearmarRevision(), { ok: true, rearmados: 2 });
+  assert.equal(s.estadoPedido(1), null);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("prepago queda para un humano sin llamar a la IA ni reintentar", async () => {
+  let llamadasLLM = 0;
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: { ...COMPLETO, TipoPago: 2 } }],
+    alExtraer: () => llamadasLLM++,
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  assert.equal(llamadasLLM, 0);
+  assert.equal(subidos.length, 0);
+  assert.equal(s.estadoPedido(1).accion, "requiere-humano");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("si muchos pasan a revision a la vez, llega un solo aviso resumen", async () => {
+  const avisos = [];
+  const pedidos = [1, 2, 3, 4, 5].map((n) => ({ id: n, EstadoPedido: 0, completo: { ...COMPLETO, id: n } }));
+  const { s, ruta } = armar({
+    pedidos,
+    sinConversacion: true,
+    lucidBotContactos: { async notificar(a) { avisos.push(a); return { ok: true }; } },
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  const r = await s.tick({ forzar: true });
+  assert.equal(r.revision, 5);
+  assert.equal(avisos.length, 1);
+  assert.equal(avisos[0].pedido, null);
+  assert.match(avisos[0].detalle, /5 pedidos pasaron a revisión.*sin-conversacion.*#1, #2/);
+  await s.tick({ forzar: true });
+  assert.equal(avisos.length, 1); // y no se repite
+  fs.rmSync(ruta, { force: true });
+});
+
+test("direccion descriptiva: no se sube, queda marcada y se avisa", async () => {
+  const avisos = [];
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: { ...COMPLETO, Direccion: "casa verde al lado de la panaderia pedro" } }],
+    lucidBotContactos: { async notificar(a) { avisos.push(a.resultado); return { ok: true }; } },
+  });
+  s.configurar({ automatico: true, dryRun: false });
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 0);
+  const u = s.estadoPedido(1);
+  assert.equal(u.accion, "direccion-invalida");
+  assert.match(u.detalle, /direccionValida: no es una dirección con nomenclatura/);
+  assert.deepEqual(avisos, ["direccion-invalida"]); // una vez, y ya no se reintenta
+  assert.deepEqual(s.rearmarRevision(), { ok: true, rearmados: 1 }); // se puede reintentar
+  fs.rmSync(ruta, { force: true });
+});
+
+test("a Dropi va la direccion normalizada", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: { ...COMPLETO, Direccion: "carrera 92#78b-02" } }],
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos[0].direccion, "Cra 92 # 78B-02");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("si la IA no responde, el pedido queda como error de la IA (no frenado)", async () => {
+  const { s, ruta, subidos } = armar({ pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }] });
+  // extractor que simula un timeout
+  s.configurar({ automatico: true, dryRun: true });
+  const original = armar;
+  fs.rmSync(ruta, { force: true });
+  const { s: s2, ruta: ruta2 } = original({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    extraerFalla: true,
+  });
+  s2.configurar({ automatico: true, dryRun: true });
+  await s2.tick({ forzar: true });
+  const u = s2.estadoPedido(1);
+  assert.equal(u.accion, "error");
+  assert.match(u.detalle, /la IA no pudo leer el chat: la IA no respondió/);
+  assert.equal(subidos.length, 0);
+  fs.rmSync(ruta2, { force: true });
+});
+
+test("oficina sin conversacion: igual queda para un humano (no 'sin-conversacion')", async () => {
+  let llamadasLLM = 0;
+  const { s, ruta } = armar({
+    pedidos: [{ id: 5, EstadoPedido: 0, completo: { ...COMPLETO, Direccion: "Calle 10", Referencias: "recoger en oficina inter" } }],
+    sinConversacion: true,
+    alExtraer: () => llamadasLLM++,
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  await s.tick({ forzar: true });
+  assert.equal(s.estadoPedido(5).accion, "requiere-humano");
+  assert.equal(llamadasLLM, 0);
+  fs.rmSync(ruta, { force: true });
+});

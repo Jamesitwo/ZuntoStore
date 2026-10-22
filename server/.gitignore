@@ -1,0 +1,21 @@
+node_modules/
+.env
+historial.jsonl
+credenciales.json
+asignacion.json
+asignacion.json.tmp
+
+# Rentabilidad de anuncios: el token de Meta y los datos descargados de Meta
+config/anuncios.json
+# tokens y claves guardados desde el panel
+config/llm.json
+config/lucidbot-contactos.json
+anuncios/datos_*.json
+anuncios/plan.json
+anuncios/snapshot.json
+anuncios/usuarios/
+.dropi-perfil/
+node_modules/
+.dropi-sesion.mjs
+.dropi-localstorage.json
+subidaAutomatica.json

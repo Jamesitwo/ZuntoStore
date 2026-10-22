@@ -1,0 +1,821 @@
+// Subida AUTOMATICA de pedidos a Dropi (con el seguro antidevoluciones).
+//
+// Cada N segundos mira los pedidos recientes de las tiendas configuradas, les
+// lee la conversacion al bot, los pasa por el agente y SOLO si todo calza los
+// sube a Dropi. Si algo no calza, NO lo sube: lo deja como "pendiente de
+// revision" y lo registra.
+//
+// Se enciende y se apaga con PUT /api/subida/config (o desde el panel). La
+// configuracion y el registro de lo ya procesado viven en un JSON:
+//
+//   { "automatico": false, "cadaSegundos": 120, "estados": [0], "tiendas": [],
+//     "dryRun": true, "procesados": { "<id>": {ts, accion, detalle} } }
+//
+// Un fallo nunca rompe el intervalo: se queda registrado y se reintenta en la
+// siguiente vuelta. Nunca sube un pedido sin seguro (dropiNavegador lo exige).
+import fs from "node:fs";
+import path from "node:path";
+import { ErrorApi } from "./errores.js";
+import { ejecutarAgente, resumenDePedido } from "./agente.js";
+import { cambiarEstado } from "./estado.js";
+import { recogeEnOficina } from "./direccionColombia.js";
+
+const MAX_PROCESADOS = 3000;
+/**
+ * Resultados que cuentan como un intento fallido DEL PEDIDO. Al llegar a
+ * `maxIntentos` el pedido pasa a "requiere-revision" y no se vuelve a intentar
+ * hasta que alguien lo rearme desde el panel. No cuentan los problemas que no
+ * son del pedido (sesion de Dropi, captcha, navegador ocupado, tienda de Dropi
+ * sin configurar): esos se reintentan sin limite y se avisan aparte.
+ */
+const FALLOS_QUE_CUENTAN = new Set(["error", "frenado", "sin-conversacion"]);
+/** Mas de esta cantidad de pedidos a revision en una vuelta = un solo aviso resumen. */
+const MAX_AVISOS_SUELTOS = 3;
+/** Resultados finales: la subida automatica ya no vuelve a tocar el pedido. */
+const FINALES = new Set(["subido", "resultado-incierto", "requiere-revision", "requiere-humano", "direccion-invalida"]);
+/** Finales que se pueden volver a intentar desde el panel sin mas confirmacion. */
+const REARMABLES = new Set(["requiere-revision", "direccion-invalida"]);
+/** Solo los N mas recientes guardan el analisis completo de la IA. */
+const MAX_CON_ANALISIS = 300;
+
+/** Analisis compacto para el registro: verificaciones + lo que leyo la IA. */
+export function resumirAnalisis(r) {
+  if (!r) return null;
+  const corto = (v, n = 160) => String(v ?? "").slice(0, n);
+  const e = r.extraido ?? {};
+  return {
+    checks: (r.validacion?.checks ?? []).map((c) => ({
+      campo: c.campo,
+      ok: Boolean(c.ok),
+      detalle: corto(c.detalle),
+      ...(c.evidencia ? { evidencia: corto(c.evidencia) } : {}),
+    })),
+    extraido: {
+      producto: corto(e.producto, 120),
+      cantidad: e.cantidad ?? null,
+      precioAcordado: e.precioAcordado ?? null,
+      direccion: corto(e.direccion, 160),
+      clienteConfirmo: e.clienteConfirmo ?? null,
+      entregaFutura: e.entregaFutura ?? null,
+      fechaEntregaSolicitada: corto(e.fechaEntregaSolicitada, 60),
+      incertidumbre: (e.incertidumbre ?? []).slice(0, 5).map((x) => corto(x, 160)),
+    },
+  };
+}
+
+/** Rechaza direcciones que en realidad indican recoger en oficina del carrier. */
+export function crearSubidaAutomatica({
+  cliente,
+  conversacion,
+  extraer,
+  dropiNav,
+  asignacion,
+  config,
+  ruta,
+  lucidBotContactos,
+  log = console,
+  resolverUbicacion,
+  resolverProductoDropi,
+}) {
+  let timer = null;
+  let corriendo = false;
+  let ultimoAviso = null;
+  const resultadosTerminales = new Map();
+
+  async function notificarResultado(pedido, resultado, detalle, idDropi) {
+    try {
+      const respuesta = await lucidBotContactos?.notificar?.({ pedido, resultado, detalle, idDropi, via: "Dropi automático" });
+      if (respuesta && !respuesta.ok && !respuesta.omitido) log.warn?.("[subida] aviso a Lucid Bot falló:", respuesta.detalle);
+      return respuesta;
+    } catch (e) {
+      log.warn?.("[subida] no se pudo notificar a Lucid Bot:", e?.message ?? e);
+      return { ok: false, detalle: e?.message ?? String(e) };
+    }
+  }
+
+  const archivo = ruta ?? path.join(process.cwd(), "subidaAutomatica.json");
+
+  const DEFECTO = {
+    automatico: false,
+    cadaSegundos: 120,
+    estados: [0],
+    tiendas: [],
+    dryRun: true,
+    transportadoraId: 5,
+    // intentos fallidos antes de dejar el pedido para revision manual
+    maxIntentos: 2,
+    // tienda de LucidSales (idEmpresa) -> nombre exacto de la tienda en Dropi
+    tiendasDropi: {},
+    procesados: {},
+  };
+
+  function leer() {
+    try {
+      return { ...DEFECTO, ...JSON.parse(fs.readFileSync(archivo, "utf8")) };
+    } catch {
+      return { ...DEFECTO };
+    }
+  }
+
+  function guardar(c) {
+    try {
+      fs.mkdirSync(path.dirname(archivo), { recursive: true });
+      // se recorta el registro para que el archivo no crezca sin limite
+      const claves = Object.keys(c.procesados ?? {});
+      if (claves.length > MAX_PROCESADOS) {
+        const recientes = claves
+          .sort((a, b) => String(c.procesados[b]?.ts ?? "").localeCompare(String(c.procesados[a]?.ts ?? "")))
+          .slice(0, MAX_PROCESADOS);
+        const nuevo = {};
+        for (const k of recientes) nuevo[k] = c.procesados[k];
+        c.procesados = nuevo;
+      }
+      const conAnalisis = Object.keys(c.procesados ?? {}).filter((k) => c.procesados[k]?.analisis);
+      if (conAnalisis.length > MAX_CON_ANALISIS) {
+        conAnalisis
+          .sort((a, b) => String(c.procesados[b]?.ts ?? "").localeCompare(String(c.procesados[a]?.ts ?? "")))
+          .slice(MAX_CON_ANALISIS)
+          .forEach((k) => delete c.procesados[k].analisis);
+      }
+      // el estado de la sesion mas reciente gana: una vuelta que empezo antes
+      // de actualizar la sesion desde el panel no debe pisarla con la vieja
+      try {
+        const enDisco = JSON.parse(fs.readFileSync(archivo, "utf8"))?.sesionDropi;
+        if (enDisco?.desde && String(enDisco.desde) > String(c.sesionDropi?.desde ?? "")) {
+          c.sesionDropi = enDisco;
+        }
+      } catch {
+        /* primer guardado */
+      }
+      const tmp = `${archivo}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(c, null, 2), "utf8");
+      fs.renameSync(tmp, archivo);
+      return true;
+    } catch (e) {
+      log.warn?.("[subida] no se pudo guardar la config:", e?.message ?? e);
+      return false;
+    }
+  }
+
+  /**
+   * Sesion de Dropi caida (login vencido o captcha): avisa al admin por Lucid
+   * Bot UNA vez por caida, sin importar cuantos pedidos o vueltas choquen con
+   * ella. Se rearma cuando la sesion vuelve a servir (subida/preparacion ok o
+   * sesion actualizada desde el panel). Va aunque este en modo preparacion:
+   * no es un aviso de un pedido sino de que la automatizacion esta parada.
+   */
+  async function alertarSesion(c, tipo, detalle, pendientes = null) {
+    const previa = c.sesionDropi ?? {};
+    const mismaCaida = previa.estado === tipo;
+    c.sesionDropi = {
+      estado: tipo,
+      desde: mismaCaida && previa.desde ? previa.desde : new Date().toISOString(),
+      detalle: String(detalle ?? "").slice(0, 300),
+      avisado: mismaCaida ? Boolean(previa.avisado) : false,
+      ...(pendientes !== null ? { pendientes } : {}),
+    };
+    if (!c.sesionDropi.avisado) {
+      const texto =
+        (tipo === "requiere-captcha"
+          ? "Dropi está pidiendo captcha y la subida automática se detuvo."
+          : "La sesión de Dropi venció y la subida automática se detuvo.") +
+        (pendientes ? ` Hay al menos ${pendientes} pedido(s) esperando para subir.` : "") +
+        " Entra a Dropi en tu navegador y actualiza la sesión desde el panel (Ajustes > Subida a Dropi > Sesión de Dropi)." +
+        " Los pedidos pendientes se suben solos al actualizarla.";
+      const r = await notificarResultado(null, tipo === "requiere-captcha" ? "captcha" : "sesion-vencida", texto);
+      // si el envio fallo, se intenta de nuevo en la proxima vuelta
+      if (r?.ok || r?.omitido) c.sesionDropi.avisado = true;
+      c.sesionDropi.aviso = r?.ok ? "enviado" : r?.omitido ? `omitido: ${r.detalle ?? ""}` : `falló: ${r?.detalle ?? ""}`;
+    }
+    guardar(c);
+    return c.sesionDropi;
+  }
+
+  /** La sesion vuelve a servir: se limpia la caida (la proxima avisa otra vez). */
+  function sesionOk(c, origen = "subida") {
+    if (c.sesionDropi?.estado && c.sesionDropi.estado !== "ok") {
+      log.log?.(`[subida] sesion de Dropi restablecida (${origen})`);
+    }
+    c.sesionDropi = { estado: "ok", desde: new Date().toISOString(), origen };
+    guardar(c);
+  }
+
+  /**
+   * Avisa al admin de una tanda de pedidos que quedaron parados (revision o
+   * direccion invalida): uno a uno si son pocos, un solo resumen si son muchos.
+   */
+  async function avisarLote(c, lista, resultado, textoResumen) {
+    if (!lista.length) return;
+    if (lista.length > MAX_AVISOS_SUELTOS) {
+      const ids = lista.slice(0, 15).map((a) => `#${a.id}`).join(", ") + (lista.length > 15 ? "…" : "");
+      const motivos = [...new Set(lista.map((a) => (a.detalle.match(/Último motivo \(([^)]+)\)/) ?? [])[1]).filter(Boolean))];
+      const r = await notificarResultado(null, resultado, textoResumen(lista.length, ids, motivos));
+      if (r?.ok || r?.omitido) {
+        for (const a of lista) c.procesados[a.id] = { ...(c.procesados[a.id] ?? {}), notificado: resultado };
+      }
+      guardar(c);
+      return;
+    }
+    for (const a of lista) {
+      await notificarUnaVez(
+        c,
+        a.id,
+        { id: a.id, idPedido: a.id, Nombre: a.contacto.nombre, Movil: a.contacto.telefono },
+        resultado,
+        a.detalle,
+      );
+      guardar(c);
+    }
+  }
+
+  function tiendaDropiDe(c, idEmpresa) {
+    const mapa = c?.tiendasDropi && typeof c.tiendasDropi === "object" ? c.tiendasDropi : {};
+    return String(mapa[String(idEmpresa ?? "")] ?? "").trim();
+  }
+
+  function marcar(c, id, accion, detalle, extra = {}) {
+    c.procesados = c.procesados ?? {};
+    const previo = c.procesados[String(id)] ?? {};
+    // se conserva el ultimo aviso enviado a Lucid Bot (los reintentos no
+    // vuelven a notificar) y los datos del cliente si esta vez no llegaron
+    const notificado = previo.notificado;
+    const clienteDatos = extra.cliente?.telefono || extra.cliente?.nombre ? extra.cliente : previo.cliente;
+    // intentos fallidos del pedido: solo suben con los fallos que cuentan
+    let intentos = Number(previo.intentos) || 0;
+    if (FALLOS_QUE_CUENTAN.has(accion)) intentos++;
+    const max = Math.max(1, Number(c.maxIntentos) || 2);
+    let accionFinal = accion;
+    let detalleFinal = String(detalle ?? "");
+    if (FALLOS_QUE_CUENTAN.has(accion) && intentos >= max) {
+      accionFinal = "requiere-revision";
+      detalleFinal = `No se subió tras ${intentos} intento(s); ya no se reintenta. Último motivo (${accion}): ${detalleFinal}`;
+    } else if (FALLOS_QUE_CUENTAN.has(accion)) {
+      detalleFinal = `[intento ${intentos} de ${max}] ${detalleFinal}`;
+    }
+    c.procesados[String(id)] = {
+      ts: new Date().toISOString(),
+      accion: accionFinal,
+      // amplio: los errores del navegador traen un diagnostico del formulario
+      detalle: detalleFinal.slice(0, 1600),
+      ...(intentos ? { intentos } : {}),
+      ...(notificado ? { notificado } : {}),
+      ...(clienteDatos ? { cliente: clienteDatos } : {}),
+      ...(extra.analisis ? { analisis: extra.analisis } : {}),
+    };
+    guardar(c);
+    return c.procesados[String(id)];
+  }
+
+  /**
+   * Avisa a Lucid Bot UNA sola vez por pedido y resultado. Un pedido que se
+   * reintenta en cada vuelta y vuelve a fallar no dispara el flujo otra vez.
+   */
+  async function notificarUnaVez(c, id, pedido, resultado, detalle, idDropi) {
+    const clave = String(id);
+    c.procesados = c.procesados ?? {};
+    if (c.procesados[clave]?.notificado === resultado) return { ok: true, omitido: true, repetido: true };
+    const respuesta = await notificarResultado(pedido, resultado, detalle, idDropi);
+    // solo se recuerda si se envio (o Lucid Bot lo omitio a proposito);
+    // si fallo el envio, la proxima vuelta lo intenta de nuevo
+    if (respuesta?.ok || respuesta?.omitido) {
+      c.procesados[clave] = { ...(c.procesados[clave] ?? {}), notificado: resultado };
+    }
+    return respuesta;
+  }
+
+  /**
+   * Una vuelta. `forzar:true` la ejecuta aunque este apagado (boton Probar).
+   */
+  async function tick(opciones = {}) {
+    const c = leer();
+    if (!c.automatico && !opciones.forzar) return { ok: true, saltado: "desactivado" };
+    if (corriendo) return { ok: true, saltado: "en curso" };
+    corriendo = true;
+
+    try {
+      // Tiendas que revisar: las de la config de subida; si no, las del reparto
+      // (asignacion.json); si no, LUCID_TIENDA. Asi no hay que duplicarlas.
+      const propias = Array.isArray(c.tiendas) ? c.tiendas.filter(Boolean) : [];
+      const delReparto = Array.isArray(asignacion?.getConfig?.()?.tiendas)
+        ? asignacion.getConfig().tiendas
+        : [];
+      // sin tiendas marcadas: las que tienen tienda de Dropi configurada (las
+      // demas no se podrian subir de todos modos); luego las de siempre
+      const conDropi = Object.keys(c.tiendasDropi ?? {}).filter((k) => String(c.tiendasDropi[k] ?? "").trim());
+      const tiendas = (propias.length ? propias : conDropi.length ? conDropi : delReparto.length ? delReparto : [config.LUCID_TIENDA])
+        .map((t) => String(t ?? "").trim())
+        .filter(Boolean);
+      if (!tiendas.length) {
+        throw new ErrorApi(
+          400,
+          "No hay tienda que revisar: marca una tienda en el panel o configura LUCID_TIENDA",
+        );
+      }
+
+      const estados = (Array.isArray(c.estados) ? c.estados : []).map(Number).filter(Number.isInteger);
+      let subidos = 0;
+      let frenados = 0;
+      let omitidos = 0;
+      let inciertos = 0;
+      const detalle = [];
+
+      let detenido = null;
+      const agotados = [];
+      const invalidas = [];
+      vueltaTiendas: for (const idEmpresa of tiendas) {
+        const r = await cliente.listarPedidos({
+          idEmpresa,
+          page: 1,
+          itemsPerPage: 100,
+          filtros: [{ name: "date", searchValues: [], sortOrder: "desc" }],
+        });
+        const pedidos = Array.isArray(r?.pedidos) ? r.pedidos : [];
+        // cuantos de esta tienda siguen esperando (para el aviso de sesion)
+        const esperando = pedidos.filter((x) => {
+          const acc = c.procesados?.[String(x?.id ?? x?.idPedido ?? "")]?.accion;
+          if (FINALES.has(acc) || acc === "subido-pendiente-confirmacion") return false;
+          return !estados.length || estados.includes(Number(x?.EstadoPedido));
+        }).length;
+
+        for (const p of pedidos) {
+          const id = String(p?.id ?? p?.idPedido ?? "");
+          if (!id) continue;
+          // datos del cliente para la tabla del panel (telefono -> chat)
+          const contacto = {
+            telefono: String(p?.Movil ?? "").trim(),
+            nombre: [p?.Nombre, p?.Apellido].filter(Boolean).join(" ").trim(),
+          };
+          let analisisActual = null;
+          const marcarP = (accion, det) => {
+            const e = marcar(c, id, accion, det, { cliente: { ...contacto }, ...(analisisActual ? { analisis: analisisActual } : {}) });
+            if (e?.accion === "requiere-revision" && accion !== "requiere-revision") {
+              agotados.push({ id, detalle: e.detalle, contacto: { ...contacto } });
+            }
+            return e;
+          };
+          const anterior = c.procesados?.[id];
+          // Dropi ya confirmó la creación. Si solo falló la actualización de
+          // LucidSales, reintenta el estado sin volver a crear la orden.
+          if (anterior?.accion === "subido-pendiente-confirmacion") {
+            try {
+              const pedidoActual = await cliente.obtenerPedido(id, idEmpresa);
+              const estadoActual = Number(pedidoActual?.EstadoPedido);
+              if (estadoActual === 2) {
+                marcarP("subido", `${anterior.detalle}; LucidSales ya está Confirmado`);
+              } else if ([0, 3].includes(estadoActual)) {
+                const cambio = await cambiarEstado({ cliente, id, estado: 2, soloDesde: [0, 3], tienda: idEmpresa });
+                if (cambio.noActualizado) {
+                  marcarP("subido", `${anterior.detalle}; no se retrocedió el estado de LucidSales: ${cambio.msg}`);
+                } else {
+                  marcarP("subido", `${anterior.detalle}; LucidSales actualizado a Confirmado`);
+                }
+              } else {
+                marcarP("subido", `${anterior.detalle}; se conservó el estado avanzado ${estadoActual}`);
+              }
+            } catch (e) {
+              marcarP("subido-pendiente-confirmacion", `${anterior.detalle}; pendiente Confirmado en LucidSales: ${e?.message ?? e}`);
+            }
+            omitidos++;
+            continue;
+          }
+          // Solo una creación confirmada (o un resultado incierto que requiere
+          // conciliación humana) bloquea nuevos intentos. Errores, frenados,
+          // chats que aún no llegaron y preparaciones dryRun se vuelven a mirar.
+          if (FINALES.has(anterior?.accion)) continue;
+          if (estados.length && !estados.includes(Number(p?.EstadoPedido))) continue;
+          omitidos++;
+
+          // 1) pedido canónico y conversación más reciente en LucidBot.
+          let pedidoCompleto;
+          let resumen;
+          try {
+            pedidoCompleto = await cliente.obtenerPedido(id, idEmpresa);
+            resumen = resumenDePedido(pedidoCompleto);
+            contacto.telefono = resumen.telefono || contacto.telefono;
+            contacto.nombre = resumen.cliente || contacto.nombre;
+          } catch (e) {
+            marcarP("error", e?.message ?? "no se pudo leer el pedido");
+            continue;
+          }
+          // Pedidos que SIEMPRE sube una persona. Se miran apenas se lee el
+          // pedido (sin consultar el chat ni la IA) y quedan finales.
+          //  - recoge en oficina de Inter Rapidisimo / Coordinadora
+          //  - "Sin Recaudo" (prepago)
+          const oficina = recogeEnOficina(resumen?.direccion, resumen?.referencias);
+          if (oficina) {
+            marcarP("requiere-humano", `recoge en oficina de ${oficina}: lo sube una persona eligiendo la oficina en Dropi`);
+            detalle.push({ id, accion: "requiere-humano", detalle: `oficina de ${oficina}` });
+            continue;
+          }
+          if (Number(resumen?.tipoPago) === 2) {
+            marcarP("requiere-humano", "pedido sin recaudo (prepago): lo sube una persona");
+            detalle.push({ id, accion: "requiere-humano", detalle: "pedido sin recaudo (prepago)" });
+            continue;
+          }
+
+          const conv = conversacion.porPedido(id);
+          let mensajes = conv?.mensajes ?? [];
+          const chatUrl = conv?.meta?.chatUrl ?? conv?.meta?.chat_url ?? conv?.meta?.inboxUrl ?? "";
+          if (lucidBotContactos?.obtenerConversacion) {
+            const chat = await lucidBotContactos.obtenerConversacion({ pedido: pedidoCompleto, chatUrl });
+            if (chat.configurado) {
+              if (!chat.ok) {
+                marcarP("sin-conversacion", `no se pudo traer la conversación actual de LucidBot: ${chat.detalle}`);
+                detalle.push({ id, accion: "sin-conversacion", detalle: chat.detalle });
+                continue;
+              }
+              mensajes = chat.mensajes;
+            }
+          }
+          if (!mensajes.length) {
+            marcarP("sin-conversacion", "no hay una conversación reciente disponible en LucidBot");
+            continue;
+          }
+
+          // la tienda de Dropi sale de la configuracion; sin ella no se sube
+          // (se mira antes del agente para no gastar el LLM en balde)
+          const tiendaDropi = tiendaDropiDe(c, resumen?.idEmpresa || idEmpresa);
+          if (!tiendaDropi) {
+            marcarP("sin-tienda-dropi", `la tienda ${resumen?.idEmpresa || idEmpresa} no tiene tienda de Dropi configurada`);
+            detalle.push({ id, accion: "sin-tienda-dropi" });
+            continue;
+          }
+
+          // 2) validar el estado del pedido antes de ejecutar el agente.
+          if (![0, 2, 3].includes(Number(resumen.estadoPedido))) {
+            marcarP("estado-incompatible", `estado ${resumen.estadoPedido}: solo se suben pedidos Por confirmar, Confirmado o Modificado`);
+            detalle.push({ id, accion: "estado-incompatible", detalle: `estado ${resumen.estadoPedido}` });
+            continue;
+          }
+
+          // 3) el agente decide
+          const r2 = await ejecutarAgente({ resumen, mensajes, extraer });
+          analisisActual = resumirAnalisis(r2);
+          // la IA no respondio (timeout, saldo, clave): error tecnico, no un
+          // pedido frenado por su contenido
+          if (r2.falloIA) {
+            marcarP("error", `la IA no pudo leer el chat: ${r2.falloIA}`);
+            detalle.push({ id, accion: "error", detalle: r2.falloIA });
+            continue;
+          }
+          // direccion que no es de nomenclatura colombiana: no se sube, queda
+          // marcada (final) y se avisa al admin. Reintentar no la arregla sola.
+          if (r2.direccionInvalida) {
+            const det = r2.problemas.map((x) => `${x.campo}: ${x.detalle}`).join("; ");
+            marcarP("direccion-invalida", det);
+            invalidas.push({ id, detalle: det, contacto: { ...contacto } });
+            frenados++;
+            detalle.push({ id, accion: "direccion-invalida" });
+            continue;
+          }
+          if (r2.accion !== "subir") {
+            marcarP("frenado", r2.problemas.map((x) => `${x.campo}: ${x.detalle}`).join("; "));
+            frenados++;
+            detalle.push({ id, accion: "frenar", motivos: r2.problemas.map((x) => x.campo) });
+            continue;
+          }
+
+          // 4) se sube (o solo se prepara si dryRun)
+          //    la ciudad/depto van por NOMBRE: los ids de LucidSales no le
+          //    sirven al autocomplete del formulario de Dropi
+          let depto = String(resumen?.departamento ?? "");
+          let ciudad = String(resumen?.ciudad ?? "");
+          if (resolverUbicacion && depto && ciudad) {
+            let ub = null;
+            try {
+              ub = await resolverUbicacion({
+                pais: resumen?.pais ?? 47,
+                idDepartamento: depto,
+                idCiudad: ciudad,
+              });
+              depto = ub?.departamento ?? depto;
+              ciudad = ub?.ciudad ?? ciudad;
+            } catch (e) {
+              marcarP("error", `no se pudo resolver ciudad/departamento: ${e?.message ?? e}`);
+              detalle.push({ id, accion: "error", detalle: "no se pudo resolver ciudad/departamento" });
+              continue;
+            }
+            if (!ub?.departamento || !ub?.ciudad) {
+              marcarP("error", "la ciudad/departamento no se resolvió a nombres válidos");
+              detalle.push({ id, accion: "error", detalle: "ciudad/departamento no resueltos" });
+              continue;
+            }
+          }
+
+          // el link navegable del producto en Dropi (sale del Google Sheets):
+          //   id de LucidSales -> idProductoDropi -> dropiLink
+          const idProductoLucid = resumen?.productos?.[0]?.id;
+          let productoUrl = null;
+          if (resolverProductoDropi && idProductoLucid) {
+            try {
+              productoUrl = await resolverProductoDropi(idProductoLucid);
+            } catch (e) {
+              log.warn?.("[subida] no se pudo resolver el producto en Dropi:", e?.message ?? e);
+            }
+          }
+          if (!productoUrl) {
+            marcarP("error", "producto sin link de Dropi en el sheet");
+            detalle.push({ id, accion: "error", detalle: "producto sin link de Dropi en el sheet" });
+            continue;
+          }
+
+          const partes = String(resumen?.cliente ?? "").trim().split(/\s+/);
+          const contactoPedido = {
+            id: resumen?.id,
+            idPedido: resumen?.idPedido,
+            Nombre: partes[0] ?? "",
+            Apellido: partes.slice(1).join(" "),
+            Movil: resumen?.telefono,
+            chatUrl: conv?.meta?.chatUrl ?? conv?.meta?.chat_url ?? conv?.meta?.inboxUrl ?? "",
+          };
+          let rNav;
+          try {
+            rNav = await dropiNav.subirPedido({
+              productoUrl,
+              nombre: partes[0] ?? "",
+              apellido: partes.slice(1).join(" "),
+              telefono: resumen?.telefono,
+              // la direccion validada (normalizada o corregida por formato)
+              direccion: r2.direccionEnvio?.normalizada || resumen?.direccion,
+              departamento: depto,
+              ciudad,
+              transportadoraId: c.transportadoraId,
+              tienda: tiendaDropi,
+              seguro: true,
+              tipoPago: resumen?.tipoPago,
+              productos: (resumen?.productos ?? []).map((x) => ({
+                id: x.id,
+                cantidad: x.cantidad,
+                precio: x.precio,
+              })),
+              soloPreparar: c.dryRun === true,
+            });
+          } catch (e) {
+            const detalleError = e?.message ?? String(e);
+            if (!c.dryRun) await notificarUnaVez(c, id, contactoPedido, "fallido", detalleError);
+            marcarP("error", detalleError);
+            detalle.push({ id, accion: "error", detalle: detalleError });
+            continue;
+          }
+
+          // El navegador estaba ocupado con otra subida (p. ej. una manual):
+          // no es un fallo del pedido. No se marca ni se avisa; la vuelta se
+          // corta y el pedido se mira en la siguiente.
+          if (rNav?.ocupado) {
+            detenido = "navegador de Dropi ocupado con otra subida";
+            break vueltaTiendas;
+          }
+          // Sesion vencida o captcha: es un problema de NUESTRA sesion, no del
+          // pedido. No se avisa al contacto y se corta la vuelta entera (los
+          // demas pedidos chocarian con lo mismo). Se reintenta al resolverlo.
+          if (rNav?.requiereLogin || rNav?.requiereCaptcha) {
+            marcarP(rNav.requiereLogin ? "requiere-login" : "requiere-captcha", rNav.detalle);
+            detalle.push({ id, accion: rNav.requiereLogin ? "requiere-login" : "requiere-captcha" });
+            detenido = rNav.requiereLogin ? "la sesion de Dropi vencio" : "Dropi exige captcha";
+            await alertarSesion(
+              c,
+              rNav.requiereLogin ? "requiere-login" : "requiere-captcha",
+              rNav.detalle,
+              esperando,
+            );
+            break vueltaTiendas;
+          }
+          // llego al formulario: la sesion sirve
+          if (c.sesionDropi?.estado && c.sesionDropi.estado !== "ok" && (rNav?.ok || rNav?.creado || rNav?.preparado)) {
+            sesionOk(c, "subida");
+          }
+          if (rNav?.resultadoIncierto) {
+            await notificarUnaVez(c, id, contactoPedido, "incierto", rNav.detalle, rNav?.idDropi);
+            marcarP("resultado-incierto", rNav.detalle);
+            detalle.push({ id, accion: "resultado-incierto", detalle: rNav.detalle });
+            inciertos++;
+            continue;
+          }
+          if (!rNav?.ok) {
+            if (!c.dryRun) await notificarUnaVez(c, id, contactoPedido, "fallido", rNav?.detalle ?? "no se pudo subir");
+            marcarP("error", rNav?.detalle ?? "no se pudo subir");
+            detalle.push({ id, accion: "error", detalle: rNav?.detalle });
+            continue;
+          }
+
+          if (!c.dryRun && !rNav?.creado) {
+            await notificarUnaVez(c, id, contactoPedido, "fallido", rNav?.detalle ?? "Dropi no confirmó la creación");
+            marcarP("error", rNav?.detalle ?? "Dropi no confirmó la creación");
+            detalle.push({ id, accion: "error", detalle: rNav?.detalle ?? "Dropi no confirmó la creación" });
+            continue;
+          }
+          let detalleFinal = c.dryRun
+            ? `formulario preparado; seguro=${rNav.seguro}`
+            : `Dropi #${rNav.idDropi ?? "confirmado"}; seguro=${rNav.seguro}`;
+          let pendienteConfirmacion = false;
+          if (!c.dryRun && rNav.creado) {
+            // Registrar el éxito de Dropi antes de llamar a LucidSales: si esa
+            // actualización falla o el proceso cae, no se duplica la orden.
+            marcarP("subido", detalleFinal);
+          }
+          if (!c.dryRun && rNav.creado) {
+            const estadoActual = Number(resumen?.estadoPedido);
+            if (estadoActual === 2) {
+              detalleFinal += "; LucidSales ya estaba Confirmado";
+            } else if ([0, 3].includes(estadoActual)) {
+              try {
+                const cambioEstado = await cambiarEstado({ cliente, id, estado: 2, soloDesde: [0, 3], tienda: idEmpresa });
+                detalleFinal += cambioEstado.noActualizado
+                  ? `; ${cambioEstado.msg}`
+                  : "; LucidSales actualizado a Confirmado";
+              } catch (e) {
+                detalleFinal += `; pendiente actualizar LucidSales a Confirmado: ${e?.message ?? e}`;
+                pendienteConfirmacion = true;
+              }
+            } else {
+              detalleFinal += `; LucidSales conservó el estado ${Number.isFinite(estadoActual) ? estadoActual : "desconocido"} para no retroceder un pedido avanzado`;
+            }
+          }
+          if (!c.dryRun && rNav.creado) {
+            const avisoLucidBot = await notificarUnaVez(c, id, contactoPedido, "exitoso", detalleFinal, rNav.idDropi);
+            if (avisoLucidBot && !avisoLucidBot.ok && !avisoLucidBot.omitido) {
+              detalleFinal += `; aviso Lucid Bot falló: ${avisoLucidBot.detalle}`;
+            }
+          }
+          marcarP(c.dryRun ? "preparado" : pendienteConfirmacion ? "subido-pendiente-confirmacion" : "subido", detalleFinal);
+          subidos++;
+          detalle.push({ id, accion: c.dryRun ? "preparado" : "subido", seguro: rNav.seguro });
+        }
+      }
+
+      await avisarLote(c, agotados, "requiere-revision", (n, lista, motivos) =>
+        `${n} pedidos pasaron a revisión manual tras agotar los intentos` +
+          (motivos.length ? ` (motivo: ${motivos.join(", ")})` : "") +
+          `: ${lista}. Puede ser un problema de configuración; revísalos en el panel (Subida a Dropi) y pulsa «Reintentar todos» cuando esté resuelto.`);
+      for (const a of agotados) detalle.push({ id: a.id, accion: "requiere-revision" });
+      await avisarLote(c, invalidas, "direccion-invalida", (n, lista) =>
+        `${n} pedidos tienen una dirección que no es válida en Colombia y no se subieron: ${lista}. Pide al cliente la dirección con el formato «Cra 40 # 23-23, barrio», corrígela en el pedido y pulsa «Reintentar».`);
+      if (invalidas.length) log.log(`[subida] ${invalidas.length} pedido(s) con dirección inválida`);
+      if (agotados.length) log.log(`[subida] ${agotados.length} pedido(s) pasan a revisión manual`);
+
+      if (subidos || frenados) {
+        log.log(`[subida] ${c.dryRun ? "preparados" : "subidos"}: ${subidos}, frenados: ${frenados}`);
+      }
+      if (detenido) {
+        if (detenido !== ultimoAviso) log.warn?.(`[subida] vuelta detenida: ${detenido}`);
+        ultimoAviso = detenido;
+      } else {
+        ultimoAviso = null;
+      }
+      return {
+        ok: true,
+        subidos,
+        frenados,
+        revision: agotados.length,
+        omitidos,
+        inciertos,
+        dryRun: c.dryRun,
+        detalle,
+        ...(detenido ? { detenido } : {}),
+      };
+    } catch (e) {
+      const msg = e?.message ?? String(e);
+      if (msg !== ultimoAviso) {
+        log.warn?.("[subida] error en la vuelta:", msg);
+        ultimoAviso = msg;
+      }
+      return { ok: false, error: msg };
+    } finally {
+      corriendo = false;
+    }
+  }
+
+  return {
+    /** Arranca el intervalo. Si esta apagado el tick no hace nada. */
+    arrancar() {
+      if (timer) return;
+      const c = leer();
+      const seg = Math.max(30, Math.min(Number(c.cadaSegundos) || 120, 3600));
+      timer = setInterval(() => {
+        tick().catch(() => {});
+      }, seg * 1000);
+      // unref: el intervalo no debe mantener vivo el proceso por si solo
+      // (en el server lo sostiene el listen, y en las pruebas no debe colgar)
+      if (typeof timer.unref === "function") timer.unref();
+      log.log(`[subida] automatica ${c.automatico ? "ACTIVA" : "apagada"} (cada ${seg}s, dryRun=${c.dryRun})`);
+    },
+
+    detener() {
+      if (timer) clearInterval(timer);
+      timer = null;
+    },
+
+    tick,
+
+    /** Configuracion actual (sin el registro de procesados). */
+    config() {
+      const c = leer();
+      const { procesados, ...resto } = c;
+      return { ...resto, procesados: Object.keys(procesados ?? {}).length };
+    },
+
+    /** Actualiza la configuracion. */
+    configurar(patch = {}) {
+      const c = leer();
+      for (const k of ["automatico", "dryRun"]) {
+        if (k in patch) c[k] = Boolean(patch[k]);
+      }
+      if ("cadaSegundos" in patch) c.cadaSegundos = Math.max(30, Math.min(Number(patch.cadaSegundos) || 120, 3600));
+      if ("estados" in patch && Array.isArray(patch.estados)) c.estados = patch.estados.map(Number).filter(Number.isInteger);
+      if ("tiendas" in patch && Array.isArray(patch.tiendas)) c.tiendas = patch.tiendas.map(String);
+      if ("transportadoraId" in patch) c.transportadoraId = Number(patch.transportadoraId) || 5;
+      if ("maxIntentos" in patch) c.maxIntentos = Math.max(1, Math.min(Number(patch.maxIntentos) || 2, 10));
+      if ("tiendasDropi" in patch && patch.tiendasDropi && typeof patch.tiendasDropi === "object") {
+        const limpio = {};
+        for (const [k, v] of Object.entries(patch.tiendasDropi)) {
+          const clave = String(k).trim();
+          const nombre = String(v ?? "").trim().slice(0, 120);
+          if (clave && nombre) limpio[clave] = nombre;
+        }
+        c.tiendasDropi = limpio;
+      }
+      guardar(c);
+      this.detener();
+      this.arrancar();
+      return this.config();
+    },
+
+    /** Ultimos pedidos tratados, mas recientes primero. */
+    ultimos(limite = 30) {
+      const c = leer();
+      return Object.entries(c.procesados ?? {})
+        .map(([id, v]) => ({ id, ...v }))
+        .sort((a, b) => String(b.ts).localeCompare(String(a.ts)))
+        .slice(0, Math.max(1, Math.min(Number(limite) || 30, 200)));
+    },
+
+    /** Estado de la sesion de Dropi visto por la subida. */
+    sesion() {
+      return leer().sesionDropi ?? { estado: "desconocido" };
+    },
+
+    /** La subida manual tambien reporta caidas de sesion (mismo aviso unico). */
+    async reportarSesion(tipo, detalle) {
+      return alertarSesion(leer(), tipo, detalle);
+    },
+
+    /** Sesion actualizada desde el panel o subida manual correcta. */
+    sesionRestablecida(origen = "panel") {
+      sesionOk(leer(), origen);
+      return leer().sesionDropi;
+    },
+
+    /** Nombre de la tienda de Dropi para una tienda de LucidSales ("" si no hay). */
+    tiendaDropiPara(idEmpresa) {
+      return tiendaDropiDe(leer(), idEmpresa);
+    },
+
+    estadoPedido(id) {
+      const clave = String(id ?? "");
+      return resultadosTerminales.get(clave) ?? leer().procesados?.[clave] ?? null;
+    },
+
+    registrarResultado(id, accion, detalle) {
+      const c = leer();
+      marcar(c, id, accion, detalle);
+      const resultado = c.procesados?.[String(id)] ?? null;
+      if (resultado && ["subido", "subido-pendiente-confirmacion", "resultado-incierto"].includes(accion)) {
+        resultadosTerminales.set(String(id), resultado);
+      }
+      return resultado;
+    },
+
+    /** Vuelve a habilitar TODOS los pedidos en revisión (p. ej. tras arreglar la configuración). */
+    rearmarRevision() {
+      const c = leer();
+      const ids = Object.keys(c.procesados ?? {}).filter((k) => REARMABLES.has(c.procesados[k]?.accion));
+      for (const k of ids) delete c.procesados[k];
+      if (ids.length && !guardar(c)) throw new ErrorApi(500, "No se pudo guardar el reintento");
+      return { ok: true, rearmados: ids.length };
+    },
+
+    /** Libera un resultado incierto solo tras conciliación humana explícita. */
+    rearmar(id, confirmarNoCreado = false) {
+      const c = leer();
+      const clave = String(id ?? "").trim();
+      if (!clave) throw new ErrorApi(400, "Falta el id del pedido");
+      const accion = c.procesados?.[clave]?.accion;
+      // en revision: se vuelve a intentar desde cero (otros N intentos)
+      if (REARMABLES.has(accion)) {
+        delete c.procesados[clave];
+        if (!guardar(c)) throw new ErrorApi(500, "No se pudo guardar el reintento");
+        return { ok: true, id: clave };
+      }
+      if (confirmarNoCreado !== true) {
+        throw new ErrorApi(400, "Confirma que verificaste en Dropi que la orden no existe");
+      }
+      if (accion !== "resultado-incierto") {
+        throw new ErrorApi(409, "El pedido no está en revisión ni tiene un resultado incierto pendiente");
+      }
+      delete c.procesados[clave];
+      if (!guardar(c)) throw new ErrorApi(500, "No se pudo guardar el reintento");
+      resultadosTerminales.delete(clave);
+      return { ok: true, id: clave };
+    },
+  };
+}
