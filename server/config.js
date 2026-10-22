@@ -41,7 +41,10 @@ export function cargarConfig(env = process.env) {
     /** En produccion, enlaza este host solo a la red privada del proxy. */
     HOST: String(g("HOST", "127.0.0.1")),
     NODE_ENV: String(g("NODE_ENV", "development")),
-    /** Clave que deben enviar los clientes (panel y apps externas). */
+    /**
+     * Clave para integraciones servidor-a-servidor (p. ej. el bot). El PANEL
+     * no la usa: entra con la sesion de LucidSales (ver sesionPanel.js).
+     */
     API_KEY: String(g("API_KEY", "")),
     /** Credenciales de la cuenta de servicio contra LucidSales. */
     LUCID_EMAIL: String(g("LUCID_EMAIL", "")),
@@ -143,6 +146,5 @@ export function faltantesDeConfig(config) {
   if (!config.LUCID_EMAIL || !config.LUCID_PASSWORD) {
     faltan.push("LUCID_EMAIL / LUCID_PASSWORD (credenciales de LucidSales)");
   }
-  if (!config.API_KEY) faltan.push("API_KEY (clave de acceso a este backend)");
   return faltan;
 }

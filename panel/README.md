@@ -74,8 +74,9 @@ npm run dev
 ```
 
 - Vite hace de proxy: `/api` -> `http://localhost:8787` (ver `vite.config.ts`).
-- `VITE_API_KEY` en `panel/.env` debe ser el **mismo valor** que `API_KEY` en
-  `server/.env` (ver `.env.example`).
+- El panel entra al backend con la **sesión de LucidSales** del usuario
+  (`x-token` + `x-tienda`); el servidor la verifica y aplica sus permisos. No
+  hace falta (ni se debe) poner ninguna clave en `panel/.env`.
 - **Si el backend no esta levantado el panel no se queda sin nada**: reintenta
   por la API directa (`get-pedido-by-id` + `update`) y el toast anota
   `· API directa`. Los errores reales (estado invalido, API key) si se muestran.
@@ -83,9 +84,8 @@ npm run dev
   `../server/README.md`.
 - El mismo backend expone `GET /api/interrapidisimo/oficina` y
   `GET /api/interrapidisimo/oficinas` (oficina principal y **listado** de
-  oficinas por municipio) que **no exigen `x-api-key`**: la tarjeta *Oficina
-  Inter Rapidísimo* funciona aunque `VITE_API_KEY` no este configurado, mientras
-  el backend este levantado.
+  oficinas por municipio) que son **públicos** (no piden sesión), mientras el
+  backend este levantado.
 
 ## Experiencia de usuario
 
@@ -148,7 +148,7 @@ Pensado para quien no conoce la API:
   **⟳ Actualizar** (salta el cache diario), **CSV** (campañas / alertas /
   productos) y cálculo en vivo — al guardar una ganancia se recalcula todo
   sin volver a consultar Meta. Todo va al backend propio `/api/anuncios`
-  con `x-api-key` (`api/anuncios.ts` sobre `api/backend.ts`).
+  con la sesión de LucidSales (`api/anuncios.ts` sobre `api/backend.ts`).
   **Cada usuario conecta su propia cuenta de Meta**: el botón **🔌 Cuenta**
   abre `components/anuncios/ConectarCuenta.tsx` (pegar token → se valida con
   `/me`, lista sus cuentas → marcar cuáles entran + TRM → guardar, con aviso
@@ -448,7 +448,7 @@ Pensado para quien no conoce la API:
 ```
 src/
   api/client.ts       fetch + x-token + manejo de 401 (cierra sesion)
-  api/backend.ts      fetch de NUESTRO backend (x-api-key) + descarga de CSV
+  api/backend.ts      fetch de NUESTRO backend (sesión LucidSales) + descarga de CSV
   api/anuncios.ts     tipos y llamadas de rentabilidad de campanas Meta
   api/endpoints.ts    wrappers documentados + cambiarEstadoPedido (backend propio)
   api/pedidoBody.ts   cuerpo de /pedidos/update montado desde un pedido crudo

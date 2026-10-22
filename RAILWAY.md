@@ -17,11 +17,11 @@ los archivos de estado y el perfil del navegador bajo `/data`.
    perfil de Chrome; varias instancias podrían procesar el mismo pedido o
    escribir datos a la vez.
 5. Añade las variables secretas desde Railway, nunca desde el repositorio:
-   `API_KEY` (32+ caracteres aleatorios), credenciales de LucidSales, tokens de
+   `API_KEY` (opcional, solo integraciones; 32+ caracteres), credenciales de LucidSales, tokens de
    Dropi y LLM, además de `CORS_ORIGIN` con el origen HTTPS exacto del panel.
    Railway proporciona `PORT`; el contenedor usa `HOST=0.0.0.0`.
-6. Mantén la API en la red privada de Railway mientras se completa la
-   autenticación de usuario. No generes un dominio público para el servicio API.
+6. La API puede quedar en la red privada de Railway y exponerse solo a través
+   del servicio del panel (mismo origen `/api`).
 
 Railway monta el volumen al iniciar el contenedor (no durante el build); por eso
 la imagen inicializa `/data` en su entrypoint. El proceso Node se ejecuta como
@@ -30,20 +30,32 @@ en la [documentación de volúmenes](https://docs.railway.com/volumes),
 [monorepos](https://docs.railway.com/deployments/monorepo) y
 [health checks](https://docs.railway.com/deployments/healthchecks).
 
-## Bloqueo antes de publicar el panel
+## Acceso al panel (resuelto)
 
-Todavía no publiques la interfaz frente a este API. El contrato actual confía
-en `x-api-key` y `x-usuario` enviados por el navegador; el primero se puede
-extraer del bundle y el segundo se puede falsificar. La interfaz y el backend
-necesitan una puerta de acceso que valide la sesión real de LucidSales y aplique
-rol y tienda en el servidor. Luego el panel puede enrutar `/api` por una puerta
-privada sin incluir la clave en el bundle.
+El panel ya no lleva ninguna clave en su JavaScript. Cada petición a `/api`
+manda la sesión de LucidSales del usuario (`x-token`, el token de
+`/auth/addShopId`) y la tienda activa (`x-tienda`). El servidor la verifica con
+LucidSales (`POST /auth/addShopId`, caché de 5 minutos) y aplica los permisos
+reales del usuario (ver `server/sesionPanel.js` y `REGLAS_ACCESO` en
+`server/servidor.js`):
 
-Después de resolver autenticación, publica el panel como otro servicio en la
-misma aplicación Railway, usa la red privada para alcanzar la API y enruta
-`/b` hacia `https://panel.lucidsales.co`. Configura el dominio y HTTPS en el
-servicio del panel, con `/api` y `/b` bajo ese mismo origen. No habilites la
-subida automática ni el reparto durante el primer despliegue.
+| Permiso de LucidSales | Qué habilita en el backend |
+|---|---|
+| 2 Pedidos | validar/subir pedidos, conversación, estados, reparto |
+| 4 Métricas | anuncios |
+| 7 Usuarios y Permisos | horarios |
+| 8 Ajustes Tienda | subida automática, IA, Lucid Bot, sesión de Dropi, credenciales |
+
+`API_KEY` queda solo para integraciones servidor-a-servidor (por ejemplo, el
+bot que manda conversaciones); es opcional y, si se define en producción, debe
+tener 32+ caracteres. No la pongas en el panel.
+
+Publica el panel como otro servicio en la misma aplicación Railway, usa la red
+privada para alcanzar la API y enruta `/b` hacia `https://panel.lucidsales.co`.
+Configura el dominio y HTTPS en el servicio del panel, con `/api` y `/b` bajo
+ese mismo origen, y define `CORS_ORIGIN` con ese origen exacto. Despliega con
+la subida en «Preparar sin crear» y el reparto apagado; actívalos después de
+revisar unos pedidos.
 
 ## Despliegues y sesión Dropi
 

@@ -1,12 +1,21 @@
 // Cliente HTTP para NUESTRO backend (server/), que no es el de LucidSales.
 //
-// Mismo origen (/api, el proxy de Vite lo manda a localhost:8787) pero con la
-// cabecera x-api-key (VITE_API_KEY, el mismo valor que API_KEY del servidor)
-// y x-usuario (para poder auditar quien hizo cada cosa).
+// Mismo origen (/api, el proxy de Vite lo manda a localhost:8787). El panel
+// entra con la SESION DE LUCIDSALES del usuario (x-token + x-tienda): el
+// servidor la verifica con LucidSales y aplica sus permisos. Ya no hay ninguna
+// clave fija dentro del JavaScript.
 import { loadSession } from "./client";
 
 const API_PROPIA = (import.meta.env.VITE_API_PROPIA as string | undefined) ?? "";
-const API_KEY = (import.meta.env.VITE_API_KEY as string | undefined) ?? "";
+
+/** Cabeceras de acceso a nuestro backend: la sesion de LucidSales del usuario. */
+export function cabecerasBackend(): Record<string, string> {
+  const sesion = loadSession();
+  return {
+    ...(sesion?.token ? { "x-token": sesion.token } : {}),
+    ...(sesion?.tiendaActiva ? { "x-tienda": String(sesion.tiendaActiva) } : {}),
+  };
+}
 
 export interface RespuestaBackend {
   ok?: boolean;
@@ -19,7 +28,6 @@ export async function backend<T = RespuestaBackend>(
   opciones: { method?: "GET" | "POST" | "PUT" | "DELETE"; body?: unknown } = {},
 ): Promise<T> {
   const { method = "GET", body } = opciones;
-  const sesion = loadSession();
 
   let res: Response;
   try {
@@ -27,9 +35,7 @@ export async function backend<T = RespuestaBackend>(
       method,
       headers: {
         ...(body !== undefined ? { "content-type": "application/json" } : {}),
-        ...(API_KEY ? { "x-api-key": API_KEY } : {}),
-        ...(sesion?.user?.email ? { "x-usuario": sesion.user.email } : {}),
-        ...(sesion?.tiendaActiva ? { "x-tienda": String(sesion.tiendaActiva) } : {}),
+        ...cabecerasBackend(),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
@@ -60,16 +66,11 @@ export async function backendSuave<T = RespuestaBackend>(path: string): Promise<
  * mismas cabeceras y lo guarda con el nombre que manda el servidor.
  */
 export async function backendArchivo(path: string): Promise<void> {
-  const sesion = loadSession();
 
   let res: Response;
   try {
     res = await fetch(`${API_PROPIA}${path}`, {
-      headers: {
-        ...(API_KEY ? { "x-api-key": API_KEY } : {}),
-        ...(sesion?.user?.email ? { "x-usuario": sesion.user.email } : {}),
-        ...(sesion?.tiendaActiva ? { "x-tienda": String(sesion.tiendaActiva) } : {}),
-      },
+      headers: cabecerasBackend(),
     });
   } catch {
     throw new Error("No se pudo conectar con el backend propio (¿esta arrancado?)");

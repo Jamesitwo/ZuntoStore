@@ -105,8 +105,9 @@ const server = crearServidor({
 });
 
 if (config.NODE_ENV === "production") {
-  if (!config.API_KEY || config.API_KEY.length < 32) {
-    throw new Error("En produccion, API_KEY debe tener al menos 32 caracteres aleatorios");
+  // API_KEY es opcional (solo integraciones); si esta, que sea fuerte
+  if (config.API_KEY && config.API_KEY.length < 32) {
+    throw new Error("En produccion, API_KEY (si se usa) debe tener al menos 32 caracteres aleatorios");
   }
   if (!config.CORS_ORIGIN || config.CORS_ORIGIN === "*") {
     throw new Error("En produccion, define CORS_ORIGIN con el origen HTTPS exacto del panel");

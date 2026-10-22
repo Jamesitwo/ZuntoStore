@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { errMsg, loadSession } from "../api/client";
-import { backend, backendSuave } from "../api/backend";
+import { errMsg } from "../api/client";
+import { backend, backendSuave, cabecerasBackend } from "../api/backend";
 import { AnalisisPedido } from "./AnalisisPedido";
 import { useToast } from "./Toast";
 import { ErrorBanner, Spinner } from "./ui";
@@ -17,20 +17,16 @@ import { ErrorBanner, Spinner } from "./ui";
  * La subida responde 409 con los motivos cuando el agente frena, 401 si la
  * sesion de Dropi vencio y 409 si aparece captcha: cada caso se muestra aparte.
  */
-const API_KEY = (import.meta.env.VITE_API_KEY as string | undefined) ?? "";
 
 /** POST a nuestro backend devolviendo {status, datos} sin lanzar en errores. */
 async function postAgente(path: string, body: unknown): Promise<{ status: number; datos: any }> {
-  const sesion = loadSession();
   let res: Response;
   try {
     res = await fetch(path, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        ...(API_KEY ? { "x-api-key": API_KEY } : {}),
-        ...(sesion?.user?.email ? { "x-usuario": sesion.user.email } : {}),
-        ...(sesion?.tiendaActiva ? { "x-tienda": String(sesion.tiendaActiva) } : {}),
+        ...cabecerasBackend(),
       },
       body: JSON.stringify(body),
     });

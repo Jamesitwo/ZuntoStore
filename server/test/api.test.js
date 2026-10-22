@@ -506,14 +506,14 @@ test("rechaza x-api-key incorrecta", async () => {
   assert.equal(upstream.contar("/b/auth/login"), 0, "ni siquiera debe loguearse");
 });
 
-test("503 si el servidor no tiene API_KEY configurada", async () => {
+test("sin API_KEY en el servidor y sin sesion del panel: 401 (hay que iniciar sesion)", async () => {
   upstream.limpiar();
   const r = await llamar(puertoSinClave, "POST", "/api/pedidos/10/estado", {
     cuerpo: { estado: 2 },
     clave: "",
   });
-  assert.equal(r.status, 503);
-  assert.match(r.datos.msg, /API_KEY/);
+  assert.equal(r.status, 401);
+  assert.match(r.datos.msg, /sesión de LucidSales/);
 });
 
 test("se recupera si LucidSales devuelve 401 (token vencido)", async () => {

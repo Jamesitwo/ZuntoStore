@@ -24,7 +24,7 @@ Desde el panel tambien puedes usar `npm run api`.
 | Variable | Obligatoria | Descripcion |
 |----------|-------------|-------------|
 | `PORT` | no | Puerto HTTP (defecto `8787`) |
-| `API_KEY` | **si** | Clave en la cabecera `x-api-key`. El panel usa el mismo valor en `VITE_API_KEY` |
+| `API_KEY` | no | Solo integraciones servidor-a-servidor (cabecera `x-api-key`). El panel entra con la sesión de LucidSales |
 | `LUCID_EMAIL` / `LUCID_PASSWORD` | **si** | Cuenta de servicio contra LucidSales |
 | `LUCID_TIENDA` | no | Tienda por defecto; si esta vacia se usa la primera de la cuenta |
 | `LUCID_BASE` | no | `https://panel.lucidsales.co/b` (sin barra final) |
@@ -444,8 +444,8 @@ Todo se cachea en memoria porque Inter responde `cache-control: no-store`.
 ## Como lo usa el panel
 
 `panel/vite.config.ts` hace de proxy: `/api` -> `http://localhost:8787`.
-`cambiarEstadoPedido()` en `panel/src/api/endpoints.ts` manda `x-api-key`
-(`VITE_API_KEY`), `x-origen: panel` y `x-usuario`; si el backend no responde
+`cambiarEstadoPedido()` en `panel/src/api/endpoints.ts` manda la sesión de
+LucidSales (`x-token` + `x-tienda`) y `x-origen: panel`; si el backend no responde
 (404/503/504/timeout/red) **vuelve al flujo directo** contra LucidSales y el
 toast anota `· API directa`, asi que el panel nunca se queda sin cambio de
 estado.
@@ -572,16 +572,15 @@ secretos (no en el repositorio).
 
 - El backend se enlaza a `127.0.0.1` por defecto; si corre en un contenedor,
   configura `HOST=0.0.0.0` y publica el puerto solo en la red privada del proxy.
-- Con `NODE_ENV=production` el proceso no inicia si `API_KEY` tiene menos de
-  32 caracteres o `CORS_ORIGIN` está vacío o es `*`. Configura el origen HTTPS
+- Con `NODE_ENV=production` el proceso no inicia si `API_KEY` (cuando se
+  define) tiene menos de 32 caracteres o `CORS_ORIGIN` está vacío o es `*`. Configura el origen HTTPS
   exacto del panel. El backend verifica el encabezado `Origin` y añade cabeceras
   de seguridad y `no-store` a sus respuestas.
-- **No publicar aún:** el panel todavía incluye `VITE_API_KEY` en el bundle y
-  manda `x-usuario` desde el navegador. La clave del navegador no es secreta y
-  ese nombre de usuario no constituye identidad verificada. Antes de exponer
-  rutas privadas hay que cambiar el contrato a una sesión de usuario validada
-  por servidor y aplicar permisos/tenant en cada operación. CORS no reemplaza
-  autenticación.
+- **Acceso del panel:** cada petición lleva la sesión de LucidSales del usuario
+  (`x-token`) y su tienda (`x-tienda`); el servidor la verifica con LucidSales
+  (`POST /auth/addShopId`, caché de 5 min) y aplica sus permisos por ruta
+  (`REGLAS_ACCESO` en `servidor.js`: 2 pedidos, 4 anuncios, 7 horarios,
+  8 configuración). Las tiendas pedidas por parámetro también se comprueban.
 - Los JSON/JSONL, credenciales, configuración Meta y perfil de Chrome contienen
   estado o secretos. Monta almacenamiento persistente privado con permisos
   restringidos y copias de seguridad cifradas; no los sirvas desde el proxy.
@@ -593,6 +592,5 @@ secretos (no en el repositorio).
 - Rota las credenciales que hayan estado en archivos locales o bundles y
   configúralas solo en el gestor de secretos del entorno.
 
-La migración de autenticación es requisito previo para dar acceso público a
-`/api`. No uses `VITE_API_KEY` para esconder una clave: cualquier visitante
-puede extraerla del JavaScript compilado.
+No pongas claves en variables `VITE_*`: cualquier visitante puede extraerlas
+del JavaScript compilado.

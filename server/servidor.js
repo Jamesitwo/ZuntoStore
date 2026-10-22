@@ -59,6 +59,7 @@ import { crearClienteDropi, armarPedidoDropi } from "./dropi.js";
 import { crearDropiNavegador } from "./dropiNavegador.js";
 import { crearSubidaAutomatica } from "./subidaAutomatica.js";
 import { faltantesDeConfig } from "./config.js";
+import { crearVerificadorSesion, tienePermiso, tieneTienda } from "./sesionPanel.js";
 import { recogeEnOficina } from "./direccionColombia.js";
 
 const LIMITE_CUERPO = 256 * 1024; // 256 KB
@@ -114,7 +115,10 @@ export function crearServidor({
   subidaAuto,
   lucidBotContactos,
   resolverProductoDropi,
+  verificarSesion,
 }) {
+  // acceso del panel: sesion real de LucidSales (x-token + x-tienda)
+  const sesiones = verificarSesion ?? crearVerificadorSesion({ base: config.LUCID_BASE });
   const interCliente = inter ?? crearClienteInter(config);
   const asig =
     asignacion ?? crearAsignacion(config.ASIGNACION ?? "./asignacion.json", { zona: config.TZ_ASIGNACION });
@@ -143,7 +147,7 @@ export function crearServidor({
     });
   const CORS = {
     "Access-Control-Allow-Origin": config.CORS_ORIGIN,
-    "Access-Control-Allow-Headers": "content-type, x-api-key, x-origen, x-usuario, x-tienda",
+    "Access-Control-Allow-Headers": "content-type, x-api-key, x-token, x-origen, x-usuario, x-tienda",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Access-Control-Max-Age": "600",
     Vary: "Origin",
@@ -233,12 +237,19 @@ export function crearServidor({
 
   /** Tienda activa del panel (x-tienda): con ella se consultan sus pedidos. */
   function tiendaDe(req) {
+    // panel: la tienda VERIFICADA con LucidSales; integracion interna: cabecera
+    if (req.__acceso && !req.__acceso.interna) return req.__acceso.tienda;
     const t = String(req.headers["x-tienda"] ?? "").trim();
     return /^\d{1,12}$/.test(t) ? t : undefined;
   }
 
   /** Quien hace la peticion: el email del panel (x-usuario). */
   function usuarioDe(req) {
+    // panel: el usuario VERIFICADO (no se cree a la cabecera)
+    if (req.__acceso && !req.__acceso.interna) {
+      const u = req.__acceso.usuario;
+      return u?.email ?? (u?.id != null ? `id:${u.id}` : null);
+    }
     const u = req.headers["x-usuario"];
     const v = typeof u === "string" ? u.trim() : "";
     return v ? v.slice(0, 120) : null;
@@ -272,16 +283,76 @@ export function crearServidor({
     return a;
   }
 
-  /** API key en constante tiempo (comparacion de hashes). */
-  function autorizar(req) {
-    if (!config.API_KEY) {
-      throw new ErrorApi(503, "API_KEY no esta configurada en el servidor (server/.env)");
-    }
+  /** ¿x-api-key valida? (integraciones servidor-a-servidor, p. ej. el bot) */
+  function apiKeyValida(req) {
+    if (!config.API_KEY) return false;
     const recibida = String(req.headers["x-api-key"] ?? "");
+    if (!recibida) return false;
     const a = crypto.createHash("sha256").update(recibida).digest();
     const b = crypto.createHash("sha256").update(config.API_KEY).digest();
-    if (!crypto.timingSafeEqual(a, b)) {
-      throw new ErrorApi(401, "x-api-key invalida");
+    return crypto.timingSafeEqual(a, b);
+  }
+
+  /**
+   * Permiso que exige cada ruta (numeros de LucidSales). null = publica.
+   * El orden importa: la primera regla que coincide manda.
+   */
+  const REGLAS_ACCESO = [
+    [/^\/api\/salud$/, null],
+    [/^\/api\/interrapidisimo\//, null],
+    [/^\/api\/pedidos\/[^/]+\/(estado|conversacion|validar|subir)$/, "2"],
+    [/^\/api\/subida\/pedido\/[^/]+$/, "2"],
+    [/^\/api\/historial$/, "2"],
+    [/^\/api\/asignacion\/horario$/, "7"],
+    [/^\/api\/asignacion\/(config|probar)$/, "8"],
+    [/^\/api\/asignacion(\/|$)/, "2"],
+    [/^\/api\/anuncios(\/|$)/, "4"],
+    // configuracion sensible: subida, IA, Lucid Bot, sesion de Dropi, credenciales
+    [/^\/api\/(subida|llm|lucidbot|dropi|credenciales)(\/|$)/, "8"],
+  ];
+  const NOMBRE_PERMISO = { 2: "Pedidos", 4: "Métricas", 7: "Usuarios y Permisos", 8: "Ajustes Tienda" };
+
+  function permisoDeRuta(ruta) {
+    for (const [re, permiso] of REGLAS_ACCESO) if (re.test(ruta)) return { publica: permiso === null, permiso };
+    // cualquier otra ruta de la API: solo administradores
+    return { publica: false, permiso: "8" };
+  }
+
+  /**
+   * Control central de acceso. Deja en req.__acceso quien es:
+   *  - integracion interna con x-api-key (acceso total, sin usuario de panel)
+   *  - usuario del panel verificado con LucidSales (x-token + x-tienda)
+   */
+  async function controlarAcceso(req, ruta) {
+    const { publica, permiso } = permisoDeRuta(ruta);
+    if (publica) return;
+    if (apiKeyValida(req)) {
+      req.__acceso = { interna: true, usuario: null };
+      return;
+    }
+    const token = String(req.headers["x-token"] ?? "").trim();
+    if (!token) {
+      throw new ErrorApi(401, "Inicia sesión en el panel: falta la sesión de LucidSales");
+    }
+    const sesion = await sesiones.verificar(token, req.headers["x-tienda"]);
+    if (!tienePermiso(sesion, permiso)) {
+      throw new ErrorApi(
+        403,
+        `Tu usuario no tiene el permiso «${NOMBRE_PERMISO[permiso] ?? permiso}» (${permiso}) de LucidSales para esto`,
+      );
+    }
+    req.__acceso = sesion;
+  }
+
+  /** Las rutas protegidas ya pasaron por controlarAcceso; esto lo asegura. */
+  function autorizar(req) {
+    if (!req.__acceso) throw new ErrorApi(401, "Acceso no verificado");
+  }
+
+  /** Una tienda pedida por parametro tiene que ser del usuario. */
+  function exigirTienda(req, tienda) {
+    if (!tieneTienda(req.__acceso, tienda)) {
+      throw new ErrorApi(403, `No tienes acceso a la tienda ${tienda}`);
     }
   }
 
@@ -299,6 +370,9 @@ export function crearServidor({
       res.end();
       return;
     }
+
+    // quien pide y si puede (antes de cualquier ruta)
+    await controlarAcceso(req, ruta);
 
     if (req.method === "GET" && ruta === "/api/lucidbot/config") {
       autorizar(req);
@@ -410,7 +484,7 @@ export function crearServidor({
         a: r.estadoNuevo,
         motivo: cuerpo?.motivo ?? null,
         origen: String(req.headers["x-origen"] ?? "api"),
-        usuario: req.headers["x-usuario"] ?? null,
+        usuario: usuarioDe(req),
         sinCambios: r.sinCambios,
         ok: true,
       });
@@ -1086,6 +1160,7 @@ export function crearServidor({
     if (req.method === "GET" && ruta === "/api/asignacion") {
       autorizar(req);
       const idEmpresa = url.searchParams.get("idEmpresa") ?? "";
+      exigirTienda(req, idEmpresa);
       json(res, 200, { ok: true, ...asig.estado(idEmpresa) });
       return;
     }
@@ -1108,6 +1183,7 @@ export function crearServidor({
     if (req.method === "POST" && ruta === "/api/asignacion/repartir") {
       autorizar(req);
       const cuerpo = await leerCuerpo(req);
+      exigirTienda(req, cuerpo?.idEmpresa);
       const r = asig.repartir({
         usuarios: cuerpo?.usuarios,
         pedidos: cuerpo?.pedidos,
@@ -1164,6 +1240,9 @@ export function crearServidor({
     if (req.method === "POST" && ruta === "/api/asignacion/limpiar") {
       autorizar(req);
       const cuerpo = await leerCuerpo(req);
+      // un usuario del panel solo limpia SU tienda (sin id limpiaria todas)
+      if (!req.__acceso?.interna && !cuerpo?.idEmpresa) throw new ErrorApi(400, "Indica la tienda (idEmpresa) a limpiar");
+      exigirTienda(req, cuerpo?.idEmpresa);
       json(res, 200, { ok: true, ...asig.limpiar(cuerpo?.idEmpresa) });
       return;
     }

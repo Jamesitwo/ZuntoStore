@@ -1,3 +1,4 @@
+import { cabecerasBackend } from "./backend";
 import { api, qs, QueryValue } from "./client";
 import { buildUpdateBody } from "./pedidoBody";
 
@@ -105,8 +106,6 @@ export const pedidos = {
 
 /** URL base de nuestro backend (server/). Vacio = mismo origen (/api). */
 const API_PROPIA = (import.meta.env.VITE_API_PROPIA as string | undefined) ?? "";
-/** Clave compartida con el backend (server/.env -> API_KEY). */
-const API_KEY = (import.meta.env.VITE_API_KEY as string | undefined) ?? "";
 
 export interface ResultadoEstado {
   ok: boolean;
@@ -132,7 +131,7 @@ export async function cambiarEstadoPedido(
   id: number | string,
   estado: number,
   motivo?: string,
-  extra?: { quien?: string },
+  _extra?: { quien?: string }, // ya no se usa: el servidor sabe quien es por la sesion
 ): Promise<ResultadoEstado> {
   const url = `${API_PROPIA}/api/pedidos/${encodeURIComponent(String(id))}/estado`;
 
@@ -141,9 +140,9 @@ export async function cambiarEstadoPedido(
       method: "POST",
       headers: {
         "content-type": "application/json",
-        ...(API_KEY ? { "x-api-key": API_KEY } : {}),
+        // sesion de LucidSales: el servidor sabe quien es (no se manda x-usuario)
+        ...cabecerasBackend(),
         "x-origen": "panel",
-        ...(extra?.quien ? { "x-usuario": extra.quien } : {}),
       },
       body: JSON.stringify({ estado, ...(motivo ? { motivo } : {}) }),
       signal: AbortSignal.timeout(8000),
@@ -286,7 +285,7 @@ export interface OficinaInter {
  *   GET /api/interrapidisimo/oficina?municipio=71&departamento=2   (ids LucidSales)
  *   GET /api/interrapidisimo/oficina?idCiudad=05001000
  *
- * No necesita x-api-key: es informacion publica que cachea nuestro backend.
+ * Publica (no necesita sesion): es informacion que cachea nuestro backend.
  * La respuesta rapida trae la oficina; lo lento (horarios y el listado de
  * ciudades sin oficina principal) llega despues y se avisa con "pendiente",
  * momento en que conviene volver a consultar. "reintentar=1" borra el ultimo
@@ -310,7 +309,6 @@ export async function oficinaInter(
     res = await fetch(url, {
       headers: {
         accept: "application/json",
-        ...(API_KEY ? { "x-api-key": API_KEY } : {}),
         "x-origen": "panel",
       },
       signal: AbortSignal.timeout(timeoutMs),
@@ -390,7 +388,6 @@ export async function oficinasInter(
     res = await fetch(url, {
       headers: {
         accept: "application/json",
-        ...(API_KEY ? { "x-api-key": API_KEY } : {}),
         "x-origen": "panel",
       },
       signal: AbortSignal.timeout(timeoutMs),
