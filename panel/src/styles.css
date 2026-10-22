@@ -5084,3 +5084,53 @@ input::placeholder, textarea::placeholder { color: #a09da7; }
   line-height: 1.45;
   resize: vertical;
 }
+
+/* ===== Ajustes de celular (revisión de diseño) ===== */
+
+/* Las páginas armadas con cuadrícula no deben crecer al ancho de su contenido
+   más ancho (una tabla de 620 px desbordaba todo el detalle y los ajustes). */
+.ajustes-page,
+.pedido-detalle-page {
+  grid-template-columns: minmax(0, 1fr);
+}
+.ajustes-page > *,
+.pedido-detalle-page > *,
+.pedido-resumen-grid > * {
+  min-width: 0;
+}
+@media (max-width: 1000px) {
+  .pedido-resumen-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* tablas pequeñas (p. ej. Totales del pedido) no necesitan el ancho mínimo
+   de las tablas grandes */
+.table.tabla-compacta {
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  /* la barra inferior muestra las 7 secciones sin tener que deslizarla */
+  .mobile-nav {
+    gap: 0;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+  .mobile-nav a {
+    min-width: 0;
+    flex: 1 1 0;
+    padding: 3px 1px;
+    font-size: 9px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* inicio: indicadores de 2 en 2 (el total ocupa la fila completa) */
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .stat-grid > :first-child {
+    grid-column: 1 / -1;
+  }
+}

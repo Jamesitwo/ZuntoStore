@@ -735,7 +735,7 @@ export function PedidoDetallePage() {
           <div className="card-title" style={{ marginTop: 8 }}>
             Totales
           </div>
-          <table className="table">
+          <table className="table tabla-compacta">
             <tbody>
               <tr>
                 <td>Subtotal (calculado)</td>
