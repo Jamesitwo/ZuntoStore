@@ -784,11 +784,13 @@ export function crearServidor({
         }
 
         let productoUrl = cuerpo?.productoUrl ?? null;
+        let motivoProducto = "el producto no tiene link de Dropi (revisa el Google Sheets)";
         if (!productoUrl && resumen?.productos?.[0]?.id) {
           if (resolverProductoDropi) {
             try {
               productoUrl = await resolverProductoDropi(resumen.productos[0].id);
             } catch (e) {
+              motivoProducto = `sin link de Dropi: ${e?.message ?? e}`;
               console.warn("[dropi] no se pudo resolver el producto en Dropi:", e?.message ?? e);
             }
           } else {
@@ -806,7 +808,7 @@ export function crearServidor({
             ok: false,
             id,
             accion: "frenar",
-            motivos: [{ campo: "producto", detalle: "el producto no tiene link de Dropi (revisa el Google Sheets)" }],
+            motivos: [{ campo: "producto", detalle: motivoProducto }],
             subido: false,
           });
           return;

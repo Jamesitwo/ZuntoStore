@@ -54,12 +54,21 @@ const productosDropi = crearProductosDropi({ url: config.DROPI_PRODUCTOS_CSV });
 const lucidBotContactos = crearLucidBotContactos({ ruta: config.LUCIDBOT_CONTACTOS_CONFIG });
 // resuelve el link navegable de Dropi de un producto de LucidSales:
 //   id de LucidSales -> idProductoDropi -> dropiLink (del sheet)
+// Si falla, el error dice en QUE eslabon (para que el aviso sea accionable).
 const resolverProductoDropi = async (idProducto) => {
   const prod = await cliente.obtenerProducto(idProducto);
-  const idDropi = prod?.idProductoDropi ? String(prod.idProductoDropi) : null;
-  if (!idDropi) return null;
-  const fila = await productosDropi.buscar(idDropi);
-  return fila?.dropiLink || null;
+  const nombre = prod?.Nombre ?? prod?.nombre ?? `id ${idProducto}`;
+  const idDropi = prod?.idProductoDropi ? String(prod.idProductoDropi).trim() : "";
+  if (!idDropi || idDropi === "0") {
+    throw new Error(`el producto «${nombre}» (id ${idProducto}) no tiene idProductoDropi en LucidSales: vincúlalo a Dropi en el catálogo`);
+  }
+  if (!productosDropi.listo) throw new Error("no está configurado el Google Sheets de productos (DROPI_PRODUCTOS_CSV en server/.env)");
+  const filas = await productosDropi.cargar();
+  if (!filas) throw new Error("no se pudo descargar el Google Sheets de productos (¿sigue compartido como CSV?)");
+  const fila = filas.get(idDropi);
+  if (!fila) throw new Error(`el idProductoDropi ${idDropi} de «${nombre}» no está en el Google Sheets (columna idProductoDropi)`);
+  if (!fila.dropiLink) throw new Error(`en el Google Sheets la fila de ${idDropi} («${nombre}») no tiene dropiLink`);
+  return fila.dropiLink;
 };
 // subida automatica: revisa pedidos nuevos y los sube solo si todo calza
 const extraerLLM = crearExtractorLLM(config);

@@ -665,16 +665,18 @@ export function crearSubidaAutomatica({
           //   id de LucidSales -> idProductoDropi -> dropiLink
           const idProductoLucid = resumen?.productos?.[0]?.id;
           let productoUrl = null;
+          let motivoProducto = "producto sin link de Dropi en el sheet";
           if (resolverProductoDropi && idProductoLucid) {
             try {
               productoUrl = await resolverProductoDropi(idProductoLucid);
             } catch (e) {
+              motivoProducto = `sin link de Dropi: ${e?.message ?? e}`;
               log.warn?.("[subida] no se pudo resolver el producto en Dropi:", e?.message ?? e);
             }
           }
           if (!productoUrl) {
-            marcarP("error", "producto sin link de Dropi en el sheet");
-            detalle.push({ id, accion: "error", detalle: "producto sin link de Dropi en el sheet" });
+            marcarP("error", motivoProducto);
+            detalle.push({ id, accion: "error", detalle: motivoProducto });
             continue;
           }
 
