@@ -36,6 +36,26 @@ export function mismoLugar(a, b) {
   return x === y || x.startsWith(`${y} `) || y.startsWith(`${x} `);
 }
 
+/**
+ * Departamentos con nombres distintos entre Google y LucidSales:
+ *   Google trata Bogota D.C. como departamento propio ("Bogotá"); LucidSales
+ *   la tiene en Cundinamarca. San Andres: "Archipiélago de San Andrés,
+ *   Providencia y Santa Catalina" vs "San Andrés y Providencia".
+ */
+function canonDepartamento(d) {
+  const t = sinTildes(d).replace(/^archipielago de /, "");
+  if (/^bogota\b/.test(t)) return "cundinamarca";
+  if (/^san andres\b/.test(t)) return "san andres";
+  return t;
+}
+
+export function mismoDepartamento(a, b) {
+  const x = canonDepartamento(a);
+  const y = canonDepartamento(b);
+  if (!x || !y) return false;
+  return x === y || mismoLugar(x, y);
+}
+
 function enmascarar(k) {
   const s = String(k ?? "");
   if (!s) return "";
@@ -106,7 +126,8 @@ export function evaluarGeocodificacion(respuesta, { ciudad = "", departamento = 
 
   // la ciudad del pedido manda: si Google la ubica en otra, no sirve
   const ciudadOk = !ciudad || mismoLugar(municipio, ciudad) || mismoLugar(depto, ciudad);
-  const deptoOk = !departamento || !depto || mismoLugar(depto, departamento) || mismoLugar(municipio, departamento);
+  const deptoOk =
+    !departamento || !depto || mismoDepartamento(depto, departamento) || mismoDepartamento(municipio, departamento);
   if (!ciudadOk || !deptoOk) {
     return {
       ...base,

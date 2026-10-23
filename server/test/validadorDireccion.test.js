@@ -301,3 +301,11 @@ test("ciudad principal: si Google no encuentra la placa, si cuenta", async () =>
   assert.equal(r.calificacion.puntos, 50);
   fs.rmSync(ruta, { force: true });
 });
+
+test("Bogotá: Google la pone en el departamento «Bogotá», LucidSales en Cundinamarca", async () => {
+  const { v, ruta } = armar(ok({ municipio: "Bogotá", depto: "Bogotá" }));
+  const r = await v.validar({ direccion: "Cra 5 # 4-98, Centro", ciudad: "Bogota", departamento: "Cundinamarca" });
+  assert.equal(r.veredicto, "valida");
+  assert.equal(r.mapa.veredicto, "exacta");
+  fs.rmSync(ruta, { force: true });
+});
