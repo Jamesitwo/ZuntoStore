@@ -61,6 +61,7 @@ function normalizaConfig(c: any): {
   tiendas: string[];
   estados: number[];
   tiendasDropi: Record<string, string>;
+  minCalificacionDireccion: number;
 } & ConfigEnvio {
   const lista = (v: any) => (Array.isArray(v) ? v.map(Number).filter((x: number) => x > 0) : []) as number[];
   const num = (v: any) => (Number(v) > 0 ? Number(v) : null);
@@ -83,6 +84,9 @@ function normalizaConfig(c: any): {
     envio: { maxPesos: num(c?.envio?.maxPesos), maxPorcentaje: num(c?.envio?.maxPorcentaje) },
     reglasProducto: reglas,
     oficinaInter: c?.oficinaInter === true,
+    minCalificacionDireccion: Number.isFinite(Number(c?.minCalificacionDireccion))
+      ? Math.max(0, Math.min(100, Number(c.minCalificacionDireccion)))
+      : 70,
     maxIntentos: Math.max(1, Math.min(Number(c?.maxIntentos) || 2, 10)),
     tiendas: (Array.isArray(c?.tiendas) ? c.tiendas : []).map(String) as string[],
     estados: (Array.isArray(c?.estados) ? c.estados : []).map(Number) as number[],
@@ -805,6 +809,23 @@ export function SubidaDropi() {
                   <option value={3600}>horas</option>
                 </select>
               </span>
+            </Campo>
+
+            <Campo
+              id="sub-calif"
+              label="Calificación mínima de la dirección"
+              ayuda="De 0 a 100. El validador propio califica la dirección (formato 40 + mapa 50 + barrio 10) y por debajo de este número el pedido no se sube. 70 deja pasar placa exacta, o calle encontrada con barrio. 0 = no mirar el mapa. Sin API key de Google no frena."
+            >
+              <input
+                id="sub-calif"
+                type="number"
+                min={0}
+                max={100}
+                value={form.minCalificacionDireccion}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, minCalificacionDireccion: Math.max(0, Math.min(100, Number(e.target.value) || 0)) }))
+                }
+              />
             </Campo>
 
             <Campo

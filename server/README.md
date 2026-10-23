@@ -334,6 +334,14 @@ Errores: `400` sin municipio / `idCiudad` invalido · `502` Inter rechazo ·
 
 Veredicto: `valida` | `revisar` | `invalida` | `oficina`, con `sugerida` (la
 direccion bien escrita), `avisos` (p. ej. sin barrio) y link a Google Maps.
+**Calificacion 0-100** (`calificar`): formato 40 + mapa hasta 50 (placa
+exacta 50, calle 25, barrio 10; parcial -10) + barrio/referencia 10; en otra
+ciudad maximo 10. La subida (automatica y manual) la mira como la
+verificacion `direccionMapa`: por debajo de `minCalificacionDireccion` (70 por
+defecto, 0 = apagado) el pedido queda `direccion-invalida` con la nota y el
+motivo en el analisis. Si el mapa no se pudo consultar (sin key o error) no
+frena. Si Google confirma la placa, se sube con la direccion bien escrita.
+
 `POST /api/pedidos/:id/direccion {direccion}` la guarda en LucidSales sin
 tocar nada mas del pedido. API key: Ajustes (`/api/mapas/config`, se guarda
 en `MAPAS_CONFIG`) o `GOOGLE_MAPS_KEY`. Sin key solo se revisa el formato.

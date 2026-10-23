@@ -79,6 +79,8 @@ const subidaAuto = crearSubidaAutomatica({
   },
   // id de producto de LucidSales -> link navegable de Dropi
   resolverProductoDropi,
+  // calificacion de la direccion en el mapa antes de subir
+  validadorDireccion,
 });
 // rentabilidad de las campanas de Meta: UN espacio por usuario del panel
 // (cada quien conecta su token, sus cuentas, sus productos y sus vinculos)

@@ -128,8 +128,7 @@ export function crearServidor({
   // sin instancia (pruebas aisladas): solo memoria, no toca disco
   const cred = credenciales ?? crearCredenciales({ ruta: null, config });
   const llmCfg = llmConfig ?? crearConfigLLM({ ruta: null, config });
-  // validador de direcciones propio (formato + Google Maps)
-  const validador = validadorDireccion ?? crearValidadorDireccion({ ruta: null, config });
+
   // conversacion del pedido (chat) + extractor LLM que la lee
   const conv = conversacion ?? crearConversaciones(config.CONVERSACION ?? "./conversacion.jsonl");
   const extraer = crearExtractorLLM(config);
@@ -138,6 +137,8 @@ export function crearServidor({
   // ...y por navegador, que es la via que funciona (la API no acepta externos)
   const dropiNav = dropiNavegador ?? crearDropiNavegador(config);
   // subida automatica: revisa pedidos nuevos y los sube solo si todo calza
+  // validador de direcciones propio (formato + Google Maps)
+  const validador = validadorDireccion ?? crearValidadorDireccion({ ruta: null, config });
   const subida =
     subidaAuto ??
     crearSubidaAutomatica({
@@ -149,6 +150,7 @@ export function crearServidor({
       config,
       lucidBotContactos,
       ruta: config.SUBIDA_AUTO,
+      validadorDireccion: validador,
     });
   const CORS = {
     "Access-Control-Allow-Origin": config.CORS_ORIGIN,
@@ -808,6 +810,38 @@ export function crearServidor({
             subido: false,
           });
           return;
+        }
+
+        // calificacion de la direccion en el mapa (mismo minimo que la automatica)
+        if (!oficinaAuto) {
+          let ev = null;
+          try {
+            ev = await subida.evaluarDireccion?.({
+              direccion: resumen?.direccion,
+              referencias: resumen?.referencias ?? "",
+              ciudad,
+              departamento: depto,
+            });
+          } catch (e) {
+            console.warn("[direccion] no se pudo calificar:", e?.message ?? e);
+          }
+          if (ev && !ev.ok) {
+            if (cuerpo?.dryRun !== true) subida.registrarResultado?.(id, "direccion-invalida", ev.check.detalle);
+            json(res, 409, {
+              ok: false,
+              id,
+              accion: "frenar",
+              motivos: [ev.check],
+              calificacion: ev.calificacion,
+              validacion: { ...r.validacion, checks: [...(r.validacion?.checks ?? []), ev.check] },
+              subido: false,
+            });
+            return;
+          }
+          if (ev) {
+            resumen.direccion = ev.direccion;
+            r.validacion = { ...r.validacion, checks: [...(r.validacion?.checks ?? []), ev.check] };
+          }
         }
 
         const partes = String(resumen?.cliente ?? "").trim().split(/\s+/);

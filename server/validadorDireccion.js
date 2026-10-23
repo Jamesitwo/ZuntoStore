@@ -129,6 +129,38 @@ export function evaluarGeocodificacion(respuesta, { ciudad = "", departamento = 
 
 const PESO = { exacta: 3, aproximada: 2, "otra-ciudad": 1, "no-encontrada": 0 };
 
+/**
+ * Calificacion de 0 a 100 de una direccion ya validada:
+ *   formato  hasta 40  (nomenclatura valida)
+ *   mapa     hasta 50  (placa exacta 50 · calle 25 · barrio 10 · ciudad 0;
+ *                       coincidencia parcial -10; otra ciudad o no
+ *                       encontrada 0)
+ *   barrio   hasta 10  (trae barrio o referencia)
+ * `verificada` = se pudo preguntar al mapa (sin key o con error, la nota
+ * solo cubre formato y barrio).
+ */
+export function calificar({ formato, mapa, tieneBarrio }) {
+  const partes = [];
+  const fmt = formato?.ok ? 40 : 0;
+  partes.push({ concepto: "formato", puntos: fmt, max: 40 });
+  const verificada = Boolean(mapa && mapa.veredicto !== "error");
+  let m = 0;
+  if (verificada && formato?.ok) {
+    if (mapa.veredicto === "exacta") m = 50;
+    else if (mapa.veredicto === "aproximada") {
+      const t = mapa.tipos ?? [];
+      m = t.includes("route") ? 25 : t.some((x) => x.startsWith("sublocality") || x === "neighborhood") ? 10 : 0;
+      if (mapa.parcial) m = Math.max(0, m - 10);
+    }
+  }
+  partes.push({ concepto: "mapa", puntos: m, max: 50 });
+  const b = formato?.ok && tieneBarrio ? 10 : 0;
+  partes.push({ concepto: "barrio", puntos: b, max: 10 });
+  // en otra ciudad no sirve aunque el formato este bien
+  const total = mapa?.veredicto === "otra-ciudad" ? Math.min(10, fmt + b) : fmt + m + b;
+  return { puntos: total, verificada, partes };
+}
+
 export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThis.fetch, log = console } = {}) {
   const delEnv = String(config.GOOGLE_MAPS_KEY ?? "");
   let apiKey = delEnv;
@@ -239,6 +271,7 @@ export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThi
         sugerida: null,
         avisos,
         resumen: `Recoge en oficina de ${oficina}: la oficina se elige en Dropi.`,
+        calificacion: null,
       };
     }
 
@@ -283,9 +316,13 @@ export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThi
 
     // barrio: sin barrio ni referencia la transportadora la ubica peor
     const p = formato.ok ? parsearDireccion(formato.normalizada) : null;
-    if (formato.ok && p && !String(p.resto ?? "").trim() && !String(referencias ?? "").trim()) {
+    // manzana: el formato ya exige barrio; via: lo que va despues de la placa
+    const tieneBarrio =
+      formato.ok && (!p || Boolean(String(p.resto ?? "").trim()) || Boolean(String(referencias ?? "").trim()));
+    if (formato.ok && !tieneBarrio) {
       avisos.push("No trae barrio ni referencia: conviene pedírselo al cliente.");
     }
+    const calificacion = calificar({ formato, mapa, tieneBarrio });
 
     let veredicto;
     if (!formato.ok) veredicto = "invalida";
@@ -312,7 +349,7 @@ export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThi
               ? "Formato válido (sin verificar en el mapa)."
               : `Formato válido, pero ${mapa.detalle}. Revísala antes de enviar.`;
 
-    return { veredicto, original, formato, mapa, sugerida, avisos, resumen };
+    return { veredicto, original, formato, mapa, sugerida, avisos, resumen, calificacion };
   }
 
   return { estado, guardar, borrar, probar, validar };

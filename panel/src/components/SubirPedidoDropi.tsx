@@ -122,6 +122,7 @@ const NOMBRES_CHECK: Record<string, string> = {
   precio: "Precio",
   direccion: "Dirección (chat vs pedido)",
   direccionValida: "Dirección válida (Colombia)",
+  direccionMapa: "Dirección en el mapa",
   ubicacion: "Ciudad/departamento",
   entregaFutura: "Fecha de entrega",
   estado: "Estado del pedido",

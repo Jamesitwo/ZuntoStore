@@ -64,6 +64,51 @@ const topePesos = (v) => (v === null || v === undefined || v === "" ? null : Num
 const topePct = (v) =>
   v === null || v === undefined || v === "" ? null : Number(v) > 0 && Number(v) <= 100 ? Number(v) : null;
 
+/** Calificacion minima por defecto para subir (0 = no se mira el mapa). */
+export const MIN_CALIFICACION_DEFECTO = 70;
+
+/**
+ * Calificacion de la direccion para decidir la subida: el validador propio
+ * (formato + Google Maps) da una nota de 0 a 100 y el CODIGO decide con el
+ * minimo configurado. Si el mapa no se pudo consultar (sin key o error) no se
+ * frena: la nota solo cubriria el formato, que ya exige el agente.
+ * -> null (no se evalua) | {ok, check, direccion, calificacion}
+ */
+export async function evaluarDireccion({ validador, minimo, direccion, referencias = "", ciudad = "", departamento = "" }) {
+  const min = Number(minimo);
+  if (!validador?.validar || !(min > 0)) return null;
+  const r = await validador.validar({ direccion, referencias, ciudad, departamento });
+  const nota = r?.calificacion;
+  if (!nota) return null; // oficina: no aplica
+  const enlace = r.mapa?.mapa ? ` · ${r.mapa.mapa}` : "";
+  if (!nota.verificada) {
+    return {
+      ok: true,
+      calificacion: nota.puntos,
+      direccion,
+      check: {
+        campo: "direccionMapa",
+        ok: true,
+        detalle: `calificación ${nota.puntos}/100 sin verificar en el mapa (${r.mapa?.detalle ?? "sin API key de Google"}): se sube solo con el formato`,
+      },
+    };
+  }
+  const ok = nota.puntos >= min;
+  // la direccion que Google confirmo (p. ej. numero pegado ya separado)
+  const final = ok && r.sugerida && r.mapa?.veredicto === "exacta" ? r.sugerida : direccion;
+  return {
+    ok,
+    calificacion: nota.puntos,
+    direccion: final,
+    check: {
+      campo: "direccionMapa",
+      ok,
+      detalle: `calificación ${nota.puntos}/100 (mínimo ${min}): ${r.resumen}${r.avisos?.length ? ` ${r.avisos.join(" ")}` : ""}`,
+      ...(enlace ? { evidencia: `Google Maps: ${r.mapa.formateada || ""}${enlace}` } : {}),
+    },
+  };
+}
+
 /**
  * Plan de envio de un pedido: en que orden probar las transportadoras y el
  * tope de flete. El tope es el MENOR de los que apliquen:
@@ -145,6 +190,7 @@ export function crearSubidaAutomatica({
   log = console,
   resolverUbicacion,
   resolverProductoDropi,
+  validadorDireccion = null,
 }) {
   let timer = null;
   let corriendo = false;
@@ -180,6 +226,8 @@ export function crearSubidaAutomatica({
     reglasProducto: {},
     // pedidos que recogen en oficina de Inter: se suben si Dropi ofrece UNA sola oficina
     oficinaInter: false,
+    // nota minima (0-100) de la direccion en el mapa para subir; 0 = no se mira
+    minCalificacionDireccion: MIN_CALIFICACION_DEFECTO,
     // intentos fallidos antes de dejar el pedido para revision manual
     maxIntentos: 2,
     // tienda de LucidSales (idEmpresa) -> nombre exacto de la tienda en Dropi
@@ -583,6 +631,36 @@ export function crearSubidaAutomatica({
             }
           }
 
+          // calificacion de la direccion en el mapa: el codigo decide con el
+          // minimo configurado (no aplica a oficinas)
+          let direccionEnvio = (oficinaAuto ? null : r2.direccionEnvio?.normalizada) || resumen?.direccion;
+          if (!oficinaAuto) {
+            let ev = null;
+            try {
+              ev = await evaluarDireccion({
+                validador: validadorDireccion,
+                minimo: c.minCalificacionDireccion ?? MIN_CALIFICACION_DEFECTO,
+                direccion: direccionEnvio,
+                referencias: resumen?.referencias ?? "",
+                ciudad,
+                departamento: depto,
+              });
+            } catch (e) {
+              log.warn?.("[subida] no se pudo calificar la dirección:", e?.message ?? e);
+            }
+            if (ev) {
+              if (analisisActual) analisisActual.checks = [...(analisisActual.checks ?? []), ev.check];
+              if (!ev.ok) {
+                marcarP("direccion-invalida", ev.check.detalle);
+                invalidas.push({ id, detalle: ev.check.detalle, contacto: { ...contacto } });
+                frenados++;
+                detalle.push({ id, accion: "direccion-invalida", calificacion: ev.calificacion });
+                continue;
+              }
+              direccionEnvio = ev.direccion;
+            }
+          }
+
           // el link navegable del producto en Dropi (sale del Google Sheets):
           //   id de LucidSales -> idProductoDropi -> dropiLink
           const idProductoLucid = resumen?.productos?.[0]?.id;
@@ -618,7 +696,7 @@ export function crearSubidaAutomatica({
               apellido: partes.slice(1).join(" "),
               telefono: resumen?.telefono,
               // la direccion validada (normalizada o corregida por formato)
-              direccion: (oficinaAuto ? null : r2.direccionEnvio?.normalizada) || resumen?.direccion,
+              direccion: direccionEnvio,
               departamento: depto,
               ciudad,
               transportadoras: plan.transportadoras,
@@ -829,6 +907,10 @@ export function crearSubidaAutomatica({
         c.envio = { maxPesos: topePesos(patch.envio.maxPesos), maxPorcentaje: topePct(patch.envio.maxPorcentaje) };
       }
       if ("oficinaInter" in patch) c.oficinaInter = Boolean(patch.oficinaInter);
+      if ("minCalificacionDireccion" in patch) {
+        const n = Number(patch.minCalificacionDireccion);
+        c.minCalificacionDireccion = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : MIN_CALIFICACION_DEFECTO;
+      }
       if ("reglasProducto" in patch && patch.reglasProducto && typeof patch.reglasProducto === "object") {
         const limpio = {};
         for (const [k, v] of Object.entries(patch.reglasProducto)) {
@@ -894,6 +976,15 @@ export function crearSubidaAutomatica({
     /** Plan de envio (transportadoras y tope) para la subida manual. */
     planEnvio(resumen, opciones) {
       return planEnvio(leer(), resumen, opciones);
+    },
+
+    /** Calificacion de la direccion con el minimo configurado (subida manual). */
+    evaluarDireccion(datos) {
+      return evaluarDireccion({
+        validador: validadorDireccion,
+        minimo: leer().minCalificacionDireccion ?? MIN_CALIFICACION_DEFECTO,
+        ...datos,
+      });
     },
 
     /** ¿Los pedidos de oficina de Inter se suben solos (si hay una sola oficina)? */

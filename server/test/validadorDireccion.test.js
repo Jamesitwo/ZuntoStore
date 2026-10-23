@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  calificar,
   candidatosNumeroPegado,
   crearValidadorDireccion,
   evaluarGeocodificacion,
@@ -231,4 +232,26 @@ test("endpoints: validar usa la ciudad del pedido y guardar actualiza LucidSales
   } finally {
     await new Promise((r) => server.close(r));
   }
+});
+
+test("calificacion: formato 40 + mapa hasta 50 + barrio 10", () => {
+  const f = { ok: true };
+  assert.equal(calificar({ formato: f, mapa: { veredicto: "exacta" }, tieneBarrio: true }).puntos, 100);
+  assert.equal(calificar({ formato: f, mapa: { veredicto: "exacta" }, tieneBarrio: false }).puntos, 90);
+  assert.equal(calificar({ formato: f, mapa: { veredicto: "aproximada", tipos: ["route"] }, tieneBarrio: true }).puntos, 75);
+  assert.equal(calificar({ formato: f, mapa: { veredicto: "aproximada", tipos: ["route"], parcial: true }, tieneBarrio: false }).puntos, 55);
+  assert.equal(calificar({ formato: f, mapa: { veredicto: "no-encontrada" }, tieneBarrio: true }).puntos, 50);
+  assert.equal(calificar({ formato: f, mapa: { veredicto: "otra-ciudad" }, tieneBarrio: true }).puntos, 10);
+  assert.equal(calificar({ formato: { ok: false }, mapa: { veredicto: "exacta" }, tieneBarrio: true }).puntos, 0);
+  const sinMapa = calificar({ formato: f, mapa: null, tieneBarrio: true });
+  assert.equal(sinMapa.puntos, 50);
+  assert.equal(sinMapa.verificada, false);
+});
+
+test("validar devuelve la calificacion", async () => {
+  const { v, ruta } = armar(ok());
+  const r = await v.validar({ direccion: "Cra 40 # 23-23, Centro", ciudad: "Medellín" });
+  assert.equal(r.calificacion.puntos, 100);
+  assert.equal(r.calificacion.verificada, true);
+  fs.rmSync(ruta, { force: true });
 });

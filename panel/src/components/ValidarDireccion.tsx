@@ -18,6 +18,7 @@ interface Resultado {
   ciudad?: string;
   departamento?: string;
   formato: { ok: boolean; detalle: string; normalizada?: string };
+  calificacion: null | { puntos: number; verificada: boolean; partes: Array<{ concepto: string; puntos: number; max: number }> };
   mapa: null | {
     veredicto: "exacta" | "aproximada" | "otra-ciudad" | "no-encontrada" | "error";
     detalle: string;
@@ -105,6 +106,14 @@ export function ValidarDireccion({
           {cargando ? "Validando…" : "Validar dirección"}
         </button>
         {et ? <span className={`chip ${et.tono === "ok" ? "ok" : et.tono === "error" || et.tono === "warn" ? "alerta" : ""}`}>{et.texto}</span> : null}
+        {r?.calificacion ? (
+          <span
+            className="chip"
+            title={`${r.calificacion.partes.map((p) => `${p.concepto} ${p.puntos}/${p.max}`).join(" · ")}${r.calificacion.verificada ? "" : " · sin verificar en el mapa"}`}
+          >
+            Calificación {r.calificacion.puntos}/100
+          </span>
+        ) : null}
         {cambioDesdeValidacion ? <span className="muted small">La dirección cambió: vuelve a validar.</span> : null}
       </div>
 

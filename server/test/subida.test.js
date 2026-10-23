@@ -68,6 +68,7 @@ function armar(overrides = {}) {
     // se frenan por falta de producto)
     resolverProductoDropi:
       overrides.resolverProductoDropi ?? (async (id) => `https://dropi.test/${id}`),
+    validadorDireccion: overrides.validadorDireccion,
   });
   // tienda de Dropi configurada por defecto (salvo que la prueba la quite)
   if (overrides.tiendasDropi !== null) {
@@ -895,5 +896,88 @@ test("oficina de Coordinadora sigue siendo siempre para una persona", async () =
   await s.tick({ forzar: true });
   assert.equal(subidos.length, 0);
   assert.equal(s.ultimos(5)[0].accion, "requiere-humano");
+  fs.rmSync(ruta, { force: true });
+});
+
+// ---------------------------------------------------------------------------
+// Calificacion de la direccion (validador propio) antes de subir
+
+const validadorFalso = (resultado, llamadas = []) => ({
+  async validar(x) {
+    llamadas.push(x);
+    return resultado;
+  },
+});
+const nota = (puntos, verificada = true) => ({ puntos, verificada, partes: [] });
+
+test("direccion con calificacion baja: no se sube y queda con la nota en el analisis", async () => {
+  const llamadas = [];
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    validadorDireccion: validadorFalso(
+      { veredicto: "revisar", resumen: "Formato válido, pero Google encontró solo la calle", avisos: [], calificacion: nota(65), mapa: { veredicto: "aproximada" } },
+      llamadas,
+    ),
+  });
+  s.configurar({ automatico: true, dryRun: true, minCalificacionDireccion: 70 });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 0);
+  const u = s.ultimos(5)[0];
+  assert.equal(u.accion, "direccion-invalida");
+  assert.match(u.detalle, /calificación 65\/100 \(mínimo 70\)/);
+  const check = u.analisis.checks.find((c) => c.campo === "direccionMapa");
+  assert.equal(check.ok, false);
+  assert.equal(llamadas[0].ciudad, "Medellin");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("direccion con buena calificacion: se sube con la direccion que confirmo el mapa", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    validadorDireccion: validadorFalso({
+      veredicto: "valida",
+      resumen: "La dirección tiene buen formato y existe en el mapa.",
+      avisos: [],
+      sugerida: "Cra 92 # 78B-02, Robledo",
+      calificacion: nota(100),
+      mapa: { veredicto: "exacta", mapa: "https://www.google.com/maps/search/?api=1&query=6,-75", formateada: "Cra. 92 #78b-02" },
+    }),
+  });
+  s.configurar({ automatico: true, dryRun: true, minCalificacionDireccion: 70 });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  assert.equal(subidos[0].direccion, "Cra 92 # 78B-02, Robledo");
+  const check = s.ultimos(5)[0].analisis.checks.find((c) => c.campo === "direccionMapa");
+  assert.equal(check.ok, true);
+  assert.match(check.evidencia, /google\.com\/maps/);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("sin verificar en el mapa (sin key): no frena, se sube con el formato", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    validadorDireccion: validadorFalso({ veredicto: "revisar", resumen: "x", avisos: [], calificacion: nota(50, false), mapa: null }),
+  });
+  s.configurar({ automatico: true, dryRun: true, minCalificacionDireccion: 70 });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  assert.match(s.ultimos(5)[0].analisis.checks.find((c) => c.campo === "direccionMapa").detalle, /sin verificar/);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("minimo 0 apaga la calificacion (no se consulta el mapa)", async () => {
+  const llamadas = [];
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    validadorDireccion: validadorFalso({ calificacion: nota(0) }, llamadas),
+  });
+  s.configurar({ automatico: true, dryRun: true, minCalificacionDireccion: 0 });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  assert.equal(llamadas.length, 0);
   fs.rmSync(ruta, { force: true });
 });

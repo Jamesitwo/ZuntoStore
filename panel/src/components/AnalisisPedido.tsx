@@ -9,6 +9,7 @@ export const NOMBRES_CHEQUEO: Record<string, string> = {
   precio: "Precio",
   direccion: "Dirección (chat vs pedido)",
   direccionValida: "Dirección válida (Colombia)",
+  direccionMapa: "Dirección en el mapa",
   confirmacion: "Confirmó",
   entregaFutura: "Entrega futura",
 };
