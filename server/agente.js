@@ -185,7 +185,7 @@ export function validarPedido(resumen, extraido, { oficina = null } = {}) {
   // Si recoge en oficina no hay calle que validar: la oficina la elige Dropi.
   const dirEnvio = oficina
     ? { ok: true, detalle: `recoge en oficina de ${oficina}: no lleva calle, la oficina se elige en Dropi`, normalizada: null }
-    : validarDireccion(resumen?.direccion, extraido?.direccionEnvio ?? null);
+    : validarDireccion(resumen?.direccion, extraido?.direccionEnvio ?? null, { referencias: resumen?.referencias ?? "" });
 
   const lineas = Array.isArray(resumen?.productos) ? resumen.productos : [];
   const unaLinea = lineas.length === 1;

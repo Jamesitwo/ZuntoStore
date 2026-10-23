@@ -21,6 +21,8 @@ interface Resultado {
   calificacion: null | { puntos: number; verificada: boolean; partes: Array<{ concepto: string; puntos: number; max: number }> };
   mapa: null | {
     veredicto: "exacta" | "aproximada" | "otra-ciudad" | "no-encontrada" | "error";
+    /** pueblo sin calles en el mapa: no cuenta ni a favor ni en contra */
+    sinCobertura?: boolean;
     detalle: string;
     formateada?: string;
     mapa?: string | null;
@@ -130,8 +132,10 @@ export function ValidarDireccion({
             </li>
             {r.mapa ? (
               <li>
-                <span aria-hidden="true">{r.mapa.veredicto === "exacta" ? "✓" : r.mapa.veredicto === "aproximada" ? "~" : "✗"}</span>{" "}
-                Mapa ({MAPA[r.mapa.veredicto] ?? r.mapa.veredicto}
+                <span aria-hidden="true">
+                  {r.mapa.veredicto === "exacta" ? "✓" : r.mapa.sinCobertura || r.mapa.veredicto === "aproximada" ? "~" : "✗"}
+                </span>{" "}
+                Mapa ({r.mapa.sinCobertura ? "sin calles en el mapa, no cuenta" : MAPA[r.mapa.veredicto] ?? r.mapa.veredicto}
                 {r.ciudad ? ` · ${[r.ciudad, r.departamento].filter(Boolean).join(", ")}` : ""}): {r.mapa.detalle}
                 {r.mapa.mapa ? (
                   <>

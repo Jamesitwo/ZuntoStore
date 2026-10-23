@@ -368,7 +368,7 @@ export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThi
       };
     }
 
-    let formato = validarDireccion(original);
+    let formato = validarDireccion(original, null, { referencias });
     let candidatos = formato.ok ? [formato.normalizada] : candidatosNumeroPegado(original);
     if (!formato.ok && candidatos.length) {
       formato = {
@@ -455,7 +455,6 @@ export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThi
     // de eso frena; se decide por el formato.
     if (
       mapa &&
-      formato.ok &&
       ciudad &&
       !esCiudadPrincipal(ciudad) &&
       ["aproximada", "no-encontrada", "otra-ciudad"].includes(mapa.veredicto)

@@ -206,15 +206,15 @@ export function parsearManzana(direccion) {
  *   { esNomenclatura, tipoVia, via, cruce, placa, complemento, barrio, motivo }
  * Devuelve { ok, normalizada, corregida, origen, detalle }.
  */
-export function validarDireccion(direccion, ia = null) {
-  const r = validarDireccionInterna(direccion, ia, true);
+export function validarDireccion(direccion, ia = null, { referencias = "" } = {}) {
+  const r = validarDireccionInterna(direccion, ia, true, referencias);
   // si se prefirio la IA para una direccion sin guion y no paso, vale la
   // lectura de las reglas (que ya era valida)
-  if (!r.ok && ia && parsearDireccion(direccion)?.sinGuion) return validarDireccionInterna(direccion, null, false);
+  if (!r.ok && ia && parsearDireccion(direccion)?.sinGuion) return validarDireccionInterna(direccion, null, false, referencias);
   return r;
 }
 
-function validarDireccionInterna(direccion, ia, preferirIA) {
+function validarDireccionInterna(direccion, ia, preferirIA, referencias = "") {
   const original = String(direccion ?? "").trim();
   if (!original) return { ok: false, normalizada: "", corregida: false, origen: "reglas", detalle: "el pedido no tiene dirección" };
 
@@ -236,6 +236,18 @@ function validarDireccionInterna(direccion, ia, preferirIA) {
   // 1b) formato manzana (Mz/Cs/Lt) con reglas fijas
   const mz = parsearManzana(original);
   if (mz) {
+    // el barrio puede venir aparte, en las Referencias del pedido
+    const barrioRef = mz.barrio ? "" : limpiarBarrio(referencias);
+    if (!mz.barrio && barrioRef) {
+      const normalizada = `${mz.normalizada}, ${barrioRef.charAt(0).toUpperCase()}${barrioRef.slice(1)}`;
+      return {
+        ok: true,
+        normalizada,
+        corregida: true,
+        origen: "reglas",
+        detalle: `formato manzana válido con el barrio de las referencias del pedido; se escribe como "${normalizada}"`,
+      };
+    }
     if (!mz.barrio) {
       return {
         ok: false,

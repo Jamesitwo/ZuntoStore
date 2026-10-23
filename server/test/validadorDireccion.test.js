@@ -347,3 +347,20 @@ test("numero pegado de 3 cifras en pueblo sin ayuda de Google: no se adivina", a
   assert.equal(r.formato.ok, false);
   fs.rmSync(ruta, { force: true });
 });
+
+test("pueblo con formato invalido: «otra ciudad» de Google no sale como error del mapa", async () => {
+  const { v, ruta } = armar(ok({ tipo: "route", precision: "GEOMETRIC_CENTER", municipio: "Salento", depto: "Quindío" }));
+  const r = await v.validar({ direccion: "Manzana A, casa 14", ciudad: "Quimbaya", departamento: "Quindío" });
+  assert.equal(r.veredicto, "invalida"); // por el formato (falta el barrio)
+  assert.match(r.resumen, /barrio/);
+  assert.equal(r.mapa.sinCobertura, true);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("manzana con el barrio en las referencias: valida", async () => {
+  const { v, ruta } = armar(ok({ tipo: "locality", precision: "APPROXIMATE", municipio: "Quimbaya", depto: "Quindío" }));
+  const r = await v.validar({ direccion: "Manzana A, casa 14", referencias: "Barrio Los Pinos", ciudad: "Quimbaya", departamento: "Quindío" });
+  assert.equal(r.formato.ok, true);
+  assert.equal(r.sugerida, "Mz A Cs 14, Barrio Los Pinos");
+  fs.rmSync(ruta, { force: true });
+});

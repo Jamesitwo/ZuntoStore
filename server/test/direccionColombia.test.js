@@ -175,3 +175,12 @@ test("«Car» es Carrera y sin «#» vale con coma o espacio si la placa trae gu
   assert.equal(validarDireccion("Calle 45 12 30").ok, false);
   assert.equal(validarDireccion("Car 5").ok, false);
 });
+
+test("manzana sin barrio: vale si el barrio viene en las referencias del pedido", () => {
+  assert.equal(validarDireccion("Manzana A, casa 14").ok, false);
+  const r = validarDireccion("Manzana A, casa 14", null, { referencias: "Urbanización Los Pinos" });
+  assert.equal(r.ok, true);
+  assert.equal(r.normalizada, "Mz A Cs 14, Urbanización Los Pinos");
+  // referencias vacias o sin letras no cuentan
+  assert.equal(validarDireccion("Manzana A, casa 14", null, { referencias: " - " }).ok, false);
+});
