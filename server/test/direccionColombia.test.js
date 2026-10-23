@@ -166,3 +166,12 @@ test("sin guion: si la IA cambia un numero, vale la lectura de las reglas", () =
   assert.equal(r.ok, true);
   assert.equal(r.normalizada, "Cra 91A # 128F-14");
 });
+
+test("«Car» es Carrera y sin «#» vale con coma o espacio si la placa trae guion", () => {
+  assert.equal(validarDireccion("Car 5, 4-98 calle Bogotá").normalizada, "Cra 5 # 4-98, Calle Bogotá");
+  assert.equal(validarDireccion("Cra 5 4-98").normalizada, "Cra 5 # 4-98");
+  assert.equal(validarDireccion("Calle 45 12-30 barrio Centro").normalizada, "Calle 45 # 12-30, Barrio Centro");
+  // sin "#" y sin guion es ambiguo: no se acepta por reglas
+  assert.equal(validarDireccion("Calle 45 12 30").ok, false);
+  assert.equal(validarDireccion("Car 5").ok, false);
+});

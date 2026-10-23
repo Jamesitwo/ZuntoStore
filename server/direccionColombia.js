@@ -33,7 +33,7 @@ const TIPOS = [
   // el orden importa: los compuestos primero
   [/^(avenida\s+carrera|av\.?\s*(cra|carrera|kr|kra)|ak)\b/, "Av. Carrera"],
   [/^(avenida\s+calle|av\.?\s*(cl|cll|calle)|ac)\b/, "Av. Calle"],
-  [/^(carrera|cra|kra|kr|cr|carr|crr)\b/, "Cra"],
+  [/^(carrera|cra|kra|kr|cr|carr|crr|car)\b/, "Cra"],
   [/^(calle|cll|cl|call)\b/, "Calle"],
   [/^(diagonal|diag|dg)\b/, "Diagonal"],
   [/^(transversal|transv|trans|tv|tr)\b/, "Transversal"],
@@ -57,6 +57,11 @@ const RE_DIR = new RegExp(
 );
 // lo mismo SIN guion entre cruce y placa ("Cra 91a # 128 f 14", "Cl 10 # 5 20"):
 // muy comun; la placa son 1-3 digitos sueltos despues del cruce
+// Sin "#" ("Car 5, 4-98", "Cra 5 4-98"): coma o espacio entre via y cruce,
+// pero SOLO con guion en la placa (si no, los numeros serian ambiguos)
+const RE_DIR_SIN_NUMERAL = new RegExp(
+  String.raw`^(.+?)\.?\s*` + NUM + String.raw`\s*(?:,\s*|\s+)` + NUM + String.raw`\s*[-–]\s*(\d{1,3})(?:\s+(sur|este))?\b\s*[,.]?\s*(.*)$`,
+);
 const RE_DIR_SIN_GUION = new RegExp(
   String.raw`^(.+?)\.?\s*` + NUM + SEP_NUM + NUM + String.raw`\s+(\d{1,3})(?:\s+(sur|este))?\b(?![a-z\d])\s*[,.]?\s*(.*)$`,
 );
@@ -84,6 +89,9 @@ export function parsearDireccion(direccion) {
   let m = t.match(RE_DIR);
   const sinGuion = !m;
   if (!m) m = t.match(RE_DIR_SIN_GUION);
+  // sin "#": ultimo recurso (y el resto sale del texto normalizado)
+  const sinNumeral = !m;
+  if (!m) m = t.match(RE_DIR_SIN_NUMERAL);
   if (!m) return null;
   const tipoVia = tipoViaCanonico(m[1]);
   if (!tipoVia) return null;
@@ -94,9 +102,26 @@ export function parsearDireccion(direccion) {
   const placa = String(m[12]) + (m[13] ? ` ${m[13][0].toUpperCase()}${m[13].slice(1)}` : "");
   // el resto (complemento/barrio) se conserva con su texto original (sin
   // guion no hay donde cortar el original: se usa el del texto normalizado)
-  const resto = capitalizarResto(sinGuion ? m[14] : restoOriginal(String(direccion ?? "")));
+  const resto = capitalizarResto(
+    sinGuion || sinNumeral
+      ? restoConMismaRegla(String(direccion ?? ""), sinNumeral ? RE_DIR_SIN_NUMERAL : RE_DIR_SIN_GUION) ?? m[14]
+      : restoOriginal(String(direccion ?? "")),
+  );
   const normalizada = `${tipoVia} ${via} # ${cruce}-${placa}${resto ? `, ${resto}` : ""}`;
   return { tipoVia, via, cruce, placa, resto, normalizada, sinGuion };
+}
+
+/**
+ * El resto con su texto ORIGINAL (tildes y mayusculas): se aplica la misma
+ * regla sobre el original en minusculas (mismo largo) y se corta ahi.
+ */
+function restoConMismaRegla(original, re) {
+  const orig = original.replace(/\s+/g, " ").trim().replace(/\s*#\s*/g, " # ");
+  const bajo = orig.toLowerCase();
+  if (bajo.length !== orig.length) return null;
+  const m = bajo.match(re);
+  if (!m) return null;
+  return orig.slice(orig.length - m[14].length);
 }
 
 /** Lo que va despues de la placa ("- 23 Sur, apto 2, Centro" -> "apto 2, Centro"). */

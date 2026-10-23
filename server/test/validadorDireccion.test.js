@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  restoEsBarrio,
   calificar,
   candidatosNumeroPegado,
   crearValidadorDireccion,
@@ -254,4 +255,11 @@ test("validar devuelve la calificacion", async () => {
   assert.equal(r.calificacion.puntos, 100);
   assert.equal(r.calificacion.verificada, true);
   fs.rmSync(ruta, { force: true });
+});
+
+test("el nombre de la ciudad no cuenta como barrio", () => {
+  assert.equal(restoEsBarrio("Calle Bogotá", ["Bogotá D.C.", "Cundinamarca"]), false);
+  assert.equal(restoEsBarrio("Colombia", []), false);
+  assert.equal(restoEsBarrio("Barrio Centro", ["Medellín"]), true);
+  assert.equal(restoEsBarrio("Chapinero Alto", ["Bogotá"]), true);
 });

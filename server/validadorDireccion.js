@@ -130,6 +130,21 @@ export function evaluarGeocodificacion(respuesta, { ciudad = "", departamento = 
 const PESO = { exacta: 3, aproximada: 2, "otra-ciudad": 1, "no-encontrada": 0 };
 
 /**
+ * ¿Lo que va despues de la placa es un barrio/complemento de verdad? No
+ * cuentan el nombre de la ciudad o el departamento ni palabras sueltas como
+ * "calle" o "Colombia" ("Cra 5 # 4-98, calle Bogotá" no trae barrio).
+ */
+export function restoEsBarrio(resto, lugares = []) {
+  let t = sinTildes(resto);
+  for (const l of lugares) {
+    const x = sinTildes(l);
+    if (x) t = t.replace(new RegExp(`\\b${x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"), " ");
+  }
+  t = t.replace(/\b(calle|carrera|cra|cl|colombia|ciudad|municipio|barrio)\b/g, " ").replace(/\s+/g, " ").trim();
+  return (t.match(/[a-z]/g) ?? []).length >= 3;
+}
+
+/**
  * Calificacion de 0 a 100 de una direccion ya validada:
  *   formato  hasta 40  (nomenclatura valida)
  *   mapa     hasta 50  (placa exacta 50 · calle 25 · barrio 10 · ciudad 0;
@@ -318,7 +333,7 @@ export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThi
     const p = formato.ok ? parsearDireccion(formato.normalizada) : null;
     // manzana: el formato ya exige barrio; via: lo que va despues de la placa
     const tieneBarrio =
-      formato.ok && (!p || Boolean(String(p.resto ?? "").trim()) || Boolean(String(referencias ?? "").trim()));
+      formato.ok && (!p || restoEsBarrio(p.resto, [ciudad, departamento]) || Boolean(String(referencias ?? "").trim()));
     if (formato.ok && !tieneBarrio) {
       avisos.push("No trae barrio ni referencia: conviene pedírselo al cliente.");
     }
