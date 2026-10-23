@@ -62,7 +62,7 @@ import { crearDropiNavegador } from "./dropiNavegador.js";
 import { crearSubidaAutomatica } from "./subidaAutomatica.js";
 import { faltantesDeConfig } from "./config.js";
 import { crearVerificadorSesion, tienePermiso, tieneTienda } from "./sesionPanel.js";
-import { recogeEnOficina } from "./direccionColombia.js";
+import { direccionConReferencias, recogeEnOficina } from "./direccionColombia.js";
 
 const LIMITE_CUERPO = 256 * 1024; // 256 KB
 const VERSION = "1.0.0";
@@ -862,7 +862,8 @@ export function crearServidor({
           apellido: partes.slice(1).join(" "),
           telefono: resumen?.telefono,
           email: cuerpo?.email,
-          direccion: resumen?.direccion,
+          // direccion, coma y las referencias del pedido (barrio, puntos de referencia)
+          direccion: oficinaAuto ? resumen?.direccion : direccionConReferencias(resumen?.direccion, resumen?.referencias),
           departamento: depto,
           ciudad,
           transportadoras,

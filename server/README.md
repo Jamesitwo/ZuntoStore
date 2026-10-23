@@ -351,6 +351,11 @@ en `MAPAS_CONFIG`) o `GOOGLE_MAPS_KEY`. Sin key solo se revisa el formato.
 
 ### Subida a Dropi: envio
 
+La direccion que se escribe en Dropi es **la direccion validada + ", " + las
+Referencias del pedido** (ahi suelen venir el barrio y los puntos de
+referencia), sin repetirlas si ya estan en la direccion
+(`direccionConReferencias`). En entrega en oficina va solo la direccion.
+
 Config en `SUBIDA_AUTO` (`PUT /api/subida/config`), la usan la subida
 automatica y la manual:
 

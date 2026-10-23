@@ -981,3 +981,15 @@ test("minimo 0 apaga la calificacion (no se consulta el mapa)", async () => {
   assert.equal(llamadas.length, 0);
   fs.rmSync(ruta, { force: true });
 });
+
+test("a Dropi va la direccion, coma y las referencias del pedido", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: { ...COMPLETO, Referencias: "Barrio Robledo, casa de rejas blancas" } }],
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  assert.equal(subidos[0].direccion, "Cra 92 # 78B-02, Barrio Robledo, casa de rejas blancas");
+  fs.rmSync(ruta, { force: true });
+});

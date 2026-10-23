@@ -418,3 +418,17 @@ export function recogeEnOficina(...textos) {
   if (coord.test(t)) return "Coordinadora";
   return null;
 }
+
+/**
+ * Direccion que se manda a Dropi: la direccion, coma y las referencias del
+ * pedido (ahi suelen venir el barrio y los puntos de referencia). No repite
+ * las referencias si ya estan dentro de la direccion.
+ */
+export function direccionConReferencias(direccion, referencias, max = 250) {
+  const dir = String(direccion ?? "").replace(/\s+/g, " ").trim().replace(/[,\s]+$/, "");
+  const ref = String(referencias ?? "").replace(/\s+/g, " ").trim().replace(/^[,.\s-]+|[,.\s-]+$/g, "");
+  if (!ref || !/[a-z0-9]/i.test(normalizarTextoDir(ref))) return dir;
+  const n = (t) => normalizarTextoDir(t).replace(/[^a-z0-9]+/g, " ").trim();
+  if (n(dir).includes(n(ref))) return dir;
+  return `${dir}, ${ref}`.slice(0, max).trim();
+}

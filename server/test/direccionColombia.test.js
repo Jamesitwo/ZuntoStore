@@ -184,3 +184,10 @@ test("manzana sin barrio: vale si el barrio viene en las referencias del pedido"
   // referencias vacias o sin letras no cuentan
   assert.equal(validarDireccion("Manzana A, casa 14", null, { referencias: " - " }).ok, false);
 });
+
+test("direccionConReferencias: direccion, coma y referencias sin repetir", async () => {
+  const { direccionConReferencias } = await import("../direccionColombia.js");
+  assert.equal(direccionConReferencias("Cra 40 # 23-23", "Barrio Centro"), "Cra 40 # 23-23, Barrio Centro");
+  assert.equal(direccionConReferencias("Mz A Cs 14, Urbanización Los Pinos", "urbanizacion los pinos"), "Mz A Cs 14, Urbanización Los Pinos");
+  assert.equal(direccionConReferencias("Cra 5 # 4-98", "   "), "Cra 5 # 4-98");
+});

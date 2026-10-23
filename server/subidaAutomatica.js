@@ -18,7 +18,7 @@ import path from "node:path";
 import { ErrorApi } from "./errores.js";
 import { ejecutarAgente, parsearPrecio, resumenDePedido } from "./agente.js";
 import { cambiarEstado } from "./estado.js";
-import { recogeEnOficina } from "./direccionColombia.js";
+import { direccionConReferencias, recogeEnOficina } from "./direccionColombia.js";
 
 const MAX_PROCESADOS = 3000;
 /**
@@ -695,8 +695,9 @@ export function crearSubidaAutomatica({
               nombre: partes[0] ?? "",
               apellido: partes.slice(1).join(" "),
               telefono: resumen?.telefono,
-              // la direccion validada (normalizada o corregida por formato)
-              direccion: direccionEnvio,
+              // la direccion validada (normalizada o corregida por formato),
+              // coma y las referencias del pedido (barrio, puntos de referencia)
+              direccion: oficinaAuto ? direccionEnvio : direccionConReferencias(direccionEnvio, resumen?.referencias),
               departamento: depto,
               ciudad,
               transportadoras: plan.transportadoras,
