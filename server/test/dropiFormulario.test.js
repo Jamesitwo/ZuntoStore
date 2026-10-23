@@ -65,19 +65,30 @@ function paginaOficinas(oficinas) {
   <script>
     const host = document.querySelector("dropi-select");
     const boton = host.querySelector("button");
+    // como Dropi: <ul class="select-dropdown-overlay"> con <li><button
+    // class="option" data-cy="centro-servicio-interrapidisimo-option-…">,
+    // que se va llenando durante la animacion de apertura
+    const slug = (t) => t.toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     boton.addEventListener("click", () => {
-      if (host.querySelector("ul")) return;
+      if (document.querySelector("ul.select-dropdown-overlay")) return;
       const ul = document.createElement("ul");
-      for (const nombre of ${JSON.stringify(oficinas)}) {
-        const li = document.createElement("li");
-        li.innerHTML = "<span>" + nombre + "</span>";
-        li.addEventListener("click", () => {
-          boton.querySelector(".elipsis").textContent = " " + nombre + " ";
-          ul.remove();
-        });
-        ul.appendChild(li);
-      }
-      host.querySelector(".dropdown-container").appendChild(ul);
+      ul.className = "select-dropdown-overlay";
+      document.body.appendChild(ul);
+      ${JSON.stringify(oficinas)}.forEach((nombre, i) => {
+        setTimeout(() => {
+          const li = document.createElement("li");
+          const b = document.createElement("button");
+          b.className = "option";
+          b.setAttribute("data-cy", "centro-servicio-interrapidisimo-option-" + slug(nombre));
+          b.innerHTML = "<span>" + nombre + " </span>";
+          b.addEventListener("click", () => {
+            boton.querySelector(".elipsis").textContent = " " + nombre + " ";
+            ul.remove();
+          });
+          li.appendChild(b);
+          ul.appendChild(li);
+        }, 150 + i * 120);
+      });
     });
   </script></body></html>`;
 }
@@ -173,12 +184,12 @@ test("una transportadora que no existe se salta y se usa la siguiente", async (t
 
 test("oficina de Inter: con UNA oficina la elige", async (t) => {
   if (motivoSalto) return t.skip(motivoSalto);
-  const p = await pagina(paginaOficinas(["INTER SINCELEJO CENTRO - CRA 20 # 22-15"]));
+  const p = await pagina(paginaOficinas(["PTO/SINCELEJO/SUC/COL/CRA 20 # 22-15"]));
   try {
     const r = await nav.elegirOficinaInter(p);
     assert.equal(r.ok, true, r.detalle);
-    assert.equal(r.oficina, "INTER SINCELEJO CENTRO - CRA 20 # 22-15");
-    assert.match(await p.locator(".elipsis").innerText(), /SINCELEJO CENTRO/);
+    assert.equal(r.oficina, "PTO/SINCELEJO/SUC/COL/CRA 20 # 22-15");
+    assert.match(await p.locator(".elipsis").innerText(), /SINCELEJO/);
   } finally {
     await p.close();
   }
@@ -186,12 +197,20 @@ test("oficina de Inter: con UNA oficina la elige", async (t) => {
 
 test("oficina de Inter: con VARIAS no elige ninguna (la hace una persona)", async (t) => {
   if (motivoSalto) return t.skip(motivoSalto);
-  const p = await pagina(paginaOficinas(["INTER MEDELLIN CENTRO", "INTER MEDELLIN POBLADO", "INTER BELLO"]));
+  const p = await pagina(
+    paginaOficinas([
+      "COL/MEDELLIN/ANT/COL/OF. PRINC CL 30 A 65 B 59",
+      "PTO/MEDELLIN/ANT/COL/CALLE 96 #67-18",
+      "PTO/MEDELLIN/ANT/COL/CL 104 65 43 R.O",
+      "PTO/MEDELLIN/ANT/COL/KR 99D 49A 13",
+    ]),
+  );
   try {
     const r = await nav.elegirOficinaInter(p);
     assert.equal(r.ok, false);
     assert.equal(r.varias, true);
-    assert.equal(r.oficinas.length, 3);
+    assert.equal(r.oficinas.length, 4, "cuenta TODAS aunque lleguen de a poco");
+    assert.match(r.detalle, /Hay 4 oficinas/);
     assert.match(await p.locator(".elipsis").innerText(), /Selecciona/);
   } finally {
     await p.close();

@@ -643,40 +643,50 @@ export function crearDropiNavegador(config = {}) {
     await boton.click({ timeout: 5000 }).catch(() => {});
     await p.waitForTimeout(900);
 
-    const lista = await p
-      .evaluate(() => {
-        const host = document.querySelector('dropi-select[data-cy="centro-servicio-interrapidisimo"]');
-        const boton = document.querySelector('[data-cy="centro-servicio-interrapidisimo-field"]');
-        if (!host) return { opciones: [] };
-        const visible = (el) => {
-          const r = el.getBoundingClientRect();
-          return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden";
-        };
-        const fuera = (el) => !(boton && (boton === el || boton.contains(el))) && el.tagName !== "INPUT";
-        const texto = (el) => (el.innerText || "").replace(/\s+/g, " ").trim();
-        // opciones "de verdad" primero; si no hay, las hojas con texto
-        let nodos = [...host.querySelectorAll('li, [role="option"], .option, .dropdown-item, .item')]
-          .filter((el) => fuera(el) && visible(el) && texto(el));
-        if (!nodos.length) {
-          nodos = [...host.querySelectorAll("*")].filter(
-            (el) => fuera(el) && visible(el) && el.children.length === 0 && texto(el),
-          );
-        }
-        // la mas interna con cada texto, sin el placeholder ni "sin resultados"
-        nodos = nodos.filter((el) => !nodos.some((o) => o !== el && el.contains(o)));
-        document.querySelectorAll("[data-zs-oficina]").forEach((e) => e.removeAttribute("data-zs-oficina"));
-        const vistos = new Map();
-        for (const el of nodos) {
-          const t = texto(el);
-          if (/selecciona|buscar|sin resultados|no hay/i.test(t)) continue;
-          if (!vistos.has(t)) vistos.set(t, el);
-        }
-        const opciones = [...vistos.keys()];
-        if (opciones.length === 1) vistos.get(opciones[0]).setAttribute("data-zs-oficina", "1");
-        return { opciones };
-      })
-      .catch((e) => ({ opciones: [], error: e?.message ?? String(e) }));
+    // Cada oficina es <button class="option" data-cy="centro-servicio-
+    // interrapidisimo-option-<slug>"><span>NOMBRE</span></button>, dentro de
+    // un <ul class="select-dropdown-overlay"> que entra con animacion: se
+    // espera a que la cantidad deje de cambiar. Si Dropi no trae esos data-cy
+    // se cae al metodo generico (hojas con texto dentro del selector).
+    const leerOpciones = () =>
+      p
+        .evaluate(() => {
+          const texto = (el) => (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
+          document.querySelectorAll("[data-zs-oficina]").forEach((e) => e.removeAttribute("data-zs-oficina"));
+          let nodos = [...document.querySelectorAll('[data-cy^="centro-servicio-interrapidisimo-option-"]')];
+          let metodo = "data-cy";
+          if (!nodos.length) {
+            metodo = "generico";
+            const host = document.querySelector('dropi-select[data-cy="centro-servicio-interrapidisimo"]');
+            const boton = document.querySelector('[data-cy="centro-servicio-interrapidisimo-field"]');
+            const fuera = (el) => !(boton && (boton === el || boton.contains(el))) && el.tagName !== "INPUT";
+            const raiz = host ?? document.body;
+            nodos = [...raiz.querySelectorAll('li, [role="option"], .option, .dropdown-item')].filter(
+              (el) => fuera(el) && texto(el),
+            );
+            nodos = nodos.filter((el) => !nodos.some((o) => o !== el && el.contains(o)));
+          }
+          const vistos = new Map();
+          for (const el of nodos) {
+            const t = texto(el);
+            if (!t || /selecciona|buscar|sin resultados|no hay/i.test(t)) continue;
+            if (!vistos.has(t)) vistos.set(t, el);
+          }
+          const opciones = [...vistos.keys()];
+          if (opciones.length === 1) vistos.get(opciones[0]).setAttribute("data-zs-oficina", "1");
+          return { opciones, metodo };
+        })
+        .catch((e) => ({ opciones: [], error: e?.message ?? String(e) }));
 
+    let lista = { opciones: [] };
+    let anterior = -1;
+    for (let i = 0; i < 12; i++) {
+      lista = await leerOpciones();
+      const n = lista.opciones?.length ?? 0;
+      if (n > 0 && n === anterior) break;
+      anterior = n;
+      await p.waitForTimeout(500);
+    }
     const oficinas = lista.opciones ?? [];
     if (oficinas.length !== 1) {
       await p.keyboard.press("Escape").catch(() => {});
