@@ -274,9 +274,20 @@ test("pueblo: si Google no tiene la placa no frena (sin cobertura)", async () =>
   fs.rmSync(ruta, { force: true });
 });
 
-test("pueblo: si Google la ubica en OTRA ciudad, sigue frenando", async () => {
-  const { v, ruta } = armar(ok({ municipio: "Sahagún", depto: "Córdoba" }));
-  const r = await v.validar({ direccion: "Calle 10 # 5-20, Centro", ciudad: "Chinú", departamento: "Córdoba" });
+test("pueblo: si Google la ubica en OTRO municipio no frena (adivina)", async () => {
+  const { v, ruta } = armar(ok({ municipio: "Montería", depto: "Córdoba" }));
+  const r = await v.validar({ direccion: "Car 5, 4-98 calle Bogotá", ciudad: "Ayapel", departamento: "Córdoba" });
+  assert.equal(r.veredicto, "revisar");
+  assert.equal(r.mapa.sinCobertura, true);
+  assert.equal(r.calificacion.verificada, false);
+  assert.equal(r.calificacion.puntos, 50); // formato 40 + referencia 10
+  assert.match(r.mapa.detalle, /Montería/);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("ciudad principal: en OTRO municipio si frena", async () => {
+  const { v, ruta } = armar(ok({ municipio: "Bello" }));
+  const r = await v.validar({ direccion: "Calle 10 # 5-20, Centro", ciudad: "Medellín", departamento: "Antioquia" });
   assert.equal(r.veredicto, "invalida");
   assert.equal(r.calificacion.verificada, true);
   fs.rmSync(ruta, { force: true });

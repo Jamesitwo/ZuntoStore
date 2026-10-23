@@ -341,9 +341,9 @@ verificacion `direccionMapa`: por debajo de `minCalificacionDireccion` (70 por
 defecto, 0 = apagado) el pedido queda `direccion-invalida` con la nota y el
 motivo en el analisis. Si el mapa no se pudo consultar (sin key o error) no
 frena. Fuera de las ciudades principales (`CIUDADES_PRINCIPALES`: capitales y
-areas metropolitanas) Google casi no tiene placas: ahi solo cuentan la placa
-exacta (suma) y "otra ciudad" (frena); lo demas queda `sinCobertura` y se
-decide por el formato. Si Google confirma la placa, se sube con la direccion bien escrita.
+areas metropolitanas) Google casi no tiene placas: ahi solo suma la placa
+exacta; lo demas (incluido ubicarla en otro municipio, que suele ser Google
+adivinando) queda `sinCobertura` y se decide por el formato. Si Google confirma la placa, se sube con la direccion bien escrita.
 
 `POST /api/pedidos/:id/direccion {direccion}` la guarda en LucidSales sin
 tocar nada mas del pedido. API key: Ajustes (`/api/mapas/config`, se guarda

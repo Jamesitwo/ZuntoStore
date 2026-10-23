@@ -195,7 +195,7 @@ export function calificar({ formato, mapa, tieneBarrio }) {
   const b = formato?.ok && tieneBarrio ? 10 : 0;
   partes.push({ concepto: "barrio", puntos: b, max: 10 });
   // en otra ciudad no sirve aunque el formato este bien
-  const total = mapa?.veredicto === "otra-ciudad" ? Math.min(10, fmt + b) : fmt + m + b;
+  const total = verificada && mapa?.veredicto === "otra-ciudad" ? Math.min(10, fmt + b) : fmt + m + b;
   return { puntos: total, verificada, partes };
 }
 
@@ -360,9 +360,17 @@ export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThi
     if (formato.ok && !tieneBarrio) {
       avisos.push("No trae barrio ni referencia: conviene pedírselo al cliente.");
     }
-    // En un pueblo, que Google no tenga la placa no dice nada de la direccion:
-    // solo cuentan la placa exacta (suma) y "otra ciudad" (frena).
-    if (mapa && formato.ok && ciudad && !esCiudadPrincipal(ciudad) && ["aproximada", "no-encontrada"].includes(mapa.veredicto)) {
+    // En un pueblo, que Google no tenga la placa no dice nada de la direccion,
+    // y si la "encuentra" en otro municipio suele ser una direccion parecida
+    // de otro lado (adivina): solo la placa exacta en el pueblo suma. Nada
+    // de eso frena; se decide por el formato.
+    if (
+      mapa &&
+      formato.ok &&
+      ciudad &&
+      !esCiudadPrincipal(ciudad) &&
+      ["aproximada", "no-encontrada", "otra-ciudad"].includes(mapa.veredicto)
+    ) {
       mapa = {
         ...mapa,
         sinCobertura: true,
@@ -374,8 +382,8 @@ export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThi
     let veredicto;
     if (!formato.ok) veredicto = "invalida";
     else if (!mapa || mapa.veredicto === "error") veredicto = "revisar";
-    else if (mapa.veredicto === "exacta") veredicto = "valida";
     else if (mapa.sinCobertura) veredicto = "revisar";
+    else if (mapa.veredicto === "exacta") veredicto = "valida";
     else if (mapa.veredicto === "otra-ciudad" || mapa.veredicto === "no-encontrada") veredicto = "invalida";
     else veredicto = "revisar";
 
