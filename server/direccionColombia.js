@@ -55,6 +55,11 @@ const SEP_NUM = String.raw`\s*(?:#|no\.?|n[°º]|nro\.?|numero|num\.?)\s*`;
 const RE_DIR = new RegExp(
   String.raw`^(.+?)\.?\s*` + NUM + SEP_NUM + NUM + String.raw`\s*[-–]\s*(\d{1,3})(?:\s+(sur|este))?\b\s*[,.]?\s*(.*)$`,
 );
+// lo mismo SIN guion entre cruce y placa ("Cra 91a # 128 f 14", "Cl 10 # 5 20"):
+// muy comun; la placa son 1-3 digitos sueltos despues del cruce
+const RE_DIR_SIN_GUION = new RegExp(
+  String.raw`^(.+?)\.?\s*` + NUM + SEP_NUM + NUM + String.raw`\s+(\d{1,3})(?:\s+(sur|este))?\b(?![a-z\d])\s*[,.]?\s*(.*)$`,
+);
 
 function armarNumero(n, letra, bis, letra2, cardinal) {
   let s = String(n);
@@ -76,7 +81,9 @@ function capitalizarResto(r) {
  */
 export function parsearDireccion(direccion) {
   const t = normalizarTextoDir(direccion).replace(/\s*#\s*/g, " # ");
-  const m = t.match(RE_DIR);
+  let m = t.match(RE_DIR);
+  const sinGuion = !m;
+  if (!m) m = t.match(RE_DIR_SIN_GUION);
   if (!m) return null;
   const tipoVia = tipoViaCanonico(m[1]);
   if (!tipoVia) return null;
@@ -85,10 +92,11 @@ export function parsearDireccion(direccion) {
   const via = armarNumero(m[2], m[3], m[4], m[5], m[6]);
   const cruce = armarNumero(m[7], m[8], m[9], m[10], m[11]);
   const placa = String(m[12]) + (m[13] ? ` ${m[13][0].toUpperCase()}${m[13].slice(1)}` : "");
-  // el resto (complemento/barrio) se conserva con su texto original
-  const resto = capitalizarResto(restoOriginal(String(direccion ?? "")));
+  // el resto (complemento/barrio) se conserva con su texto original (sin
+  // guion no hay donde cortar el original: se usa el del texto normalizado)
+  const resto = capitalizarResto(sinGuion ? m[14] : restoOriginal(String(direccion ?? "")));
   const normalizada = `${tipoVia} ${via} # ${cruce}-${placa}${resto ? `, ${resto}` : ""}`;
-  return { tipoVia, via, cruce, placa, resto, normalizada };
+  return { tipoVia, via, cruce, placa, resto, normalizada, sinGuion };
 }
 
 /** Lo que va despues de la placa ("- 23 Sur, apto 2, Centro" -> "apto 2, Centro"). */
@@ -174,12 +182,22 @@ export function parsearManzana(direccion) {
  * Devuelve { ok, normalizada, corregida, origen, detalle }.
  */
 export function validarDireccion(direccion, ia = null) {
+  const r = validarDireccionInterna(direccion, ia, true);
+  // si se prefirio la IA para una direccion sin guion y no paso, vale la
+  // lectura de las reglas (que ya era valida)
+  if (!r.ok && ia && parsearDireccion(direccion)?.sinGuion) return validarDireccionInterna(direccion, null, false);
+  return r;
+}
+
+function validarDireccionInterna(direccion, ia, preferirIA) {
   const original = String(direccion ?? "").trim();
   if (!original) return { ok: false, normalizada: "", corregida: false, origen: "reglas", detalle: "el pedido no tiene dirección" };
 
-  // 1) reglas fijas: ya tiene el formato
+  // 1) reglas fijas: ya tiene el formato. Sin guion ("# 128 f 14") vale
+  //    igual, pero si la IA la descompuso se prefiere la suya (separa mejor
+  //    complemento y barrio; sus numeros se verifican mas abajo)
   const p = parsearDireccion(original);
-  if (p) {
+  if (p && !(preferirIA && p.sinGuion && ia?.esNomenclatura === true && String(ia?.formato ?? "").toLowerCase() !== "manzana")) {
     const corregida = normalizarTextoDir(p.normalizada) !== normalizarTextoDir(original);
     return {
       ok: true,

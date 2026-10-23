@@ -141,3 +141,28 @@ test("no confunde 'interior' ni direcciones normales con oficinas", () => {
     assert.equal(recogeEnOficina(t), null, t);
   }
 });
+
+test("sin guion entre cruce y placa tambien es valida (y se escribe con guion)", () => {
+  const casos = [
+    ["Carrera 91a # 128 f 14", "Cra 91A # 128F-14"],
+    ["Cra 91A # 128F 14, Suba", "Cra 91A # 128F-14, Suba"],
+    ["Calle 10 # 5 20", "Calle 10 # 5-20"],
+    ["Cra 7 # 45 120", "Cra 7 # 45-120"],
+  ];
+  for (const [entrada, esperada] of casos) {
+    const r = validarDireccion(entrada);
+    assert.equal(r.ok, true, entrada);
+    assert.equal(r.normalizada, esperada, entrada);
+    assert.equal(r.corregida, true);
+  }
+  // el numero pegado sigue sin ser valido por reglas (lo decide el mapa)
+  assert.equal(validarDireccion("Cra 21 #1212").ok, false);
+});
+
+test("sin guion: si la IA cambia un numero, vale la lectura de las reglas", () => {
+  const r = validarDireccion("Carrera 91a # 128 f 14", {
+    esNomenclatura: true, tipoVia: "Carrera", via: "91A", cruce: "128F", placa: "41",
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.normalizada, "Cra 91A # 128F-14");
+});
