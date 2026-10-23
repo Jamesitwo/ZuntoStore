@@ -130,6 +130,28 @@ export function evaluarGeocodificacion(respuesta, { ciudad = "", departamento = 
 const PESO = { exacta: 3, aproximada: 2, "otra-ciudad": 1, "no-encontrada": 0 };
 
 /**
+ * Ciudades donde Google Maps tiene las placas con detalle (capitales y areas
+ * metropolitanas). En el resto (pueblos, municipios pequenos) el mapa suele
+ * ubicar solo el pueblo, una calle o el barrio: ahi no se frena por el mapa.
+ */
+export const CIUDADES_PRINCIPALES = [
+  "Bogota", "Medellin", "Cali", "Barranquilla", "Cartagena", "Cucuta", "Bucaramanga", "Pereira",
+  "Santa Marta", "Ibague", "Villavicencio", "Manizales", "Pasto", "Neiva", "Armenia", "Monteria",
+  "Valledupar", "Sincelejo", "Popayan", "Tunja", "Riohacha", "Florencia", "Quibdo", "Yopal",
+  "Arauca", "San Andres", "Mocoa", "Leticia", "Inirida", "San Jose del Guaviare", "Mitu", "Puerto Carreno",
+  // areas metropolitanas y ciudades grandes que no son capital
+  "Soacha", "Bello", "Itagui", "Envigado", "Sabaneta", "La Estrella", "Rionegro", "Soledad", "Malambo",
+  "Palmira", "Jamundi", "Yumbo", "Buenaventura", "Tulua", "Cartago", "Floridablanca", "Giron",
+  "Piedecuesta", "Dosquebradas", "Barrancabermeja", "Chia", "Zipaquira", "Facatativa", "Fusagasuga",
+  "Mosquera", "Madrid", "Funza", "Girardot", "Apartado", "Turbo", "Maicao", "Ipiales", "Duitama",
+  "Sogamoso", "Cienaga", "Magangue", "Los Patios", "Villa del Rosario",
+];
+
+export function esCiudadPrincipal(ciudad) {
+  return CIUDADES_PRINCIPALES.some((c) => mismoLugar(ciudad, c));
+}
+
+/**
  * ¿Lo que va despues de la placa es un barrio/complemento de verdad? No
  * cuentan el nombre de la ciudad o el departamento ni palabras sueltas como
  * "calle" o "Colombia" ("Cra 5 # 4-98, calle Bogotá" no trae barrio).
@@ -158,7 +180,8 @@ export function calificar({ formato, mapa, tieneBarrio }) {
   const partes = [];
   const fmt = formato?.ok ? 40 : 0;
   partes.push({ concepto: "formato", puntos: fmt, max: 40 });
-  const verificada = Boolean(mapa && mapa.veredicto !== "error");
+  // sin cobertura (pueblo sin placas en el mapa) cuenta como no verificada
+  const verificada = Boolean(mapa && mapa.veredicto !== "error" && !mapa.sinCobertura);
   let m = 0;
   if (verificada && formato?.ok) {
     if (mapa.veredicto === "exacta") m = 50;
@@ -337,12 +360,22 @@ export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThi
     if (formato.ok && !tieneBarrio) {
       avisos.push("No trae barrio ni referencia: conviene pedírselo al cliente.");
     }
+    // En un pueblo, que Google no tenga la placa no dice nada de la direccion:
+    // solo cuentan la placa exacta (suma) y "otra ciudad" (frena).
+    if (mapa && formato.ok && ciudad && !esCiudadPrincipal(ciudad) && ["aproximada", "no-encontrada"].includes(mapa.veredicto)) {
+      mapa = {
+        ...mapa,
+        sinCobertura: true,
+        detalle: `${mapa.detalle}. En ${ciudad} el mapa no tiene las calles con detalle: se valida por el formato`,
+      };
+    }
     const calificacion = calificar({ formato, mapa, tieneBarrio });
 
     let veredicto;
     if (!formato.ok) veredicto = "invalida";
     else if (!mapa || mapa.veredicto === "error") veredicto = "revisar";
     else if (mapa.veredicto === "exacta") veredicto = "valida";
+    else if (mapa.sinCobertura) veredicto = "revisar";
     else if (mapa.veredicto === "otra-ciudad" || mapa.veredicto === "no-encontrada") veredicto = "invalida";
     else veredicto = "revisar";
 
@@ -358,7 +391,9 @@ export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThi
           ? !formato.ok
             ? `Formato no válido: ${formato.detalle}`
             : `No se ubica en ${ciudad || "la ciudad del pedido"}: ${mapa?.detalle ?? ""}`
-          : mapa?.veredicto === "error"
+          : mapa?.sinCobertura
+            ? `Formato válido. En ${ciudad} Google Maps no tiene las calles con detalle, así que el mapa no la puede confirmar; se acepta por el formato.`
+            : mapa?.veredicto === "error"
             ? `Formato válido, pero no se pudo consultar el mapa: ${mapa.detalle}`
             : !mapa
               ? "Formato válido (sin verificar en el mapa)."

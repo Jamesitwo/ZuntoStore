@@ -263,3 +263,30 @@ test("el nombre de la ciudad no cuenta como barrio", () => {
   assert.equal(restoEsBarrio("Barrio Centro", ["Medellín"]), true);
   assert.equal(restoEsBarrio("Chapinero Alto", ["Bogotá"]), true);
 });
+
+test("pueblo: si Google no tiene la placa no frena (sin cobertura)", async () => {
+  // Google solo ubica el municipio
+  const { v, ruta } = armar(ok({ tipo: "locality", precision: "APPROXIMATE", municipio: "Chinú", depto: "Córdoba" }));
+  const r = await v.validar({ direccion: "Calle 10 # 5-20, Centro", ciudad: "Chinú", departamento: "Córdoba" });
+  assert.equal(r.mapa.sinCobertura, true);
+  assert.equal(r.calificacion.verificada, false);
+  assert.match(r.resumen, /no tiene las calles/);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("pueblo: si Google la ubica en OTRA ciudad, sigue frenando", async () => {
+  const { v, ruta } = armar(ok({ municipio: "Sahagún", depto: "Córdoba" }));
+  const r = await v.validar({ direccion: "Calle 10 # 5-20, Centro", ciudad: "Chinú", departamento: "Córdoba" });
+  assert.equal(r.veredicto, "invalida");
+  assert.equal(r.calificacion.verificada, true);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("ciudad principal: si Google no encuentra la placa, si cuenta", async () => {
+  const { v, ruta } = armar(ok({ tipo: "locality", precision: "APPROXIMATE" }));
+  const r = await v.validar({ direccion: "Calle 10 # 5-20, Centro", ciudad: "Medellín", departamento: "Antioquia" });
+  assert.equal(r.mapa.sinCobertura, undefined);
+  assert.equal(r.calificacion.verificada, true);
+  assert.equal(r.calificacion.puntos, 50);
+  fs.rmSync(ruta, { force: true });
+});
