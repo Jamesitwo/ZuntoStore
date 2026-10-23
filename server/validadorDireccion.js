@@ -90,6 +90,12 @@ export function candidatosNumeroPegado(direccion) {
   return [...new Set(salida)];
 }
 
+/** Solo la calle y el numero ("Calle 7A # 13-75, Sobre la avenida" -> "Calle 7A # 13-75"). */
+function soloCalle(dir) {
+  const p = parsearDireccion(dir);
+  return p ? `${p.tipoVia} ${p.via} # ${p.cruce}-${p.placa}` : String(dir ?? "");
+}
+
 /** "Calle 7A # 13-75" -> "7A#13-75" (para comparar lecturas). */
 function claveNumeros(dir) {
   // Google escribe la letra de la via como volada: "Cl. 7ª" = Calle 7A
@@ -373,17 +379,29 @@ export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThi
 
     let mapa = null;
     let elegida = formato.ok ? formato.normalizada : null;
+    let leido = null; // candidato cuyos numeros leyo Google igual
     if (apiKey) {
-      // con candidatos se queda el que mejor ubica Google
-      const probar = candidatos.length ? candidatos : [original];
-      for (const c of probar) {
+      // A Google se le pregunta SOLO la calle y el numero: referencias como
+      // "sobre la avenida central" lo confunden y devuelve solo el pueblo.
+      // Con numero pegado tambien va el texto original: asi se ve como lo
+      // lee Google ("Calle 7A 1375" -> "Cl. 7ª # 13-75").
+      const consultas = candidatos.length
+        ? [...candidatos.map((c) => ({ texto: soloCalle(c), candidato: c })), { texto: original, candidato: null }]
+        : [{ texto: soloCalle(formato.ok ? formato.normalizada : original), candidato: null }];
+      const vistas = new Set();
+      for (const q of consultas) {
+        if (vistas.has(q.texto)) continue;
+        vistas.add(q.texto);
         try {
-          const r = await geocodificar(c, { ciudad, departamento });
-          if (!mapa || PESO[r.veredicto] > PESO[mapa.veredicto]) {
-            mapa = { ...r, consultada: c };
-            if (candidatos.length) elegida = c;
+          const r = await geocodificar(q.texto, { ciudad, departamento });
+          if (!leido && candidatos.length && r.veredicto !== "otra-ciudad") {
+            leido = candidatos.find((c) => googleLeyoIgual(r.formateada, c)) ?? null;
           }
-          if (r.veredicto === "exacta") break;
+          if (!mapa || PESO[r.veredicto] > PESO[mapa.veredicto]) {
+            mapa = { ...r, consultada: q.texto };
+            if (q.candidato) elegida = q.candidato;
+          }
+          if (r.veredicto === "exacta" && (!candidatos.length || leido || q.candidato)) break;
         } catch (e) {
           mapa = { veredicto: "error", detalle: e?.message ?? String(e) };
           log.warn?.("[direccion] Google Maps:", e?.message ?? e);
@@ -394,19 +412,29 @@ export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThi
       avisos.push("Sin API key de Google: solo se revisó el formato.");
     }
 
-    // un candidato de numero pegado solo vale si el mapa lo confirma: placa
-    // exacta, o Google leyo los mismos numeros (en la ciudad del pedido)
-    if (!formato.ok && candidatos.length && !mapa?.veredicto?.match(/error|otra-ciudad/)) {
-      const leido = candidatos.find((c) => googleLeyoIgual(mapa?.formateada, c));
-      if (mapa?.veredicto === "exacta" || leido) {
-        elegida = leido ?? elegida;
+    // Numero pegado: vale el candidato que confirma Google (placa exacta o
+    // misma lectura). Si Google no ayuda y son 4 cifras ("1375"), se toma la
+    // lectura habitual 2-2 ("13-75") en pueblos; con 3 cifras no se adivina.
+    if (!formato.ok && candidatos.length && mapa?.veredicto !== "error" && mapa?.veredicto !== "otra-ciudad") {
+      const exacta = mapa?.veredicto === "exacta" && candidatos.includes(elegida) ? elegida : null;
+      const numero = /(\d{3,4})[a-z]?\b/i.exec(original.split(/#/).pop() ?? "")?.[1] ?? /\b\d{1,3}\s*[a-z]?\s+(\d{4})\b/i.exec(original)?.[1];
+      // solo en pueblos: en una ciudad principal Google si lo resuelve, y si no
+      // lo hace es sospechoso
+      const habitual =
+        !exacta && !leido && String(numero ?? "").length === 4 && ciudad && !esCiudadPrincipal(ciudad) ? candidatos[0] : null;
+      const final = exacta ?? leido ?? habitual;
+      if (final) {
+        elegida = final;
         formato = {
           ok: true,
-          normalizada: elegida,
+          normalizada: final,
           corregida: true,
-          origen: "reglas+mapa",
-          detalle: `número separado: se escribe como "${elegida}" (${mapa?.veredicto === "exacta" ? "Google confirma la placa" : "así la lee Google"})`,
+          origen: habitual ? "reglas" : "reglas+mapa",
+          detalle: `número separado: se escribe como "${final}" (${
+            exacta ? "Google confirma la placa" : leido ? "así la lee Google" : "lectura habitual de 4 cifras; confírmala si puedes"
+          })`,
         };
+        if (habitual) avisos.push(`El número venía pegado y se separó como ${final.split(",")[0]}: confírmalo si es posible.`);
       }
     }
     if (!formato.ok) {

@@ -96,7 +96,8 @@ test("valida: buen formato y existe -> valida, con la direccion escrita bien", a
   const r = await v.validar({ direccion: "cra 40#23-23, centro", ciudad: "Medellín", departamento: "Antioquia" });
   assert.equal(r.veredicto, "valida");
   assert.equal(r.sugerida, "Cra 40 # 23-23, Centro");
-  assert.match(pedidas[0], /Cra 40 # 23-23, Centro, Medellín, Antioquia, Colombia/);
+  // a Google va solo la calle (el barrio queda en la direccion final)
+  assert.match(pedidas[0], /^Cra 40 # 23-23, Medellín, Antioquia, Colombia$/);
   // segunda vez: sale de la cache, no gasta otra consulta
   await v.validar({ direccion: "cra 40#23-23, centro", ciudad: "Medellín", departamento: "Antioquia" });
   assert.equal(pedidas.length, 1);
@@ -324,5 +325,25 @@ test("numero pegado sin «#»: Google dice como se separa (aunque no tenga la pl
   // pueblo: el mapa no tiene la placa -> no frena
   assert.equal(r.mapa.sinCobertura, true);
   assert.equal(r.calificacion.puntos, 50);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("numero pegado en pueblo: si Google solo ubica el pueblo, 4 cifras se leen 2-2", async () => {
+  // lo que paso en Puerto Lleras: Google solo devolvio el municipio
+  const { v, ruta } = armar(
+    ok({ tipo: "locality", precision: "APPROXIMATE", parcial: true, municipio: "Puerto Lleras", depto: "Meta", texto: "Puerto Lleras, Meta, Colombia" }),
+  );
+  const r = await v.validar({ direccion: "Calle 7A 1375, sobre la avenida central", ciudad: "Puerto Lleras", departamento: "Meta" });
+  assert.equal(r.formato.ok, true);
+  assert.equal(r.sugerida, "Calle 7A # 13-75, Sobre la avenida central");
+  assert.match(r.formato.detalle, /lectura habitual/);
+  assert.equal(r.calificacion.verificada, false); // pueblo: no frena
+  fs.rmSync(ruta, { force: true });
+});
+
+test("numero pegado de 3 cifras en pueblo sin ayuda de Google: no se adivina", async () => {
+  const { v, ruta } = armar(ok({ tipo: "locality", precision: "APPROXIMATE", municipio: "Puerto Lleras", depto: "Meta", texto: "Puerto Lleras, Meta, Colombia" }));
+  const r = await v.validar({ direccion: "Calle 7A 137", ciudad: "Puerto Lleras", departamento: "Meta" });
+  assert.equal(r.formato.ok, false);
   fs.rmSync(ruta, { force: true });
 });
