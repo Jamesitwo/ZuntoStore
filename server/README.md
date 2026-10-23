@@ -349,6 +349,15 @@ adivinando) queda `sinCobertura` y se decide por el formato. Si Google confirma 
 tocar nada mas del pedido. API key: Ajustes (`/api/mapas/config`, se guarda
 en `MAPAS_CONFIG`) o `GOOGLE_MAPS_KEY`. Sin key solo se revisa el formato.
 
+### Google Sheets de productos
+
+El link de Dropi de cada producto sale de un Google Sheets (columnas
+`idProductoDropi` y `dropiLink`). Se configura en **Ajustes → Subida a
+Dropi** pegando el link normal del sheet (`GET/PUT /api/dropi/productos`,
+`POST /api/dropi/productos/probar`): el servidor lo convierte a CSV, lo prueba
+y lo guarda en `DROPI_PRODUCTOS_CONFIG`; manda sobre `DROPI_PRODUCTOS_CSV` del
+`.env`. Se relee cada 10 minutos.
+
 ### Subida a Dropi: envio
 
 La direccion que se escribe en Dropi es **la direccion validada + ", " + las

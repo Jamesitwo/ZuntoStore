@@ -118,6 +118,7 @@ export function crearServidor({
   subidaAuto,
   lucidBotContactos,
   resolverProductoDropi,
+  productosDropi = null,
   verificarSesion,
 }) {
   // acceso del panel: sesion real de LucidSales (x-token + x-tienda)
@@ -1245,6 +1246,29 @@ export function crearServidor({
       const r = await probarLLM({ ...datos, timeoutMs: config.LLM_TIMEOUT_MS ?? 30000 });
       json(res, 200, { ok: r.ok, msg: r.detalle, ...r });
       return;
+    }
+
+    // ---- GET/PUT /api/dropi/productos  y  POST /api/dropi/productos/probar ----
+    // Link del Google Sheets con el mapa producto -> link de Dropi.
+    if (ruta === "/api/dropi/productos" || ruta === "/api/dropi/productos/probar") {
+      autorizar(req);
+      if (!productosDropi?.estado) throw new ErrorApi(503, "El sheet de productos no está montado en este servidor");
+      if (req.method === "GET" && ruta === "/api/dropi/productos") {
+        json(res, 200, { ok: true, ...productosDropi.estado() });
+        return;
+      }
+      if (req.method === "PUT" && ruta === "/api/dropi/productos") {
+        const cuerpo = await leerCuerpo(req);
+        const e = await productosDropi.guardar(cuerpo?.link ?? "");
+        console.log(`[productosDropi] sheet ${e.origen === "panel" ? "guardado desde el panel" : "vuelve al .env"} (por ${usuarioDe(req) ?? "?"})`);
+        json(res, 200, { ok: true, ...e });
+        return;
+      }
+      if (req.method === "POST" && ruta === "/api/dropi/productos/probar") {
+        const cuerpo = await leerCuerpo(req);
+        json(res, 200, await productosDropi.probar(cuerpo?.link));
+        return;
+      }
     }
 
     // ---- GET/PUT/DELETE /api/mapas/config  y  POST /api/mapas/probar ----

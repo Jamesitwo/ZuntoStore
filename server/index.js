@@ -50,7 +50,7 @@ const dropi = crearClienteDropi(config);
 // la via que funciona: navegador real con la sesion del usuario
 const dropiNavegador = crearDropiNavegador(config);
 // mapa producto -> link de Dropi, mantenido en un Google Sheets (CSV)
-const productosDropi = crearProductosDropi({ url: config.DROPI_PRODUCTOS_CSV });
+const productosDropi = crearProductosDropi({ url: config.DROPI_PRODUCTOS_CSV, ruta: config.DROPI_PRODUCTOS_CONFIG });
 const lucidBotContactos = crearLucidBotContactos({ ruta: config.LUCIDBOT_CONTACTOS_CONFIG });
 // resuelve el link navegable de Dropi de un producto de LucidSales:
 //   id de LucidSales -> idProductoDropi -> dropiLink (del sheet)
@@ -62,7 +62,7 @@ const resolverProductoDropi = async (idProducto) => {
   if (!idDropi || idDropi === "0") {
     throw new Error(`el producto «${nombre}» (id ${idProducto}) no tiene idProductoDropi en LucidSales: vincúlalo a Dropi en el catálogo`);
   }
-  if (!productosDropi.listo) throw new Error("no está configurado el Google Sheets de productos (DROPI_PRODUCTOS_CSV en server/.env)");
+  if (!productosDropi.listo) throw new Error("no está configurado el Google Sheets de productos (Ajustes → Subida a Dropi → Google Sheets de productos)");
   const filas = await productosDropi.cargar();
   if (!filas) throw new Error("no se pudo descargar el Google Sheets de productos (¿sigue compartido como CSV?)");
   const fila = filas.get(idDropi);
@@ -117,6 +117,7 @@ const server = crearServidor({
   subidaAuto,
   lucidBotContactos,
   resolverProductoDropi,
+  productosDropi,
 });
 
 if (config.NODE_ENV === "production") {

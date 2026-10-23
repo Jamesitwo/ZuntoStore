@@ -26,7 +26,8 @@ ENV NODE_ENV=production \
     ANUNCIOS_DIR=/data/anuncios \
     ANUNCIOS_CONFIG=/data/config/anuncios.json \
     LLM_CONFIG=/data/config/llm.json \
-    MAPAS_CONFIG=/data/config/mapas.json
+    MAPAS_CONFIG=/data/config/mapas.json \
+    DROPI_PRODUCTOS_CONFIG=/data/config/productosDropi.json
 
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/zuntostore-entrypoint"]

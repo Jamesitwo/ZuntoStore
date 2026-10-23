@@ -6,6 +6,8 @@
 // La clave de union es `idProductoDropi`: es el id con el que Dropi conoce el
 // producto, y es el MISMO que trae LucidSales en `obtenerProducto(id).idProductoDropi`.
 // De ahi se saca el `dropiLink` (URL navegable con el slug) y la transportadora.
+import fs from "node:fs";
+import path from "node:path";
 import { ErrorApi } from "./errores.js";
 
 /**
@@ -55,44 +57,100 @@ export function parsearCsv(texto) {
   return filas.filter((f) => f.some((c) => String(c).trim() !== ""));
 }
 
+/**
+ * Link de Google Sheets -> URL de exportacion CSV. Acepta:
+ *   - el link normal del navegador (.../spreadsheets/d/<ID>/edit#gid=123)
+ *   - el de exportacion (.../d/<ID>/export?format=csv[&gid=])
+ *   - el publicado en la web (.../d/e/<ID>/pub?output=csv)
+ * Devuelve null si no es un Google Sheets.
+ */
+export function urlCsvDeSheet(link) {
+  const t = String(link ?? "").trim();
+  if (!t) return null;
+  let u;
+  try {
+    u = new URL(t);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "https:" || u.hostname !== "docs.google.com") return null;
+  // publicado en la web: se fuerza el CSV
+  const pub = u.pathname.match(/^\/spreadsheets\/d\/e\/([\w-]+)\/pub/);
+  if (pub) {
+    const gid = u.searchParams.get("gid");
+    return `https://docs.google.com/spreadsheets/d/e/${pub[1]}/pub?output=csv${gid ? `&gid=${gid}` : ""}`;
+  }
+  const m = u.pathname.match(/^\/spreadsheets\/d\/([\w-]{20,})/);
+  if (!m) return null;
+  const gid = u.searchParams.get("gid") ?? (u.hash.match(/gid=(\d+)/)?.[1] ?? null);
+  return `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=csv${gid ? `&gid=${gid}` : ""}`;
+}
+
 export function crearProductosDropi({
   url,
+  ruta = null,
   ttl = 10 * 60 * 1000,
   fetchImpl = globalThis.fetch,
   log = console,
 }) {
   let cache = null; // { hasta, filas: Map<idDropi, fila> }
+  const delEnv = String(url ?? "").trim();
+  // el link guardado desde el panel (config/productosDropi.json) manda
+  let enPanel = "";
+  if (ruta) {
+    try {
+      enPanel = String(JSON.parse(fs.readFileSync(ruta, "utf8"))?.link ?? "").trim();
+    } catch {
+      enPanel = "";
+    }
+  }
+  url = enPanel ? urlCsvDeSheet(enPanel) ?? enPanel : delEnv;
+
+  /** Descarga y lee el CSV de una URL (sin tocar la cache). */
+  async function leer(destino) {
+    const r = await fetchImpl(destino, { signal: AbortSignal.timeout(20000), redirect: "follow" });
+    if (r.status >= 400) {
+      throw new ErrorApi(502, `El sheet de productos respondió HTTP ${r.status} (¿está compartido como «cualquiera con el enlace»?)`);
+    }
+    const texto = await r.text();
+    if (/^\s*<(!doctype|html)/i.test(texto)) {
+      throw new ErrorApi(502, "Google devolvió una página en vez del CSV: comparte el sheet como «Cualquier persona con el enlace puede ver»");
+    }
+    const crudas = parsearCsv(texto);
+    const cab = (crudas[0] ?? []).map((c) => String(c).trim().toLowerCase());
+    const iDropi = cab.indexOf("idproductodropi");
+    const iLink = cab.indexOf("dropilink");
+    const iTransportadora = cab.indexOf("transportadora");
+    const iNombre = cab.indexOf("nombre");
+    if (iDropi < 0 || iLink < 0) {
+      throw new ErrorApi(
+        400,
+        `El sheet no tiene las columnas idProductoDropi y dropiLink (columnas vistas: ${(crudas[0] ?? []).slice(0, 8).join(", ") || "ninguna"})`,
+      );
+    }
+    const filas = new Map();
+    let sinLink = 0;
+    for (const fila of crudas.slice(1)) {
+      const idDropi = String(fila[iDropi] ?? "").trim();
+      if (!idDropi) continue;
+      const dropiLink = String(fila[iLink] ?? "").trim();
+      if (!dropiLink) sinLink++;
+      filas.set(idDropi, {
+        idProductoDropi: idDropi,
+        nombre: iNombre >= 0 ? String(fila[iNombre] ?? "").trim() : "",
+        dropiLink,
+        transportadora: iTransportadora >= 0 ? String(fila[iTransportadora] ?? "").trim() : "",
+      });
+    }
+    return { filas, sinLink };
+  }
 
   async function cargar() {
     if (!url) return null;
     if (cache && cache.hasta > Date.now()) return cache.filas;
 
     try {
-      const r = await fetchImpl(url, { signal: AbortSignal.timeout(20000) });
-      if (r.status >= 400) {
-        throw new ErrorApi(502, `El sheet de productos respondio HTTP ${r.status}`);
-      }
-      const texto = await r.text();
-      const crudas = parsearCsv(texto);
-      const cab = crudas[0] ?? [];
-      const col = (nombre) => {
-        const i = cab.findIndex((c) => String(c).trim().toLowerCase() === nombre);
-        return i;
-      };
-      const iDropi = col("idproductodropi");
-      const iLink = col("dropilink");
-      const iTransportadora = col("transportadora");
-
-      const filas = new Map();
-      for (const fila of crudas.slice(1)) {
-        const idDropi = String(fila[iDropi] ?? "").trim();
-        if (!idDropi || iDropi < 0) continue;
-        filas.set(idDropi, {
-          idProductoDropi: idDropi,
-          dropiLink: String(fila[iLink] ?? "").trim(),
-          transportadora: String(fila[iTransportadora] ?? "").trim(),
-        });
-      }
+      const { filas } = await leer(url);
       cache = { hasta: Date.now() + ttl, filas };
       return filas;
     } catch (e) {
@@ -107,9 +165,54 @@ export function crearProductosDropi({
     return filas.get(String(idDropi)) ?? null;
   }
 
+  function estado() {
+    return {
+      configurado: Boolean(url),
+      link: enPanel || delEnv,
+      csv: url,
+      origen: enPanel ? "panel" : delEnv ? ".env" : null,
+    };
+  }
+
+  /** Prueba un link (o el actual): cuantas filas trae y si tienen link. */
+  async function probar(link) {
+    const destino = link ? urlCsvDeSheet(link) : url;
+    if (!destino) throw new ErrorApi(400, "Pega el link de un Google Sheets (docs.google.com/spreadsheets/...)");
+    const { filas, sinLink } = await leer(destino);
+    const ejemplos = [...filas.values()].slice(0, 3).map((f) => f.nombre || f.idProductoDropi);
+    return { ok: true, csv: destino, filas: filas.size, sinLink, ejemplos };
+  }
+
+  /** Guarda el link desde el panel (lo prueba antes). null/"" = volver al .env. */
+  async function guardar(link) {
+    if (!ruta) throw new ErrorApi(500, "No hay dónde guardar el link del sheet");
+    const t = String(link ?? "").trim();
+    if (!t) {
+      fs.rmSync(ruta, { force: true });
+      enPanel = "";
+      url = delEnv;
+      cache = null;
+      return estado();
+    }
+    const destino = urlCsvDeSheet(t);
+    if (!destino) throw new ErrorApi(400, "Pega el link de un Google Sheets (docs.google.com/spreadsheets/...)");
+    const prueba = await probar(t);
+    fs.mkdirSync(path.dirname(ruta), { recursive: true });
+    fs.writeFileSync(ruta, JSON.stringify({ link: t, actualizado: new Date().toISOString() }, null, 2), "utf8");
+    enPanel = t;
+    url = destino;
+    cache = null;
+    return { ...estado(), filas: prueba.filas, sinLink: prueba.sinLink };
+  }
+
   return {
     cargar,
     buscar,
-    listo: Boolean(url),
+    estado,
+    probar,
+    guardar,
+    get listo() {
+      return Boolean(url);
+    },
   };
 }

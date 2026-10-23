@@ -7,6 +7,7 @@ import { useEtiquetaTienda } from "../lib/tiendas";
 import { useInboxBot } from "../lib/botInbox";
 import { AnalisisPedido } from "./AnalisisPedido";
 import { ReglasEnvio, type ConfigEnvio, type ReglaProducto } from "./ReglasEnvio";
+import { SheetProductos } from "./SheetProductos";
 import { useToast } from "./Toast";
 import { Campo, ErrorBanner, Spinner } from "./ui";
 
@@ -873,6 +874,8 @@ export function SubidaDropi() {
               ))}
             </div>
           </Campo>
+
+          <SheetProductos />
 
           <Campo
             id="sub-tiendas-dropi"

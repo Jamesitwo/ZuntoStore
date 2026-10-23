@@ -119,6 +119,8 @@ export function cargarConfig(env = process.env) {
      * La subida automatica navega directo al `dropiLink` de cada producto.
      */
     DROPI_PRODUCTOS_CSV: String(g("DROPI_PRODUCTOS_CSV", "")),
+    /** Link del sheet guardado desde el panel (manda sobre DROPI_PRODUCTOS_CSV). */
+    DROPI_PRODUCTOS_CONFIG: String(g("DROPI_PRODUCTOS_CONFIG", path.join(dir, "config", "productosDropi.json"))),
     /** Horarios de usuarios y asignacion de pedidos (JSON). */
     ASIGNACION: String(g("ASIGNACION", path.join(dir, "asignacion.json"))),
     /** Credenciales que guarda el panel para el backend (JSON, 600). */
