@@ -570,8 +570,10 @@ export function crearServidor({
         return;
       }
       const mensajes = Array.isArray(cuerpo?.mensajes) ? cuerpo.mensajes : (chat.mensajes ?? []);
+      const oficinaVal = recogeEnOficina(resumen?.direccion, resumen?.referencias);
+      const oficinaValAuto = oficinaVal === "Inter Rapidísimo" && subida.oficinaInterActiva?.() === true;
 
-      const r = await ejecutarAgente({ resumen, mensajes, extraer });
+      const r = await ejecutarAgente({ resumen, mensajes, extraer, oficina: oficinaValAuto ? oficinaVal : null });
       console.log(
         `[agente] pedido #${resumen.idPedido || id}: ${r.accion.toUpperCase()}` +
           (r.problemas.length ? ` (${r.problemas.map((p) => p.campo).join(", ")})` : ""),
@@ -654,10 +656,11 @@ export function crearServidor({
       const pedidoLucid = await cliente.obtenerPedido(id, tiendaDe(req));
       res.__notificacionLucidBot.pedido = pedidoLucid;
       const resumen = resumenDePedido(pedidoLucid);
-      // recoge en oficina de Inter/Coordinadora: se sube a mano en Dropi
-      // (eligiendo la oficina); este flujo siempre usa Coordinadora a domicilio
+      // recoge en oficina: Coordinadora siempre a mano; Inter solo si esta
+      // encendida la opcion (y Dropi ofrece UNA oficina)
       const oficina = recogeEnOficina(resumen?.direccion, resumen?.referencias);
-      if (oficina) {
+      const oficinaAuto = oficina === "Inter Rapidísimo" && subida.oficinaInterActiva?.() === true;
+      if (oficina && !oficinaAuto) {
         delete res.__notificacionLucidBot;
         json(res, 409, {
           ok: false,
@@ -689,7 +692,7 @@ export function crearServidor({
       }
 
       // 1) el agente decide
-      const r = await ejecutarAgente({ resumen, mensajes, extraer });
+      const r = await ejecutarAgente({ resumen, mensajes, extraer, oficina: oficinaAuto ? oficina : null });
 
       // 2) si frena, NO se sube nada
       if (r.accion !== "subir") {
@@ -715,7 +718,7 @@ export function crearServidor({
       }
 
       // la direccion que se envia es la validada (normalizada/corregida)
-      if (r.direccionEnvio?.normalizada) resumen.direccion = r.direccionEnvio.normalizada;
+      if (r.direccionEnvio?.normalizada && !oficinaAuto) resumen.direccion = r.direccionEnvio.normalizada;
 
       // 3a) via navegador: los mismos pasos que hace el usuario a mano
       if (cuerpo?.via === "navegador") {
@@ -805,6 +808,15 @@ export function crearServidor({
         const partes = String(resumen?.cliente ?? "").trim().split(/\s+/);
         // la linea del pedido: cantidad y precio de venta (lo que pago el cliente)
         const linea = resumen?.productos?.[0] ?? {};
+        // transportadoras en orden y tope de flete (reglas del producto o
+        // generales); si el cuerpo trae una transportadora fija, manda esa
+        const plan = subida.planEnvio?.(resumen, { oficina: oficinaAuto ? oficina : null }) ?? {
+          transportadoras: [5],
+          maxEnvio: null,
+          oficinaInter: false,
+        };
+        const transportadoras =
+          cuerpo?.transportadoraId && !plan.oficinaInter ? [Number(cuerpo.transportadoraId)] : plan.transportadoras;
         const rNav = await dropiNav.subirPedido({
           productoUrl,
           nombre: partes[0] ?? "",
@@ -814,7 +826,9 @@ export function crearServidor({
           direccion: resumen?.direccion,
           departamento: depto,
           ciudad,
-          transportadoraId: cuerpo?.transportadoraId,
+          transportadoras,
+          maxEnvio: plan.maxEnvio,
+          oficinaInter: plan.oficinaInter,
           tienda: tiendaDropi,
           conRecaudo: cuerpo?.conRecaudo,
           seguro: cuerpo?.insurance ?? config.DROPI_SEGURO,
@@ -870,6 +884,24 @@ export function crearServidor({
           return;
         }
 
+        // envio caro / sin transportadora / varias oficinas: el pedido no se
+        // sube; queda marcado igual que en la subida automatica
+        if (rNav?.envioCaro || rNav?.sinTransportadora || rNav?.oficinaHumano) {
+          const accion = rNav.envioCaro ? "envio-caro" : rNav.sinTransportadora ? "sin-transportadora" : "requiere-humano";
+          const det = `${rNav.detalle}${rNav.envioCaro && plan.motivoTope ? ` (tope: ${plan.motivoTope})` : ""}`;
+          if (cuerpo?.dryRun !== true) subida.registrarResultado?.(id, accion, det);
+          json(res, 409, {
+            ok: false,
+            id,
+            accion: "frenar",
+            motivos: [{ campo: rNav.oficinaHumano ? "oficina" : "envio", detalle: det }],
+            intentos: rNav.intentos,
+            oficinas: rNav.oficinas,
+            subido: false,
+          });
+          return;
+        }
+
         console.log(
           `[dropi] pedido #${resumen.idPedido || id}: ` +
             `${rNav.creado ? "CREADO" : rNav.preparado ? "PREPARADO (dryRun)" : "NO CREADO"}` +
@@ -879,7 +911,10 @@ export function crearServidor({
         if ((rNav?.ok || rNav?.creado || rNav?.preparado) && subida.sesion?.()?.estado && subida.sesion().estado !== "ok") {
           subida.sesionRestablecida?.("subida manual");
         }
-        let detalleRegistro = `Dropi #${rNav.idDropi ?? "confirmado"}; seguro=${rNav.seguro}`;
+        const textoEnvio = rNav.envio
+          ? `; ${rNav.envio.transportadora} $${Math.round(rNav.envio.precio ?? 0).toLocaleString("es-CO")}${rNav.envio.oficina ? ` (oficina ${rNav.envio.oficina})` : ""}`
+          : "";
+        let detalleRegistro = `Dropi #${rNav.idDropi ?? "confirmado"}${textoEnvio}; seguro=${rNav.seguro}`;
         if (rNav?.resultadoIncierto) {
           subida.registrarResultado?.(id, "resultado-incierto", rNav.detalle);
         } else if (rNav?.creado) {
@@ -930,6 +965,7 @@ export function crearServidor({
           resultadoIncierto: Boolean(rNav.resultadoIncierto),
           idDropi: rNav.idDropi ?? null,
           insurance: rNav.seguro,
+          envio: rNav.envio ?? null,
           estadoLucidSales: estadoLucidSales ? "Confirmado" : null,
           avisoEstado,
           detalle: rNav.detalle ?? null,

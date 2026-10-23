@@ -16,7 +16,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ErrorApi } from "./errores.js";
-import { ejecutarAgente, resumenDePedido } from "./agente.js";
+import { ejecutarAgente, parsearPrecio, resumenDePedido } from "./agente.js";
 import { cambiarEstado } from "./estado.js";
 import { recogeEnOficina } from "./direccionColombia.js";
 
@@ -32,9 +32,78 @@ const FALLOS_QUE_CUENTAN = new Set(["error", "frenado", "sin-conversacion"]);
 /** Mas de esta cantidad de pedidos a revision en una vuelta = un solo aviso resumen. */
 const MAX_AVISOS_SUELTOS = 3;
 /** Resultados finales: la subida automatica ya no vuelve a tocar el pedido. */
-const FINALES = new Set(["subido", "resultado-incierto", "requiere-revision", "requiere-humano", "direccion-invalida"]);
+const FINALES = new Set([
+  "subido",
+  "resultado-incierto",
+  "requiere-revision",
+  "requiere-humano",
+  "direccion-invalida",
+  "envio-caro",
+  "sin-transportadora",
+]);
 /** Finales que se pueden volver a intentar desde el panel sin mas confirmacion. */
-const REARMABLES = new Set(["requiere-revision", "direccion-invalida"]);
+const REARMABLES = new Set(["requiere-revision", "direccion-invalida", "envio-caro", "sin-transportadora"]);
+/** Cada cuanto se revisa: de 30 s a 12 h. */
+export const MIN_SEGUNDOS = 30;
+export const MAX_SEGUNDOS = 12 * 3600;
+const segundosValidos = (v) => Math.max(MIN_SEGUNDOS, Math.min(Number(v) || 120, MAX_SEGUNDOS));
+/** Transportadoras que se pueden configurar (id de Dropi). */
+export const TRANSPORTADORAS_VALIDAS = [5, 3, 2, 4, 10, 6, 7, 13, 14, 17];
+const INTER = 3;
+
+/** Lista de transportadoras limpia: ids conocidos, sin repetir, maximo 4. */
+function listaTransportadoras(v) {
+  return (Array.isArray(v) ? v : [])
+    .map(Number)
+    .filter((x, i, a) => TRANSPORTADORAS_VALIDAS.includes(x) && a.indexOf(x) === i)
+    .slice(0, 4);
+}
+
+/** Tope en pesos (> 0) o null; porcentaje entre 1 y 100 o null. */
+const topePesos = (v) => (v === null || v === undefined || v === "" ? null : Number(v) > 0 ? Math.round(Number(v)) : null);
+const topePct = (v) =>
+  v === null || v === undefined || v === "" ? null : Number(v) > 0 && Number(v) <= 100 ? Number(v) : null;
+
+/**
+ * Plan de envio de un pedido: en que orden probar las transportadoras y el
+ * tope de flete. El tope es el MENOR de los que apliquen:
+ *   pesos del producto (o el general) y porcentaje del producto (o el
+ *   general) sobre el valor del pedido.
+ */
+export function planEnvio(c, resumen, { oficina = null } = {}) {
+  const linea = resumen?.productos?.[0] ?? {};
+  const regla = c?.reglasProducto?.[String(linea.id ?? "")] ?? null;
+  const general = listaTransportadoras(c?.transportadoras);
+  const propias = listaTransportadoras(regla?.transportadoras);
+  const transportadoras =
+    oficina === "Inter Rapidísimo"
+      ? [INTER]
+      : propias.length
+        ? propias
+        : general.length
+          ? general
+          : [Number(c?.transportadoraId) || 5];
+  // el Total de LucidSales llega como texto ("105.690"): se parsea en pesos
+  const total = parsearPrecio(resumen?.total);
+  const valor =
+    total > 0 ? total : (parsearPrecio(linea.precio) || 0) * (Number(linea.cantidad) || 1);
+  const pesos = topePesos(regla?.maxPesos) ?? topePesos(c?.envio?.maxPesos);
+  const pct = topePct(regla?.maxPorcentaje) ?? topePct(c?.envio?.maxPorcentaje);
+  const topes = [];
+  if (pesos) topes.push({ valor: pesos, motivo: `tope de $${pesos.toLocaleString("es-CO")}` });
+  if (pct && valor > 0) {
+    const v = Math.round((valor * pct) / 100);
+    topes.push({ valor: v, motivo: `${pct}% de $${Math.round(valor).toLocaleString("es-CO")}` });
+  }
+  const tope = topes.sort((a, b) => a.valor - b.valor)[0] ?? null;
+  return {
+    transportadoras,
+    maxEnvio: tope?.valor ?? null,
+    motivoTope: tope?.motivo ?? null,
+    oficinaInter: oficina === "Inter Rapidísimo",
+    reglaProducto: Boolean(regla),
+  };
+}
 /** Solo los N mas recientes guardan el analisis completo de la IA. */
 const MAX_CON_ANALISIS = 300;
 
@@ -102,6 +171,15 @@ export function crearSubidaAutomatica({
     tiendas: [],
     dryRun: true,
     transportadoraId: 5,
+    // orden de preferencia general (la primera que este disponible y no pase
+    // el tope); cada producto puede tener la suya en reglasProducto
+    transportadoras: [5],
+    // tope del flete: en pesos y/o en % del valor del pedido (null = sin tope)
+    envio: { maxPesos: null, maxPorcentaje: null },
+    // id de producto de LucidSales -> {nombre, transportadoras[], maxPesos, maxPorcentaje}
+    reglasProducto: {},
+    // pedidos que recogen en oficina de Inter: se suben si Dropi ofrece UNA sola oficina
+    oficinaInter: false,
     // intentos fallidos antes de dejar el pedido para revision manual
     maxIntentos: 2,
     // tienda de LucidSales (idEmpresa) -> nombre exacto de la tienda en Dropi
@@ -402,7 +480,10 @@ export function crearSubidaAutomatica({
           //  - recoge en oficina de Inter Rapidisimo / Coordinadora
           //  - "Sin Recaudo" (prepago)
           const oficina = recogeEnOficina(resumen?.direccion, resumen?.referencias);
-          if (oficina) {
+          // Inter con la opcion encendida sigue el flujo normal (y solo se
+          // sube si Dropi ofrece UNA oficina); Coordinadora siempre a mano
+          const oficinaAuto = oficina === "Inter Rapidísimo" && c.oficinaInter === true;
+          if (oficina && !oficinaAuto) {
             marcarP("requiere-humano", `recoge en oficina de ${oficina}: lo sube una persona eligiendo la oficina en Dropi`);
             detalle.push({ id, accion: "requiere-humano", detalle: `oficina de ${oficina}` });
             continue;
@@ -449,7 +530,7 @@ export function crearSubidaAutomatica({
           }
 
           // 3) el agente decide
-          const r2 = await ejecutarAgente({ resumen, mensajes, extraer });
+          const r2 = await ejecutarAgente({ resumen, mensajes, extraer, oficina: oficinaAuto ? oficina : null });
           analisisActual = resumirAnalisis(r2);
           // la IA no respondio (timeout, saldo, clave): error tecnico, no un
           // pedido frenado por su contenido
@@ -528,6 +609,7 @@ export function crearSubidaAutomatica({
             Movil: resumen?.telefono,
             chatUrl: conv?.meta?.chatUrl ?? conv?.meta?.chat_url ?? conv?.meta?.inboxUrl ?? "",
           };
+          const plan = planEnvio(c, resumen, { oficina: oficinaAuto ? oficina : null });
           let rNav;
           try {
             rNav = await dropiNav.subirPedido({
@@ -536,10 +618,12 @@ export function crearSubidaAutomatica({
               apellido: partes.slice(1).join(" "),
               telefono: resumen?.telefono,
               // la direccion validada (normalizada o corregida por formato)
-              direccion: r2.direccionEnvio?.normalizada || resumen?.direccion,
+              direccion: (oficinaAuto ? null : r2.direccionEnvio?.normalizada) || resumen?.direccion,
               departamento: depto,
               ciudad,
-              transportadoraId: c.transportadoraId,
+              transportadoras: plan.transportadoras,
+              maxEnvio: plan.maxEnvio,
+              oficinaInter: plan.oficinaInter,
               tienda: tiendaDropi,
               seguro: true,
               tipoPago: resumen?.tipoPago,
@@ -591,6 +675,17 @@ export function crearSubidaAutomatica({
             inciertos++;
             continue;
           }
+          // envio caro, sin transportadora o varias oficinas: es un resultado
+          // del PEDIDO (reintentar no lo cambia). Queda final y se avisa.
+          if (rNav?.envioCaro || rNav?.sinTransportadora || rNav?.oficinaHumano) {
+            const accion = rNav.envioCaro ? "envio-caro" : rNav.sinTransportadora ? "sin-transportadora" : "requiere-humano";
+            const det = `${rNav.detalle}${plan.motivoTope && rNav.envioCaro ? ` (tope: ${plan.motivoTope})` : ""}`;
+            if (!c.dryRun) await notificarUnaVez(c, id, contactoPedido, "fallido", det);
+            marcarP(accion, det);
+            detalle.push({ id, accion, detalle: det });
+            frenados++;
+            continue;
+          }
           if (!rNav?.ok) {
             if (!c.dryRun) await notificarUnaVez(c, id, contactoPedido, "fallido", rNav?.detalle ?? "no se pudo subir");
             marcarP("error", rNav?.detalle ?? "no se pudo subir");
@@ -604,9 +699,12 @@ export function crearSubidaAutomatica({
             detalle.push({ id, accion: "error", detalle: rNav?.detalle ?? "Dropi no confirmó la creación" });
             continue;
           }
+          const textoEnvio = rNav.envio
+            ? `; ${rNav.envio.transportadora} $${Math.round(rNav.envio.precio ?? 0).toLocaleString("es-CO")}${rNav.envio.oficina ? ` (oficina ${rNav.envio.oficina})` : ""}`
+            : "";
           let detalleFinal = c.dryRun
-            ? `formulario preparado; seguro=${rNav.seguro}`
-            : `Dropi #${rNav.idDropi ?? "confirmado"}; seguro=${rNav.seguro}`;
+            ? `formulario preparado${textoEnvio}; seguro=${rNav.seguro}`
+            : `Dropi #${rNav.idDropi ?? "confirmado"}${textoEnvio}; seguro=${rNav.seguro}`;
           let pendienteConfirmacion = false;
           if (!c.dryRun && rNav.creado) {
             // Registrar el éxito de Dropi antes de llamar a LucidSales: si esa
@@ -690,7 +788,7 @@ export function crearSubidaAutomatica({
     arrancar() {
       if (timer) return;
       const c = leer();
-      const seg = Math.max(30, Math.min(Number(c.cadaSegundos) || 120, 3600));
+      const seg = segundosValidos(c.cadaSegundos);
       timer = setInterval(() => {
         tick().catch(() => {});
       }, seg * 1000);
@@ -720,10 +818,38 @@ export function crearSubidaAutomatica({
       for (const k of ["automatico", "dryRun"]) {
         if (k in patch) c[k] = Boolean(patch[k]);
       }
-      if ("cadaSegundos" in patch) c.cadaSegundos = Math.max(30, Math.min(Number(patch.cadaSegundos) || 120, 3600));
+      if ("cadaSegundos" in patch) c.cadaSegundos = segundosValidos(patch.cadaSegundos);
+      if ("transportadoras" in patch) {
+        const lista = listaTransportadoras(patch.transportadoras);
+        if (!lista.length) throw new ErrorApi(400, "Elige al menos una transportadora");
+        c.transportadoras = lista;
+        c.transportadoraId = lista[0];
+      }
+      if ("envio" in patch && patch.envio && typeof patch.envio === "object") {
+        c.envio = { maxPesos: topePesos(patch.envio.maxPesos), maxPorcentaje: topePct(patch.envio.maxPorcentaje) };
+      }
+      if ("oficinaInter" in patch) c.oficinaInter = Boolean(patch.oficinaInter);
+      if ("reglasProducto" in patch && patch.reglasProducto && typeof patch.reglasProducto === "object") {
+        const limpio = {};
+        for (const [k, v] of Object.entries(patch.reglasProducto)) {
+          const clave = String(k).trim();
+          if (!/^\d{1,12}$/.test(clave) || !v || typeof v !== "object") continue;
+          const regla = {
+            nombre: String(v.nombre ?? "").trim().slice(0, 160),
+            transportadoras: listaTransportadoras(v.transportadoras),
+            maxPesos: topePesos(v.maxPesos),
+            maxPorcentaje: topePct(v.maxPorcentaje),
+          };
+          // una regla vacia no sirve: se descarta
+          if (regla.transportadoras.length || regla.maxPesos || regla.maxPorcentaje) limpio[clave] = regla;
+        }
+        c.reglasProducto = limpio;
+      }
       if ("estados" in patch && Array.isArray(patch.estados)) c.estados = patch.estados.map(Number).filter(Number.isInteger);
       if ("tiendas" in patch && Array.isArray(patch.tiendas)) c.tiendas = patch.tiendas.map(String);
-      if ("transportadoraId" in patch) c.transportadoraId = Number(patch.transportadoraId) || 5;
+      if ("transportadoraId" in patch && !("transportadoras" in patch)) {
+        c.transportadoraId = Number(patch.transportadoraId) || 5;
+      }
       if ("maxIntentos" in patch) c.maxIntentos = Math.max(1, Math.min(Number(patch.maxIntentos) || 2, 10));
       if ("tiendasDropi" in patch && patch.tiendasDropi && typeof patch.tiendasDropi === "object") {
         const limpio = {};
@@ -763,6 +889,16 @@ export function crearSubidaAutomatica({
     sesionRestablecida(origen = "panel") {
       sesionOk(leer(), origen);
       return leer().sesionDropi;
+    },
+
+    /** Plan de envio (transportadoras y tope) para la subida manual. */
+    planEnvio(resumen, opciones) {
+      return planEnvio(leer(), resumen, opciones);
+    },
+
+    /** ¿Los pedidos de oficina de Inter se suben solos (si hay una sola oficina)? */
+    oficinaInterActiva() {
+      return leer().oficinaInter === true;
     },
 
     /** Nombre de la tienda de Dropi para una tienda de LucidSales ("" si no hay). */

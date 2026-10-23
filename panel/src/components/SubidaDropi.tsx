@@ -6,6 +6,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useEtiquetaTienda } from "../lib/tiendas";
 import { useInboxBot } from "../lib/botInbox";
 import { AnalisisPedido } from "./AnalisisPedido";
+import { ReglasEnvio, type ConfigEnvio, type ReglaProducto } from "./ReglasEnvio";
 import { useToast } from "./Toast";
 import { Campo, ErrorBanner, Spinner } from "./ui";
 
@@ -24,11 +25,21 @@ import { Campo, ErrorBanner, Spinner } from "./ui";
  * Si el backend no esta arrancado, la tarjeta lo dice y queda deshabilitada.
  */
 
-/** Transportadoras de Dropi (id -> nombre del panel). Solo Coordinadora (5)
- *  ofrece el seguro antidevoluciones, por eso es la que viene por defecto. */
-const TRANSPORTADORAS: Array<[number, string]> = [
-  [5, "Coordinadora (seguro)"],
-];
+/** Cada cuánto revisa: de 30 segundos a 12 horas. */
+const MAX_SEGUNDOS = 12 * 3600;
+
+/** Resultados que se pueden reintentar desde el panel. */
+const REINTENTABLES = ["requiere-revision", "direccion-invalida", "envio-caro", "sin-transportadora"];
+const EN_ALERTA = [...REINTENTABLES, "resultado-incierto"];
+
+/** "2 h 30 min", "45 min", "90 s". */
+function textoDuracion(seg: number): string {
+  if (!Number.isFinite(seg) || seg <= 0) return "";
+  if (seg < 120) return `${seg} s`;
+  const h = Math.floor(seg / 3600);
+  const m = Math.round((seg % 3600) / 60);
+  return h ? `${h} h${m ? ` ${m} min` : ""}` : `${m} min`;
+}
 
 /** Se pega en la consola de app.dropi.co: copia su localStorage (la sesion). */
 const COMANDO_SESION = "copy(JSON.stringify(localStorage))";
@@ -50,12 +61,28 @@ function normalizaConfig(c: any): {
   tiendas: string[];
   estados: number[];
   tiendasDropi: Record<string, string>;
-} {
+} & ConfigEnvio {
+  const lista = (v: any) => (Array.isArray(v) ? v.map(Number).filter((x: number) => x > 0) : []) as number[];
+  const num = (v: any) => (Number(v) > 0 ? Number(v) : null);
+  const reglas: Record<string, ReglaProducto> = {};
+  for (const [k, r] of Object.entries((c?.reglasProducto ?? {}) as Record<string, any>)) {
+    reglas[k] = {
+      nombre: String(r?.nombre ?? ""),
+      transportadoras: lista(r?.transportadoras),
+      maxPesos: num(r?.maxPesos),
+      maxPorcentaje: num(r?.maxPorcentaje),
+    };
+  }
+  const generales = lista(c?.transportadoras);
   return {
     automatico: !!c?.automatico,
     dryRun: c?.dryRun !== false, // por defecto se prepara sin crear
-    cadaSegundos: Math.max(30, Number(c?.cadaSegundos) || 120),
+    cadaSegundos: Math.max(30, Math.min(Number(c?.cadaSegundos) || 120, MAX_SEGUNDOS)),
     transportadoraId: Number(c?.transportadoraId) || 5,
+    transportadoras: generales.length ? generales : [Number(c?.transportadoraId) || 5],
+    envio: { maxPesos: num(c?.envio?.maxPesos), maxPorcentaje: num(c?.envio?.maxPorcentaje) },
+    reglasProducto: reglas,
+    oficinaInter: c?.oficinaInter === true,
     maxIntentos: Math.max(1, Math.min(Number(c?.maxIntentos) || 2, 10)),
     tiendas: (Array.isArray(c?.tiendas) ? c.tiendas : []).map(String) as string[],
     estados: (Array.isArray(c?.estados) ? c.estados : []).map(Number) as number[],
@@ -726,17 +753,58 @@ export function SubidaDropi() {
 
             <Campo
               id="sub-cada"
-              label="Cada cuánto (segundos)"
-              ayuda="Entre 30 y 3600. Solo mira pedidos nuevos: nunca reenvía."
+              label="Cada cuánto revisa"
+              ayuda={`De 30 segundos a 12 horas${form.cadaSegundos ? ` · ahora: cada ${textoDuracion(form.cadaSegundos)}` : ""}. Solo mira pedidos nuevos: nunca reenvía.`}
             >
-              <input
-                id="sub-cada"
-                type="number"
-                min={30}
-                max={3600}
-                value={form.cadaSegundos}
-                onChange={(e) => setForm((f) => ({ ...f, cadaSegundos: Number(e.target.value) }))}
-              />
+              <span className="intervalo">
+                <input
+                  id="sub-cada"
+                  type="number"
+                  min={form.cadaSegundos >= 3600 ? 1 : form.cadaSegundos >= 60 ? 1 : 30}
+                  value={
+                    form.cadaSegundos >= 3600 && form.cadaSegundos % 3600 === 0
+                      ? form.cadaSegundos / 3600
+                      : form.cadaSegundos >= 60 && form.cadaSegundos % 60 === 0
+                        ? form.cadaSegundos / 60
+                        : form.cadaSegundos
+                  }
+                  onChange={(e) => {
+                    const n = Number(e.target.value) || 0;
+                    const unidad =
+                      form.cadaSegundos >= 3600 && form.cadaSegundos % 3600 === 0
+                        ? 3600
+                        : form.cadaSegundos >= 60 && form.cadaSegundos % 60 === 0
+                          ? 60
+                          : 1;
+                    setForm((f) => ({ ...f, cadaSegundos: Math.min(n * unidad, MAX_SEGUNDOS) }));
+                  }}
+                />
+                <select
+                  aria-label="Unidad"
+                  value={
+                    form.cadaSegundos >= 3600 && form.cadaSegundos % 3600 === 0
+                      ? 3600
+                      : form.cadaSegundos >= 60 && form.cadaSegundos % 60 === 0
+                        ? 60
+                        : 1
+                  }
+                  onChange={(e) => {
+                    const unidad = Number(e.target.value);
+                    // se conserva el numero y se cambia la unidad (2 min -> 2 h)
+                    const actual =
+                      form.cadaSegundos >= 3600 && form.cadaSegundos % 3600 === 0
+                        ? form.cadaSegundos / 3600
+                        : form.cadaSegundos >= 60 && form.cadaSegundos % 60 === 0
+                          ? form.cadaSegundos / 60
+                          : form.cadaSegundos;
+                    setForm((f) => ({ ...f, cadaSegundos: Math.max(30, Math.min(actual * unidad, MAX_SEGUNDOS)) }));
+                  }}
+                >
+                  <option value={1}>segundos</option>
+                  <option value={60}>minutos</option>
+                  <option value={3600}>horas</option>
+                </select>
+              </span>
             </Campo>
 
             <Campo
@@ -754,25 +822,6 @@ export function SubidaDropi() {
               />
             </Campo>
 
-            <Campo
-              id="sub-trans"
-              label="Transportadora"
-              ayuda="Solo Coordinadora (5) ofrece el seguro antidevoluciones."
-            >
-              <select
-                id="sub-trans"
-                value={form.transportadoraId}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, transportadoraId: Number(e.target.value) }))
-                }
-              >
-                {TRANSPORTADORAS.map(([id, nombre]) => (
-                  <option key={id} value={id}>
-                    {id} · {nombre}
-                  </option>
-                ))}
-              </select>
-            </Campo>
           </div>
 
           <Campo
@@ -856,18 +905,39 @@ export function SubidaDropi() {
             </div>
           </Campo>
 
+          <ReglasEnvio
+            valor={form}
+            onChange={(v) =>
+              setForm((f) => ({
+                ...f,
+                transportadoras: v.transportadoras,
+                envio: v.envio,
+                reglasProducto: v.reglasProducto,
+                oficinaInter: v.oficinaInter,
+              }))
+            }
+          />
+
           <p className="muted small">
             {Number(config.procesados ?? 0) > 0
               ? `${config.procesados} pedido(s) tratados en total.`
               : "Todavía no ha tratado ningún pedido."}
           </p>
 
-          {ultimos.some((u) => u.accion === "requiere-revision" || u.accion === "direccion-invalida") ? (
+          {ultimos.some((u) => REINTENTABLES.includes(u.accion)) ? (
             <div className="banner warn" style={{ marginTop: 4 }}>
-              {ultimos.filter((u) => u.accion === "requiere-revision").length} pedido(s) en revisión y{" "}
-              {ultimos.filter((u) => u.accion === "direccion-invalida").length} con dirección inválida: no se
-              volverán a intentar solos. Revisa el motivo y el chat (o corrige la dirección en el pedido), y
-              cuando esté resuelto pulsa «Reintentar».{" "}
+              {[
+                ["requiere-revision", "en revisión"],
+                ["direccion-invalida", "con dirección inválida"],
+                ["envio-caro", "con envío muy caro"],
+                ["sin-transportadora", "sin transportadora disponible"],
+              ]
+                .map(([a, t]) => [ultimos.filter((u) => u.accion === a).length, t] as const)
+                .filter(([n]) => n > 0)
+                .map(([n, t]) => `${n} ${t}`)
+                .join(", ")}
+              : no se volverán a intentar solos. Revisa el motivo (o ajusta el pedido o los topes de
+              envío) y cuando esté resuelto pulsa «Reintentar».{" "}
               <button className="btn sm" onClick={() => void reintentarRevision()}>
                 Reintentar todos
               </button>
@@ -922,7 +992,7 @@ export function SubidaDropi() {
                           className={`chip${
                             u.accion === "subido" || u.accion === "preparado"
                               ? " ok"
-                              : u.accion === "requiere-revision" || u.accion === "resultado-incierto" || u.accion === "direccion-invalida"
+                              : EN_ALERTA.includes(u.accion)
                                 ? " alerta"
                                 : ""
                           }`}
@@ -945,7 +1015,7 @@ export function SubidaDropi() {
                           <button className="btn sm" onClick={() => void reintentarIncierto(String(u.id))}>
                             Verifiqué que no existe
                           </button>
-                        ) : u.accion === "requiere-revision" || u.accion === "direccion-invalida" ? (
+                        ) : REINTENTABLES.includes(u.accion) ? (
                           <button className="btn sm" onClick={() => void reintentarRevision(String(u.id))}>
                             Reintentar
                           </button>

@@ -45,6 +45,38 @@ const NOMBRES_CARRIER = {
   17: "Wiilog",
 };
 
+/** Nombre legible de una transportadora de Dropi. */
+export function nombreTransportadora(id) {
+  return NOMBRES_CARRIER[Number(id)] ?? `transportadora ${id}`;
+}
+
+/**
+ * Valor del envio que muestra la tarjeta de una transportadora
+ * ("Coordinadora\n$ 18.500\n2-3 dias" -> 18500). null si no hay precio.
+ */
+export function precioDeTarjeta(texto) {
+  // solo el numero pegado al $ (en la misma linea: "18.500", "18,500", "18.500,00")
+  const m = /\$[ \t]*(\d[\d.,]*)/.exec(String(texto ?? ""));
+  if (!m) return null;
+  // "18.500,00" -> sin decimales; los separadores de miles se quitan
+  const crudo = m[1].replace(/[.,]$/, "").replace(/,\d{1,2}$/, "");
+  const n = Number(crudo.replace(/[.,]/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+const pesos = (v) => `$${Math.round(Number(v) || 0).toLocaleString("es-CO")}`;
+
+/**
+ * Texto de la direccion para un pedido que recoge en oficina de Inter: Dropi
+ * solo muestra el selector de oficinas si la direccion lo dice.
+ */
+export function direccionOficinaInter(direccion) {
+  const t = String(direccion ?? "").trim();
+  const n = t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/oficina/.test(n) && /inter ?rapidisimo/.test(n)) return t;
+  return `Oficina Interrapidisimo${t ? ` - ${t}` : ""}`;
+}
+
 /**
  * Lo que se ve en la lista de transportadoras (para ajustar el selector si
  * Dropi cambia su formulario): data-cy, texto y si parece marcada.
@@ -296,8 +328,9 @@ export function crearDropiNavegador(config = {}) {
         return { ok: false, paso: "sin coincidencia exacta", opciones: marca.opciones ?? [] };
       }
       const opcion = p.locator('[data-zs-opcion="1"]').first();
-      await opcion.click().catch(() => {});
-      await opcion.evaluate((el) => el.removeAttribute("data-zs-opcion")).catch(() => {});
+      await opcion.click({ timeout: 5000 }).catch(() => {});
+      // la lista se cierra al elegir: se limpia la marca sin esperar al nodo
+      await p.evaluate(() => document.querySelectorAll("[data-zs-opcion]").forEach((e) => e.removeAttribute("data-zs-opcion"))).catch(() => {});
       await p.waitForTimeout(500);
       if (await verificar()) return { ok: true, elegido: await textoBoton(), verificar };
       return { ok: false, paso: `no quedó seleccionada (el campo muestra "${await textoBoton()}")` };
@@ -476,6 +509,185 @@ export function crearDropiNavegador(config = {}) {
     return { ok: true };
   }
 
+  /** Tarjeta de una transportadora (por data-cy o, si Dropi cambio el id, por nombre). */
+  async function tarjetaTransportadora(p, idCarrier) {
+    let car = p.locator(`[data-cy="order-create-carrier-option-${idCarrier}"]`).first();
+    if (!(await car.count().catch(() => 0))) {
+      car = p
+        .locator('[data-cy^="order-create-carrier-option-"]')
+        .filter({ hasText: new RegExp(`^\\s*${nombreTransportadora(idCarrier)}\\b`, "i") })
+        .first();
+    }
+    return car;
+  }
+
+  /**
+   * Cotizacion de UNA transportadora: espera a que su tarjeta este habilitada
+   * y con precio. `esperaMs` es corto para las siguientes (Dropi cotiza todas
+   * a la vez). Devuelve {ok, precio} o {ok:false, motivo}.
+   */
+  async function cotizar(p, idCarrier, esperaMs) {
+    const car = await tarjetaTransportadora(p, idCarrier);
+    const vueltas = Math.max(1, Math.round(esperaMs / 500));
+    let visto = false;
+    for (let i = 0; i < vueltas; i++) {
+      if (await car.count().catch(() => 0)) {
+        visto = true;
+        const { habilitada, texto } = await car
+          .evaluate((el) => ({ habilitada: !el.classList.contains("disabled"), texto: el.innerText || "" }))
+          .catch(() => ({ habilitada: false, texto: "" }));
+        const precio = precioDeTarjeta(texto);
+        if (habilitada && precio) return { ok: true, precio };
+      }
+      await p.waitForTimeout(500);
+    }
+    return { ok: false, motivo: visto ? "no está disponible para esta ciudad" : "no aparece en la lista de Dropi" };
+  }
+
+  /**
+   * Elige la PRIMERA transportadora de la lista que este disponible y cuyo
+   * envio no pase el tope. Devuelve {ok, id, nombre, precio, intentos} o
+   * {ok:false, envioCaro, sinTransportadora, detalle, intentos}.
+   */
+  async function elegirTransportadora(p, ids, { maxEnvio = null, ciudad = "" } = {}) {
+    const intentos = [];
+    let primera = true;
+    for (const id of ids) {
+      const nombre = nombreTransportadora(id);
+      const c = await cotizar(p, id, primera ? Math.min(25000, lento) : Math.min(6000, lento));
+      primera = false;
+      if (!c.ok) {
+        // sin ciudad Dropi no cotiza ninguna: no tiene sentido seguir
+        const pideCiudad = await p
+          .locator('[data-cy="order-create-carrier-city-required"]')
+          .isVisible()
+          .catch(() => false);
+        if (pideCiudad) {
+          return {
+            ok: false,
+            detalle: `Dropi no tomó la ciudad de destino ("${ciudad}"), así que no cotiza transportadoras; no se creó el pedido. ${await diagnosticoTransportadoras(p)}`,
+            intentos,
+          };
+        }
+        intentos.push({ id, nombre, motivo: c.motivo });
+        continue;
+      }
+      if (maxEnvio && c.precio > maxEnvio) {
+        intentos.push({ id, nombre, precio: c.precio, caro: true, motivo: `envío ${pesos(c.precio)} supera el tope de ${pesos(maxEnvio)}` });
+        continue;
+      }
+      const s = await seleccionarTransportadora(p, id, ciudad);
+      if (!s.ok) {
+        intentos.push({ id, nombre, precio: c.precio, motivo: "no se pudo seleccionar" });
+        continue;
+      }
+      return { ok: true, id, nombre, precio: c.precio, intentos };
+    }
+    const resumen = intentos.map((i) => `${i.nombre}: ${i.motivo}`).join("; ");
+    const envioCaro = intentos.some((i) => i.caro);
+    return {
+      ok: false,
+      envioCaro,
+      sinTransportadora: !envioCaro,
+      intentos,
+      detalle: envioCaro
+        ? `Envío demasiado caro, no se creó el pedido (${resumen}).`
+        : `Ninguna transportadora disponible para este pedido (${resumen}); no se creó.`,
+    };
+  }
+
+  /**
+   * Oficina de Interrapidisimo: con la direccion "Oficina Interrapidisimo" y
+   * la transportadora Inter elegida, Dropi muestra
+   * <dropi-select data-cy="centro-servicio-interrapidisimo">. Se elige SOLO si
+   * la lista trae exactamente UNA oficina; con varias (o ninguna) lo hace una
+   * persona.
+   */
+  async function elegirOficinaInter(p) {
+    const boton = p.locator('[data-cy="centro-servicio-interrapidisimo-field"]').first();
+    const sinCentros = p.locator('[data-cy="order-create-client-no-centers-alert-dialog"]').first();
+    let aparecio = false;
+    for (let i = 0; i < Math.round(Math.min(15000, lento) / 500); i++) {
+      if (await boton.isVisible().catch(() => false)) {
+        aparecio = true;
+        break;
+      }
+      // el aviso "no hay oficinas" (si no existe no se espera por el)
+      const textoAlerta = (await sinCentros.count().catch(() => 0))
+        ? (await sinCentros.innerText({ timeout: 500 }).catch(() => "")).trim()
+        : "";
+      if (textoAlerta) {
+        await p.keyboard.press("Escape").catch(() => {});
+        return { ok: false, oficinas: [], detalle: `Dropi dice que no hay oficinas de Interrapidísimo para esta ciudad: ${textoAlerta.slice(0, 160)}` };
+      }
+      await p.waitForTimeout(500);
+    }
+    if (!aparecio) {
+      return { ok: false, oficinas: [], detalle: "Dropi no mostró el selector de oficinas de Interrapidísimo (la dirección debe decir «Oficina Interrapidísimo»)." };
+    }
+    const textoBoton = async () =>
+      (await boton.locator(".elipsis").first().innerText({ timeout: 2000 }).catch(() => "")).trim();
+    await boton.click({ timeout: 5000 }).catch(() => {});
+    await p.waitForTimeout(900);
+
+    const lista = await p
+      .evaluate(() => {
+        const host = document.querySelector('dropi-select[data-cy="centro-servicio-interrapidisimo"]');
+        const boton = document.querySelector('[data-cy="centro-servicio-interrapidisimo-field"]');
+        if (!host) return { opciones: [] };
+        const visible = (el) => {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden";
+        };
+        const fuera = (el) => !(boton && (boton === el || boton.contains(el))) && el.tagName !== "INPUT";
+        const texto = (el) => (el.innerText || "").replace(/\s+/g, " ").trim();
+        // opciones "de verdad" primero; si no hay, las hojas con texto
+        let nodos = [...host.querySelectorAll('li, [role="option"], .option, .dropdown-item, .item')]
+          .filter((el) => fuera(el) && visible(el) && texto(el));
+        if (!nodos.length) {
+          nodos = [...host.querySelectorAll("*")].filter(
+            (el) => fuera(el) && visible(el) && el.children.length === 0 && texto(el),
+          );
+        }
+        // la mas interna con cada texto, sin el placeholder ni "sin resultados"
+        nodos = nodos.filter((el) => !nodos.some((o) => o !== el && el.contains(o)));
+        document.querySelectorAll("[data-zs-oficina]").forEach((e) => e.removeAttribute("data-zs-oficina"));
+        const vistos = new Map();
+        for (const el of nodos) {
+          const t = texto(el);
+          if (/selecciona|buscar|sin resultados|no hay/i.test(t)) continue;
+          if (!vistos.has(t)) vistos.set(t, el);
+        }
+        const opciones = [...vistos.keys()];
+        if (opciones.length === 1) vistos.get(opciones[0]).setAttribute("data-zs-oficina", "1");
+        return { opciones };
+      })
+      .catch((e) => ({ opciones: [], error: e?.message ?? String(e) }));
+
+    const oficinas = lista.opciones ?? [];
+    if (oficinas.length !== 1) {
+      await p.keyboard.press("Escape").catch(() => {});
+      return {
+        ok: false,
+        varias: oficinas.length > 1,
+        oficinas,
+        detalle: oficinas.length > 1
+          ? `Hay ${oficinas.length} oficinas de Interrapidísimo para esta ciudad (${oficinas.slice(0, 6).join(" | ")}): la elige una persona.`
+          : `No se pudo leer la lista de oficinas de Interrapidísimo${lista.error ? ` (${lista.error})` : ""}.`,
+      };
+    }
+    const opcion = p.locator('[data-zs-oficina="1"]').first();
+    await opcion.click({ timeout: 5000 }).catch(() => {});
+    await p.evaluate(() => document.querySelectorAll("[data-zs-oficina]").forEach((e) => e.removeAttribute("data-zs-oficina"))).catch(() => {});
+    await p.waitForTimeout(700);
+    const elegido = await textoBoton();
+    const norm = (t) => String(t).replace(/\s+/g, " ").trim().toLowerCase();
+    if (!elegido || /selecciona/i.test(elegido) || !norm(oficinas[0]).includes(norm(elegido).slice(0, 20))) {
+      return { ok: false, oficinas, detalle: `Se intentó elegir la oficina «${oficinas[0]}» pero el campo muestra «${elegido || "vacío"}»; no se creó el pedido.` };
+    }
+    return { ok: true, oficina: oficinas[0], oficinas };
+  }
+
   /**
    * Interruptor del seguro antidevoluciones: dropi-switch
    * [data-cy="order-create-carrier-insurance"] > label.toggle-switch >
@@ -483,10 +695,10 @@ export function crearDropiNavegador(config = {}) {
    * Aparece (div.insurances.active) al elegir Coordinadora. Lo deja en
    * `exigido` y lo CONFIRMA leyendo el checkbox; si no, no se crea nada.
    */
-  async function activarSeguro(p, exigido = true) {
+  async function activarSeguro(p, exigido = true, { opcional = false } = {}) {
     const campo = p.locator(SELECTOR_SEGURO).first();
     let encontrado = false;
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < (opcional ? 6 : 20); i++) {
       if (await campo.count().catch(() => 0)) {
         encontrado = true;
         break;
@@ -494,7 +706,7 @@ export function crearDropiNavegador(config = {}) {
       await p.waitForTimeout(1000);
     }
     if (!encontrado) {
-      if (!exigido) return { ok: true, seguro: null, seguroEncontrado: false };
+      if (!exigido || opcional) return { ok: true, seguro: null, seguroEncontrado: false };
       return {
         ok: false,
         seguro: null,
@@ -665,6 +877,16 @@ export function crearDropiNavegador(config = {}) {
       return seleccionarTransportadora(p, idCarrier, ciudad);
     },
 
+    /** Elige transportadora con tope (se usa en pruebas). */
+    elegirTransportadora(p, ids, opciones) {
+      return elegirTransportadora(p, ids, opciones);
+    },
+
+    /** Elige la oficina de Inter si hay una sola (se usa en pruebas). */
+    elegirOficinaInter(p) {
+      return elegirOficinaInter(p);
+    },
+
     /** Elige la tienda en un formulario Crear Orden ya abierto (se usa en pruebas). */
     seleccionarTienda(p, nombre) {
       return seleccionarTienda(p, nombre);
@@ -702,7 +924,15 @@ export function crearDropiNavegador(config = {}) {
       const telefono = String(datos.telefono ?? "").replace(/\D/g, "").replace(/^57/, "");
       const lineas = Array.isArray(datos.productos) ? datos.productos : [];
       const tipoPago = Number(datos.tipoPago);
-      const carrierId = Number(datos.transportadoraId ?? 5);
+      // transportadoras en orden de preferencia (la primera que sirva)
+      const candidatas = (Array.isArray(datos.transportadoras) && datos.transportadoras.length
+        ? datos.transportadoras
+        : [datos.transportadoraId ?? 5]
+      )
+        .map(Number)
+        .filter((x, i, a) => Number.isInteger(x) && x > 0 && a.indexOf(x) === i);
+      const maxEnvio = Number(datos.maxEnvio) > 0 ? Number(datos.maxEnvio) : null;
+      const oficinaInter = datos.oficinaInter === true;
       const faltantes = [];
       if (!nombreCompleto) faltantes.push("nombre");
       if (!/^\d{10}$/.test(telefono)) faltantes.push("teléfono colombiano de 10 dígitos");
@@ -716,7 +946,10 @@ export function crearDropiNavegador(config = {}) {
         faltantes.push("cantidad y precio válidos del producto");
       }
       if (![1, 2].includes(tipoPago)) faltantes.push("tipo de pago válido (1 o 2)");
-      if (datos.seguro !== false && carrierId !== 5) faltantes.push("Coordinadora (única transportadora configurada con seguro)");
+      if (!candidatas.length) faltantes.push("al menos una transportadora");
+      if (oficinaInter && !(candidatas.length === 1 && candidatas[0] === 3)) {
+        faltantes.push("Interrapidísimo como única transportadora (entrega en oficina)");
+      }
       if (faltantes.length) {
         return { ok: false, creado: false, detalle: `No se envió a Dropi: faltan o no son válidos ${faltantes.join(", ")}.` };
       }
@@ -755,7 +988,9 @@ export function crearDropiNavegador(config = {}) {
       // espera el numero local (3001112233), el pais va en su propio selector
       const telefonoLocal = telefono;
       await p.locator('[data-cy="order-create-client-phone-number-field"]').fill(telefonoLocal);
-      await p.locator('[data-cy="client-address"]').fill(String(datos.direccion ?? ""));
+      await p
+        .locator('[data-cy="client-address"]')
+        .fill(oficinaInter ? direccionOficinaInter(datos.direccion) : String(datos.direccion ?? ""));
       if (datos.email) await p.locator('[data-cy="client-email"]').fill(String(datos.email));
       // dejar que el formulario valide el cliente antes de tocar ciudad/depto
       await p.waitForTimeout(600);
@@ -828,14 +1063,36 @@ export function crearDropiNavegador(config = {}) {
       // dejar que la ciudad quede registrada antes de tocar la transportadora
       await p.waitForTimeout(1000);
 
-      // 6) transportadora Coordinadora: el seguro solo aparece con ella, y hay
-      //    que esperar a que la cotizacion cargue (precio != "-")
-      const selCarrier = await seleccionarTransportadora(p, carrierId, datos.ciudad);
-      if (!selCarrier.ok) return { ok: false, creado: false, detalle: selCarrier.detalle };
+      // 6) transportadora: la primera de la lista que este disponible y cuyo
+      //    envio no pase el tope (hay que esperar a que Dropi cotice)
+      const selCarrier = await elegirTransportadora(p, candidatas, { maxEnvio, ciudad: datos.ciudad });
+      if (!selCarrier.ok) {
+        return {
+          ok: false,
+          creado: false,
+          envioCaro: Boolean(selCarrier.envioCaro),
+          sinTransportadora: Boolean(selCarrier.sinTransportadora),
+          intentos: selCarrier.intentos,
+          detalle: selCarrier.detalle,
+        };
+      }
+      const envio = { id: selCarrier.id, transportadora: selCarrier.nombre, precio: selCarrier.precio, tope: maxEnvio };
       await p.waitForTimeout(2500);
 
-      // 7) EL SEGURO ANTIDEVOLUCIONES (aparece al elegir Coordinadora)
-      const rSeguro = await activarSeguro(p, seguroExigido);
+      // 6.5) oficina de Interrapidisimo: solo si Dropi ofrece UNA
+      let oficina = null;
+      if (oficinaInter) {
+        const rOf = await elegirOficinaInter(p);
+        if (!rOf.ok) {
+          return { ok: false, creado: false, oficinaHumano: true, oficinas: rOf.oficinas, envio, detalle: rOf.detalle };
+        }
+        oficina = rOf.oficina;
+        envio.oficina = oficina;
+      }
+
+      // 7) EL SEGURO ANTIDEVOLUCIONES: obligatorio con Coordinadora; con otra
+      //    transportadora se activa si Dropi lo ofrece
+      const rSeguro = await activarSeguro(p, seguroExigido, { opcional: selCarrier.id !== 5 });
       if (!rSeguro.ok) return { ok: false, creado: false, seguro: rSeguro.seguro, seguroEncontrado: rSeguro.seguroEncontrado, detalle: rSeguro.detalle };
       const seguroActivado = rSeguro.seguro;
       const seguroEncontrado = rSeguro.seguroEncontrado;
@@ -859,8 +1116,9 @@ export function crearDropiNavegador(config = {}) {
           seguro: seguroActivado,
           seguroEncontrado,
           ubicacion,
+          envio,
           tienda: tiendaSel.elegido,
-          detalle: `formulario preparado en la tienda ${tiendaSel.elegido} con «Enviar al cliente» habilitado; no se pulsó (modo prueba)`,
+          detalle: `formulario preparado en la tienda ${tiendaSel.elegido} con ${envio.transportadora} (${pesos(envio.precio)}${oficina ? `, oficina ${oficina}` : ""}) y «Enviar al cliente» habilitado; no se pulsó (modo prueba)`,
           url: p.url(),
         };
       }
@@ -920,6 +1178,7 @@ export function crearDropiNavegador(config = {}) {
         ok: true,
         creado: true,
         idDropi: resultado?.objects?.id ?? resultado?.objects?.order_id ?? null,
+        envio,
         tienda: tiendaSel.elegido,
         seguro: seguroActivado,
         seguroEncontrado,

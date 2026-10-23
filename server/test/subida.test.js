@@ -49,7 +49,7 @@ function armar(overrides = {}) {
   const s = crearSubidaAutomatica({
     cliente: overrides.cliente ?? clienteFalso(overrides.pedidos ?? []),
     conversacion: conv,
-    extraer: async () => overrides.extraerFalla ? { incertidumbre: ["x"], falloTecnico: "la IA no respondió en 90 s" } : (overrides.alExtraer?.(), {
+    extraer: async () => overrides.extraerFalla ? { incertidumbre: ["x"], falloTecnico: "la IA no respondió en 90 s" } : (overrides.alExtraer?.(), overrides.extraido ?? {
       producto: "Taladro Inalambrico 68V",
       cantidad: 1,
       precioAcordado: 105690,
@@ -736,5 +736,164 @@ test("oficina sin conversacion: igual queda para un humano (no 'sin-conversacion
   await s.tick({ forzar: true });
   assert.equal(s.estadoPedido(5).accion, "requiere-humano");
   assert.equal(llamadasLLM, 0);
+  fs.rmSync(ruta, { force: true });
+});
+
+// ---------------------------------------------------------------------------
+// Envio: transportadoras por producto, tope de flete y oficina de Inter
+
+test("el intervalo se puede subir hasta 12 horas (y no mas)", () => {
+  const { s, ruta } = armar();
+  assert.equal(s.configurar({ cadaSegundos: 43200 }).cadaSegundos, 43200);
+  assert.equal(s.configurar({ cadaSegundos: 99999 }).cadaSegundos, 43200);
+  assert.equal(s.configurar({ cadaSegundos: 5 }).cadaSegundos, 30);
+  s.detener();
+  fs.rmSync(ruta, { force: true });
+});
+
+test("se mandan las transportadoras en orden y el tope (el menor de pesos y %)", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+  });
+  s.configurar({
+    automatico: true,
+    dryRun: true,
+    transportadoras: [5, 3],
+    envio: { maxPesos: 30000, maxPorcentaje: 20 },
+  });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.deepEqual(subidos[0].transportadoras, [5, 3]);
+  // 20% de 105.690 = 21.138 (< 30.000)
+  assert.equal(subidos[0].maxEnvio, 21138);
+  assert.equal(subidos[0].oficinaInter, false);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("la regla del producto manda sobre la general", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+  });
+  s.configurar({
+    automatico: true,
+    dryRun: true,
+    transportadoras: [5],
+    envio: { maxPesos: 30000, maxPorcentaje: null },
+    reglasProducto: { 2291039: { nombre: "Taladro", transportadoras: [3, 5], maxPesos: 15000 } },
+  });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.deepEqual(subidos[0].transportadoras, [3, 5]);
+  assert.equal(subidos[0].maxEnvio, 15000);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("reglas invalidas o vacias se descartan; transportadora vacia no se acepta", () => {
+  const { s, ruta } = armar();
+  const c = s.configurar({
+    reglasProducto: {
+      abc: { transportadoras: [5] },
+      77: { transportadoras: [999] },
+      88: { maxPorcentaje: 150 },
+      99: { maxPorcentaje: 25, transportadoras: [3, 3, 5] },
+    },
+  });
+  assert.deepEqual(Object.keys(c.reglasProducto), ["99"]);
+  assert.deepEqual(c.reglasProducto["99"].transportadoras, [3, 5]);
+  assert.throws(() => s.configurar({ transportadoras: [] }), /al menos una/);
+  s.detener();
+  fs.rmSync(ruta, { force: true });
+});
+
+test("envio caro: no se sube, queda marcado, se avisa y se puede reintentar", async () => {
+  const avisos = [];
+  const { s, ruta } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    lucidBotContactos: { notificar: async (x) => (avisos.push(x), { ok: true }) },
+    respuestaDropi: () => ({
+      ok: false,
+      creado: false,
+      envioCaro: true,
+      detalle: "Envío demasiado caro, no se creó el pedido (Coordinadora: envío $25.000 supera el tope de $21.138).",
+    }),
+  });
+  s.configurar({ automatico: true, dryRun: false, envio: { maxPorcentaje: 20 } });
+  s.detener();
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true }); // final: no se vuelve a intentar
+  const u = s.ultimos(5)[0];
+  assert.equal(u.accion, "envio-caro");
+  assert.match(u.detalle, /tope: 20% de \$105\.690/);
+  assert.equal(avisos.length, 1);
+  assert.equal(s.rearmarRevision().rearmados, 1);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("oficina de Inter encendida pero el chat no dice oficina: se frena", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 12, EstadoPedido: 0, completo: { ...COMPLETO, Direccion: "Oficina Interrapidisimo Sincelejo" } }],
+  });
+  s.configurar({ automatico: true, dryRun: true, oficinaInter: true, transportadoras: [5] });
+  s.detener();
+  await s.tick({ forzar: true });
+  // el extractor falso devuelve "Carrera 92..." como direccion del chat: el
+  // agente lo frena porque el chat no dice oficina
+  assert.equal(subidos.length, 0);
+  assert.equal(s.ultimos(5)[0].accion, "frenado");
+  assert.match(s.ultimos(5)[0].detalle, /oficina de Inter Rapidísimo/);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("varias oficinas de Inter: queda para una persona", async () => {
+  const { s, ruta } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    respuestaDropi: () => ({
+      ok: false,
+      creado: false,
+      oficinaHumano: true,
+      oficinas: ["A", "B"],
+      detalle: "Hay 2 oficinas de Interrapidísimo para esta ciudad (A | B): la elige una persona.",
+    }),
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.equal(s.ultimos(5)[0].accion, "requiere-humano");
+  assert.match(s.ultimos(5)[0].detalle, /2 oficinas/);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("oficina de Inter con la opcion encendida: va por Inter y sin validar calle", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 12, EstadoPedido: 0, completo: { ...COMPLETO, Direccion: "Oficina Interrapidisimo Sincelejo" } }],
+    extraido: {
+      producto: "Taladro Inalambrico 68V",
+      cantidad: 1,
+      precioAcordado: 105690,
+      direccion: "la recojo en la oficina de interrapidisimo de Sincelejo",
+      clienteConfirmo: true,
+      entregaFutura: false,
+      incertidumbre: [],
+    },
+  });
+  s.configurar({ automatico: true, dryRun: true, oficinaInter: true, transportadoras: [5] });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1, s.ultimos(5)[0]?.detalle);
+  assert.deepEqual(subidos[0].transportadoras, [3]);
+  assert.equal(subidos[0].oficinaInter, true);
+  assert.equal(subidos[0].direccion, "Oficina Interrapidisimo Sincelejo");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("oficina de Coordinadora sigue siendo siempre para una persona", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 13, EstadoPedido: 0, completo: { ...COMPLETO, Direccion: "Oficina Coordinadora Monteria" } }],
+  });
+  s.configurar({ automatico: true, dryRun: true, oficinaInter: true });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 0);
+  assert.equal(s.ultimos(5)[0].accion, "requiere-humano");
   fs.rmSync(ruta, { force: true });
 });

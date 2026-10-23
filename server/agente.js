@@ -9,7 +9,7 @@
 //
 // Todo lo de comparacion es puro y sin red: se puede probar sin LLM ni APIs.
 
-import { validarDireccion } from "./direccionColombia.js";
+import { recogeEnOficina, validarDireccion } from "./direccionColombia.js";
 
 /** Separa los acentos y baja a minusculas: "Medellin" == "medellín". */
 export function normalizarTexto(v) {
@@ -178,11 +178,14 @@ export function coincideDireccion(chat, pedido) {
  * Devuelve {ok, checks:[{campo, ok, detalle}]} con TODO evaluado (no corta en
  * el primer fallo) para que el usuario vea el cuadro completo de una mirada.
  */
-export function validarPedido(resumen, extraido) {
+export function validarPedido(resumen, extraido, { oficina = null } = {}) {
   const checks = [];
   // direccion de ENVIO (la del pedido): formato colombiano; la IA solo la
-  // descompone, las reglas y la verificacion de numeros son del codigo
-  const dirEnvio = validarDireccion(resumen?.direccion, extraido?.direccionEnvio ?? null);
+  // descompone, las reglas y la verificacion de numeros son del codigo.
+  // Si recoge en oficina no hay calle que validar: la oficina la elige Dropi.
+  const dirEnvio = oficina
+    ? { ok: true, detalle: `recoge en oficina de ${oficina}: no lleva calle, la oficina se elige en Dropi`, normalizada: null }
+    : validarDireccion(resumen?.direccion, extraido?.direccionEnvio ?? null);
 
   const lineas = Array.isArray(resumen?.productos) ? resumen.productos : [];
   const unaLinea = lineas.length === 1;
@@ -223,11 +226,17 @@ export function validarPedido(resumen, extraido) {
     detalle: precio.ok ? precio.razon : precio.razon,
   });
 
-  const dir = coincideDireccion(extraido?.direccion, resumen?.direccion);
+  // en oficina no hay numeros que comparar: basta con que el chat tambien
+  // diga que recoge en la oficina de la misma transportadora
+  const dir = oficina
+    ? recogeEnOficina(extraido?.direccion) === oficina
+      ? { ok: true, razon: "" }
+      : { ok: false, razon: `el pedido dice recoger en oficina de ${oficina} pero en el chat la dirección es "${extraido?.direccion ?? "sin dato"}"` }
+    : coincideDireccion(extraido?.direccion, resumen?.direccion);
   checks.push({
     campo: "direccion",
     ok: dir.ok,
-    detalle: dir.ok ? "coincide" : dir.razon,
+    detalle: dir.ok ? (oficina ? `el cliente pidió recoger en oficina de ${oficina}` : "coincide") : dir.razon,
   });
 
   checks.push({
@@ -286,7 +295,7 @@ export function decidir(validacion) {
  */
 const FECHA_FUTURA_EN_CHAT = /\b(?:para\s+(?:(?:el\s+)?(?:dia\s+)?)|el\s+dia\s+|lo\s+(?:quiero|quieres|quiere|necesito|necesita)\s+(?:para\s+)?(?:el\s+)?|entregar(?:lo)?\s+(?:para\s+)?(?:el\s+)?|recibir(?:lo)?\s+(?:para\s+)?(?:el\s+)?)(?:\d{1,2}(?:\s+de\s+(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre))?|manana|pasado manana|lunes|martes|miercoles|jueves|viernes|sabado|domingo|proxima semana|proximo mes)\b/;
 
-export async function ejecutarAgente({ resumen, mensajes, extraer }) {
+export async function ejecutarAgente({ resumen, mensajes, extraer, oficina = null }) {
   // la IA tambien descompone la direccion del pedido (la que se envia)
   const extraido = await extraer(mensajes, { direccionPedido: resumen?.direccion ?? "" });
   const fechaSolicitadaEnChat = (Array.isArray(mensajes) ? mensajes : [])
@@ -303,7 +312,7 @@ export async function ejecutarAgente({ resumen, mensajes, extraer }) {
       ? { evidencia: { ...(extraido?.evidencia ?? {}), entregaFutura: `regla del sistema: el cliente escribió "${fechaSolicitadaEnChat}"` } }
       : {}),
   };
-  const validacion = validarPedido(resumen, extraidoSeguro);
+  const validacion = validarPedido(resumen, extraidoSeguro, { oficina });
   const decision = decidir(validacion);
   return {
     extraido: extraidoSeguro,

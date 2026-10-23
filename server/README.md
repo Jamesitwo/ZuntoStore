@@ -319,6 +319,32 @@ apoya en la oficina principal. El listado cachea **1 h**; si vino vacio solo
 Errores: `400` sin municipio / `idCiudad` invalido · `502` Inter rechazo ·
 `504` timeout · `{ "ok": false, "msg": "..." }` siempre.
 
+### Subida a Dropi: envio
+
+Config en `SUBIDA_AUTO` (`PUT /api/subida/config`), la usan la subida
+automatica y la manual:
+
+- `cadaSegundos`: de 30 s a 12 h (43.200).
+- `transportadoras`: orden de preferencia general (ids de Dropi: 5
+  Coordinadora, 3 Interrapidisimo, 2 Envia, 4 Domina, 10 TCC...). Se usa la
+  primera que este **disponible** para la ciudad y cuyo flete no pase el tope.
+- `envio: {maxPesos, maxPorcentaje}`: tope del flete en pesos y/o en % del
+  valor del pedido (Total de LucidSales). Si hay los dos, manda el menor.
+- `reglasProducto: {"<id producto LucidSales>": {nombre, transportadoras[],
+  maxPesos, maxPorcentaje}}`: lo que tenga la regla manda sobre lo general.
+- `oficinaInter`: un pedido cuya direccion dice oficina de Interrapidisimo
+  pasa por el flujo normal (chat + IA, sin validar calle; el chat tambien
+  tiene que decir oficina) y se sube con Inter **solo si Dropi muestra UNA
+  oficina** en `centro-servicio-interrapidisimo`; con varias o ninguna queda
+  `requiere-humano`. Las de Coordinadora siempre van a mano.
+
+El flete se lee de la tarjeta de cada transportadora en Crear Orden. Si todas
+pasan el tope -> `envio-caro`; si ninguna esta disponible ->
+`sin-transportadora`. Los dos son finales, se avisan por Lucid Bot y se
+reintentan desde el panel. El seguro antidevoluciones es obligatorio con
+Coordinadora; con otra transportadora se activa si Dropi lo ofrece. El
+registro guarda la transportadora y el flete usados.
+
 ### Rentabilidad de anuncios (Meta Ads)
 
 Modulo `anunciosMeta.js`: baja las campañas de las cuentas que **cada
