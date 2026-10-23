@@ -36,7 +36,7 @@ function paginaTransportadoras({ coordinadora = "$ 25.000", inter = "$ 12.300", 
     <span class="precio">$ - -</span> 2-3 días
     <div class="checker"><div class="radio"></div></div></div>
   <div data-cy="order-create-carrier-option-3" class="card-logistic ${interDisponible ? "" : "disabled"}">Interrapidisimo
-    <span class="precio">${interDisponible ? inter : "$ - -"}</span> 1-2 días
+    <div class="price" data-cy="order-create-carrier-option-price-3"><currency>${interDisponible ? inter.replace(" ", "&nbsp;") : "$ - -"}</currency></div>
     <div class="checker"><div class="radio"></div></div></div>
   <script>
     setTimeout(() => {
@@ -93,6 +93,9 @@ test("precioDeTarjeta lee el flete de la tarjeta", () => {
   assert.equal(precioDeTarjeta("$18.500,00"), 18500);
   assert.equal(precioDeTarjeta("Inter $ 12,300"), 12300);
   assert.equal(precioDeTarjeta("$ - -"), null);
+  // tal cual lo pinta Dropi: <currency>$&nbsp;27.870</currency>
+  assert.equal(precioDeTarjeta("$\u00a027.870"), 27870);
+  assert.equal(precioDeTarjeta("Interrapidisimo\n$\u00a027.870"), 27870);
 });
 
 test("la direccion de oficina siempre dice «Oficina Interrapidisimo»", () => {

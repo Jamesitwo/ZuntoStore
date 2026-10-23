@@ -56,7 +56,8 @@ export function nombreTransportadora(id) {
  */
 export function precioDeTarjeta(texto) {
   // solo el numero pegado al $ (en la misma linea: "18.500", "18,500", "18.500,00")
-  const m = /\$[ \t]*(\d[\d.,]*)/.exec(String(texto ?? ""));
+  // Dropi separa con espacio duro: "$&nbsp;27.870" (\u00a0 / \u202f)
+  const m = /\$[ \t\u00a0\u202f]*(\d[\d.,]*)/.exec(String(texto ?? ""));
   if (!m) return null;
   // "18.500,00" -> sin decimales; los separadores de miles se quitan
   const crudo = m[1].replace(/[.,]$/, "").replace(/,\d{1,2}$/, "");
@@ -530,18 +531,30 @@ export function crearDropiNavegador(config = {}) {
     const car = await tarjetaTransportadora(p, idCarrier);
     const vueltas = Math.max(1, Math.round(esperaMs / 500));
     let visto = false;
+    let ultimoTexto = "";
     for (let i = 0; i < vueltas; i++) {
       if (await car.count().catch(() => 0)) {
         visto = true;
-        const { habilitada, texto } = await car
-          .evaluate((el) => ({ habilitada: !el.classList.contains("disabled"), texto: el.innerText || "" }))
-          .catch(() => ({ habilitada: false, texto: "" }));
-        const precio = precioDeTarjeta(texto);
+        const { habilitada, texto, textoPrecio } = await car
+          .evaluate((el) => ({
+            habilitada: !el.classList.contains("disabled"),
+            texto: el.innerText || "",
+            // el precio tiene su propio data-cy: order-create-carrier-option-price-<id>
+            textoPrecio: el.querySelector('[data-cy^="order-create-carrier-option-price"]')?.textContent || "",
+          }))
+          .catch(() => ({ habilitada: false, texto: "", textoPrecio: "" }));
+        const precio = precioDeTarjeta(textoPrecio) ?? precioDeTarjeta(texto);
+        ultimoTexto = (textoPrecio || texto).replace(/\s+/g, " ").trim().slice(0, 80);
         if (habilitada && precio) return { ok: true, precio };
       }
       await p.waitForTimeout(500);
     }
-    return { ok: false, motivo: visto ? "no está disponible para esta ciudad" : "no aparece en la lista de Dropi" };
+    return {
+      ok: false,
+      motivo: visto
+        ? `no está disponible para esta ciudad${ultimoTexto ? ` (la tarjeta muestra «${ultimoTexto}»)` : ""}`
+        : "no aparece en la lista de Dropi",
+    };
   }
 
   /**
