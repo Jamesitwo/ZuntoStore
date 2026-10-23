@@ -6,6 +6,7 @@ import { auth, negocio, tools, usuarios } from "../api/endpoints";
 import { Campo, CheckPermiso, ErrorBanner, JsonView, PageHeader } from "../components/ui";
 import { ListaUsuarios } from "../components/ListaUsuarios";
 import { SubidaDropi } from "../components/SubidaDropi";
+import { MapasConfig } from "../components/MapasConfig";
 import { EditorMensajeInicial } from "../components/MensajeInicial";
 import { EditorTestimonios } from "../components/Testimonios";
 import {
@@ -1967,6 +1968,9 @@ function UsuariosTab() {
 
       {/* subida automatica a Dropi: mismo patrón que el reparto automatico */}
       <SubidaDropi />
+
+      {/* validador de direcciones propio: API key de Google Maps */}
+      <MapasConfig />
 
       <Seccion
         titulo="Buscar usuario por token"

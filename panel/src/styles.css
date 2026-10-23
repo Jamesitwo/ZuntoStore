@@ -5193,3 +5193,18 @@ input::placeholder, textarea::placeholder { color: #a09da7; }
 .envio-orden-item { display: grid; gap: 2px; }
 .envio-orden-item select { min-width: 140px; }
 .reglas-envio-tabla input { width: 100px; }
+
+/* ---------- Validador de direcciones ---------- */
+.validar-direccion { margin-top: 6px; display: grid; gap: 8px; }
+.validar-direccion-resultado {
+  border: 1px solid var(--border); border-left-width: 4px; border-radius: var(--radius);
+  padding: 10px 12px; display: grid; gap: 6px;
+}
+.validar-direccion-resultado.tono-ok { border-left-color: var(--ok); }
+.validar-direccion-resultado.tono-warn { border-left-color: var(--warn); }
+.validar-direccion-resultado.tono-error { border-left-color: var(--danger); }
+.validar-direccion-resultado.tono-info { border-left-color: var(--primary); }
+.validar-direccion-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.validar-direccion-checks li span[aria-hidden] { display: inline-block; width: 14px; font-weight: 700; }
+.validar-direccion-sugerida { display: grid; gap: 6px; }
+.validar-direccion-sugerida code { font-size: 14px; padding: 4px 8px; border-radius: 6px; background: var(--bg); width: fit-content; max-width: 100%; overflow-wrap: anywhere; }

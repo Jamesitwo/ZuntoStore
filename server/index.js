@@ -14,6 +14,7 @@ import { crearExtractorLLM } from "./llm.js";
 import { crearAsignacion } from "./asignacion.js";
 import { crearCredenciales } from "./credenciales.js";
 import { crearConfigLLM } from "./llmConfig.js";
+import { crearValidadorDireccion } from "./validadorDireccion.js";
 import { crearRepartoAutomatico } from "./repartoAutomatico.js";
 import { crearRegistroAnuncios } from "./anunciosTenant.js";
 import { crearProductosDropi } from "./productosDropi.js";
@@ -30,6 +31,8 @@ const conversacion = crearConversaciones(config.CONVERSACION);
 const credenciales = crearCredenciales({ ruta: config.CREDENCIALES, config });
 // clave/proveedor/modelo de la IA guardados desde el panel (sino, los del .env)
 const llmConfig = crearConfigLLM({ ruta: config.LLM_CONFIG, config });
+// validador de direcciones propio (formato + Google Maps)
+const validadorDireccion = crearValidadorDireccion({ ruta: config.MAPAS_CONFIG, config });
 const asignacion = crearAsignacion(config.ASIGNACION, {
   zona: config.TZ_ASIGNACION,
   // semilla de la configuracion del reparto (luego manda el panel/JSON)
@@ -95,6 +98,7 @@ const server = crearServidor({
   reparto,
   credenciales,
   llmConfig,
+  validadorDireccion,
   anuncios,
   conversacion,
   dropiCliente: dropi,

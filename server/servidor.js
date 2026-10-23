@@ -47,7 +47,8 @@
 import http from "node:http";
 import crypto from "node:crypto";
 import { ErrorApi } from "./errores.js";
-import { cambiarEstado, mensajeDeError, ESTADOS_PEDIDO } from "./estado.js";
+import { cambiarEstado, construirBody, mensajeDeError, ESTADOS_PEDIDO } from "./estado.js";
+import { crearValidadorDireccion } from "./validadorDireccion.js";
 import { crearClienteInter, normalizar } from "./interrapidisimo.js";
 import { crearLucidDeSesion } from "./lucidsales.js";
 import { crearAsignacion } from "./asignacion.js";
@@ -109,6 +110,7 @@ export function crearServidor({
   reparto,
   credenciales,
   llmConfig,
+  validadorDireccion,
   anuncios,
   conversacion,
   dropiCliente,
@@ -126,6 +128,8 @@ export function crearServidor({
   // sin instancia (pruebas aisladas): solo memoria, no toca disco
   const cred = credenciales ?? crearCredenciales({ ruta: null, config });
   const llmCfg = llmConfig ?? crearConfigLLM({ ruta: null, config });
+  // validador de direcciones propio (formato + Google Maps)
+  const validador = validadorDireccion ?? crearValidadorDireccion({ ruta: null, config });
   // conversacion del pedido (chat) + extractor LLM que la lee
   const conv = conversacion ?? crearConversaciones(config.CONVERSACION ?? "./conversacion.jsonl");
   const extraer = crearExtractorLLM(config);
@@ -316,6 +320,7 @@ export function crearServidor({
     [/^\/api\/salud$/, null],
     [/^\/api\/interrapidisimo\//, null],
     [/^\/api\/pedidos\/[^/]+\/(estado|conversacion|validar|subir)$/, "2"],
+    [/^\/api\/pedidos\/[^/]+\/direccion(\/validar)?$/, "2"],
     [/^\/api\/subida\/pedido\/[^/]+$/, "2"],
     [/^\/api\/historial$/, "2"],
     [/^\/api\/asignacion\/horario$/, "7"],
@@ -323,7 +328,7 @@ export function crearServidor({
     [/^\/api\/asignacion(\/|$)/, "2"],
     [/^\/api\/anuncios(\/|$)/, "4"],
     // configuracion sensible: subida, IA, Lucid Bot, sesion de Dropi, credenciales
-    [/^\/api\/(subida|llm|lucidbot|dropi|credenciales)(\/|$)/, "8"],
+    [/^\/api\/(subida|llm|lucidbot|dropi|credenciales|mapas)(\/|$)/, "8"],
   ];
   const NOMBRE_PERMISO = { 2: "Pedidos", 4: "Métricas", 7: "Usuarios y Permisos", 8: "Ajustes Tienda" };
 
@@ -1202,6 +1207,87 @@ export function crearServidor({
       const datos = llmCfg.vistaPrevia(cuerpo ?? {});
       const r = await probarLLM({ ...datos, timeoutMs: config.LLM_TIMEOUT_MS ?? 30000 });
       json(res, 200, { ok: r.ok, msg: r.detalle, ...r });
+      return;
+    }
+
+    // ---- GET/PUT/DELETE /api/mapas/config  y  POST /api/mapas/probar ----
+    // API key de Google Maps para el validador de direcciones (enmascarada).
+    if (ruta === "/api/mapas/config") {
+      autorizar(req);
+      if (req.method === "GET") {
+        json(res, 200, { ok: true, ...validador.estado() });
+        return;
+      }
+      if (req.method === "PUT") {
+        const cuerpo = await leerCuerpo(req);
+        const estado = validador.guardar(cuerpo ?? {});
+        console.log(`[mapas] API key guardada desde el panel: ${estado.apiKeyVista} (por ${usuarioDe(req) ?? "?"})`);
+        json(res, 200, { ok: true, ...estado });
+        return;
+      }
+      if (req.method === "DELETE") {
+        json(res, 200, { ok: true, ...validador.borrar() });
+        return;
+      }
+    }
+    if (req.method === "POST" && ruta === "/api/mapas/probar") {
+      autorizar(req);
+      const cuerpo = await leerCuerpo(req);
+      json(res, 200, await validador.probar(cuerpo?.apiKey));
+      return;
+    }
+
+    // ---- POST /api/pedidos/:id/direccion/validar  {direccion?} ----
+    // Validador propio: formato colombiano + Google Maps en la ciudad del
+    // pedido. `direccion` permite validar un texto editado antes de guardarlo.
+    const validarDir = ruta.match(/^\/api\/pedidos\/([^/]+)\/direccion\/validar$/);
+    if (req.method === "POST" && validarDir) {
+      autorizar(req);
+      const id = decodeURIComponent(validarDir[1]);
+      const cuerpo = await leerCuerpo(req);
+      const pedido = await cliente.obtenerPedido(id, tiendaDe(req));
+      const resumen = resumenDePedido(pedido);
+      let ciudad = "";
+      let departamento = "";
+      try {
+        const ub = await interCliente.nombresDeIds({
+          pais: resumen?.pais ?? 47,
+          idDepartamento: resumen?.departamento,
+          idCiudad: resumen?.ciudad,
+        });
+        ciudad = String(ub?.municipio ?? "");
+        departamento = String(ub?.departamento ?? "");
+      } catch (e) {
+        console.warn("[direccion] no se pudo resolver la ciudad:", e?.message ?? e);
+      }
+      const direccion = typeof cuerpo?.direccion === "string" && cuerpo.direccion.trim() ? cuerpo.direccion : resumen?.direccion;
+      const r = await validador.validar({ direccion, referencias: resumen?.referencias ?? "", ciudad, departamento });
+      json(res, 200, { ok: true, id, ciudad, departamento, ...r });
+      return;
+    }
+
+    // ---- POST /api/pedidos/:id/direccion  {direccion} ----
+    // Guarda la direccion (p. ej. la corregida por el validador) en LucidSales.
+    const guardarDir = ruta.match(/^\/api\/pedidos\/([^/]+)\/direccion$/);
+    if (req.method === "POST" && guardarDir) {
+      autorizar(req);
+      const id = decodeURIComponent(guardarDir[1]);
+      const cuerpo = await leerCuerpo(req);
+      const nueva = String(cuerpo?.direccion ?? "").replace(/\s+/g, " ").trim();
+      if (nueva.length < 5 || nueva.length > 250) {
+        throw new ErrorApi(400, "La dirección debe tener entre 5 y 250 caracteres");
+      }
+      const pedido = await cliente.obtenerPedido(id, tiendaDe(req));
+      const anterior = String(pedido?.Direccion ?? "");
+      if (anterior.trim() === nueva) {
+        json(res, 200, { ok: true, id, sinCambios: true, direccion: nueva, msg: "La dirección ya era esa" });
+        return;
+      }
+      const body = construirBody(pedido);
+      body.Direccion = nueva;
+      const r = await cliente.actualizarPedido(body, Number(pedido?.idEmpresa) || undefined);
+      console.log(`[direccion] pedido #${pedido?.idPedido ?? id}: dirección actualizada (por ${usuarioDe(req) ?? "?"})`);
+      json(res, 200, { ok: true, id, direccion: nueva, anterior, msg: r?.msg || "Dirección actualizada" });
       return;
     }
 

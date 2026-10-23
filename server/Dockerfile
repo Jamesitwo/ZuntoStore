@@ -25,7 +25,8 @@ ENV NODE_ENV=production \
     CREDENCIALES=/data/credenciales.json \
     ANUNCIOS_DIR=/data/anuncios \
     ANUNCIOS_CONFIG=/data/config/anuncios.json \
-    LLM_CONFIG=/data/config/llm.json
+    LLM_CONFIG=/data/config/llm.json \
+    MAPAS_CONFIG=/data/config/mapas.json
 
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/zuntostore-entrypoint"]

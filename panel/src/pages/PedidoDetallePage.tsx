@@ -11,6 +11,7 @@ import { ConfirmDialog } from "../components/Modal";
 import { CotizadorPedido } from "../components/CotizadorPedido";
 import { BloqueOficinaInter } from "../components/OficinaInter";
 import { SubirPedidoDropi } from "../components/SubirPedidoDropi";
+import { ValidarDireccion } from "../components/ValidarDireccion";
 import { BloqueEtiquetas } from "../components/Etiquetas";
 import { useToast } from "../components/Toast";
 import { claveTelefono, fmtFecha, haceCuanto, telefono } from "../lib/format";
@@ -649,6 +650,18 @@ export function PedidoDetallePage() {
           <div className="field">
             <label>Direccion</label>
             <input value={form.Direccion} onChange={(e) => set("Direccion", e.target.value)} />
+            <ValidarDireccion
+              id={form.id ?? id!}
+              direccion={String(form.Direccion ?? "")}
+              onUsar={(dir) => {
+                set("Direccion", dir);
+                toast.success("Dirección puesta en el formulario (no olvides guardar)");
+              }}
+              onGuardada={(dir) => {
+                set("Direccion", dir);
+                setOriginal((o: any) => (o ? { ...o, Direccion: dir } : o));
+              }}
+            />
           </div>
 
           <div className="form-grid">

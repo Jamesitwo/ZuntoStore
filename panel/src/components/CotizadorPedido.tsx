@@ -233,27 +233,6 @@ export function CotizadorPedido({
     }
   };
 
-  const validarDireccion = async () => {
-    if (!pedido) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res: any = await pedidos.validateAddress({
-        direccion: pedido.Direccion,
-        ciudad: pedido.Ciudad,
-        departamento: pedido.Departamento,
-        pais: pedido.Pais,
-      });
-      setResultado(res);
-      toast.success("Direccion validada (ver respuesta abajo)");
-    } catch (err) {
-      setError(errMsg(err));
-      toast.error(errMsg(err));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   if (!pedido) return null;
 
   const idDropiActual = String(pedido.idPedidoDropi ?? "");
@@ -304,9 +283,6 @@ export function CotizadorPedido({
         </select>
         <button className="btn primary" onClick={cotizar} disabled={loading}>
           {loading ? "Cotizando..." : "Cotizar este pedido"}
-        </button>
-        <button className="btn" onClick={validarDireccion} disabled={loading}>
-          Validar direccion
         </button>
         <button className="btn" onClick={verificarStock} disabled={loading}>
           Verificar stock (hoko)

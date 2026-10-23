@@ -319,6 +319,25 @@ apoya en la oficina principal. El listado cachea **1 h**; si vino vacio solo
 Errores: `400` sin municipio / `idCiudad` invalido · `502` Inter rechazo ·
 `504` timeout · `{ "ok": false, "msg": "..." }` siempre.
 
+### Validador de direcciones (propio)
+
+`POST /api/pedidos/:id/direccion/validar {direccion?}` (permiso Pedidos):
+
+1. **Formato** con reglas fijas (`direccionColombia.js`): via, manzana,
+   oficinas de transportadora, rural / sin nomenclatura. Si el numero viene
+   pegado (`Cra 21 #1212`) se prueban candidatos (`# 12-12`) y solo vale el
+   que Google confirma.
+2. **Mapa** (`validadorDireccion.js`): Google Geocoding con `country:CO` y la
+   ciudad/departamento del pedido. `exacta` (placa ROOFTOP/interpolada),
+   `aproximada` (solo calle/barrio o coincidencia parcial), `otra-ciudad`,
+   `no-encontrada`. Cache en memoria para no repetir consultas.
+
+Veredicto: `valida` | `revisar` | `invalida` | `oficina`, con `sugerida` (la
+direccion bien escrita), `avisos` (p. ej. sin barrio) y link a Google Maps.
+`POST /api/pedidos/:id/direccion {direccion}` la guarda en LucidSales sin
+tocar nada mas del pedido. API key: Ajustes (`/api/mapas/config`, se guarda
+en `MAPAS_CONFIG`) o `GOOGLE_MAPS_KEY`. Sin key solo se revisa el formato.
+
 ### Subida a Dropi: envio
 
 Config en `SUBIDA_AUTO` (`PUT /api/subida/config`), la usan la subida

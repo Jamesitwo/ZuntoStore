@@ -77,6 +77,9 @@ export function cargarConfig(env = process.env) {
     LLM_TIMEOUT_MS: Number(g("LLM_TIMEOUT_MS", "90000")) || 90000,
     /** API key / proveedor / modelo guardados desde el panel (JSON, 600). */
     LLM_CONFIG: String(g("LLM_CONFIG", path.join(dir, "config", "llm.json"))),
+    /** Validador de direcciones: API key de Google Maps (Geocoding). */
+    GOOGLE_MAPS_KEY: String(g("GOOGLE_MAPS_KEY", "")),
+    MAPAS_CONFIG: String(g("MAPAS_CONFIG", path.join(dir, "config", "mapas.json"))),
     /**
      * Dropi: subida de pedidos con seguro antidevoluciones (campo `insurance`).
      * DROPI_TOKEN es el token de sesion del panel de Dropi (x-authorization).
