@@ -69,17 +69,45 @@ function enmascarar(k) {
  */
 export function candidatosNumeroPegado(direccion) {
   const t = String(direccion ?? "").trim();
-  const m = /^(.*?#\s*)(\d{3,4})([a-z]?)\b(.*)$/i.exec(t);
+  // con "#" ("Cra 21 #1212") o sin el ("Calle 7A 1375": via y luego 3-4 digitos)
+  let m = /^(.*?#\s*)(\d{3,4})([a-z]?)\b(.*)$/i.exec(t);
+  if (!m) {
+    const s = /^(.*?\b\d{1,3}\s*[a-z]?(?:\s+bis)?)\s+(\d{3,4})([a-z]?)\b(.*)$/i.exec(t);
+    if (s) m = [s[0], `${s[1]} # `, s[2], s[3], s[4]];
+  }
   if (!m) return [];
   const [, antes, num, letra, resto] = m;
+  // 4 digitos: lo normal es 2-2 (13-75); 1-3 (1-375) tambien existe
   const partes =
-    num.length === 4 ? [[num.slice(0, 2), num.slice(2)]] : [[num.slice(0, 1), num.slice(1)], [num.slice(0, 2), num.slice(2)]];
+    num.length === 4
+      ? [[num.slice(0, 2), num.slice(2)], [num.slice(0, 1), num.slice(1)]]
+      : [[num.slice(0, 1), num.slice(1)], [num.slice(0, 2), num.slice(2)]];
   const salida = [];
   for (const [a, b] of partes) {
     const p = parsearDireccion(`${antes}${a}${letra}-${b}${resto}`);
     if (p) salida.push(p.normalizada);
   }
   return [...new Set(salida)];
+}
+
+/** "Calle 7A # 13-75" -> "7A#13-75" (para comparar lecturas). */
+function claveNumeros(dir) {
+  // Google escribe la letra de la via como volada: "Cl. 7ª" = Calle 7A
+  const p = parsearDireccion(String(dir ?? "").replace(/ª/g, "a").replace(/[º°]/g, ""));
+  return p ? `${p.via}#${p.cruce}-${p.placa}`.toLowerCase().replace(/\s+/g, "") : null;
+}
+
+/**
+ * ¿Google leyo la direccion igual que este candidato? Su direccion formateada
+ * empieza con la calle ("Cl. 7ª # 13-75, Puerto Lleras, Meta"): si los numeros
+ * coinciden, Google confirma como se separa el numero pegado aunque no tenga
+ * la placa en el mapa.
+ */
+export function googleLeyoIgual(formateada, candidato) {
+  const calle = String(formateada ?? "").split(",")[0];
+  const a = claveNumeros(calle);
+  const b = claveNumeros(candidato);
+  return Boolean(a && b && a === b);
 }
 
 /**
@@ -366,10 +394,22 @@ export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThi
       avisos.push("Sin API key de Google: solo se revisó el formato.");
     }
 
-    // un candidato de numero pegado solo vale si el mapa lo confirma
-    if (!formato.ok && candidatos.length && mapa?.veredicto === "exacta") {
-      formato = { ok: true, normalizada: elegida, corregida: true, origen: "reglas+mapa", detalle: `número separado: se escribe como "${elegida}" (Google lo confirma)` };
-    } else if (!formato.ok) {
+    // un candidato de numero pegado solo vale si el mapa lo confirma: placa
+    // exacta, o Google leyo los mismos numeros (en la ciudad del pedido)
+    if (!formato.ok && candidatos.length && !mapa?.veredicto?.match(/error|otra-ciudad/)) {
+      const leido = candidatos.find((c) => googleLeyoIgual(mapa?.formateada, c));
+      if (mapa?.veredicto === "exacta" || leido) {
+        elegida = leido ?? elegida;
+        formato = {
+          ok: true,
+          normalizada: elegida,
+          corregida: true,
+          origen: "reglas+mapa",
+          detalle: `número separado: se escribe como "${elegida}" (${mapa?.veredicto === "exacta" ? "Google confirma la placa" : "así la lee Google"})`,
+        };
+      }
+    }
+    if (!formato.ok) {
       elegida = null;
     }
 

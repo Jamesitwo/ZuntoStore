@@ -58,7 +58,9 @@ test("mismoLugar tolera tildes y «D.C.»", () => {
 });
 
 test("numero pegado: arma los candidatos posibles", () => {
-  assert.deepEqual(candidatosNumeroPegado("cr 21 #1212, centro"), ["Cra 21 # 12-12, Centro"]);
+  assert.deepEqual(candidatosNumeroPegado("cr 21 #1212, centro"), ["Cra 21 # 12-12, Centro", "Cra 21 # 1-212, Centro"]);
+  // sin "#": via y luego el numero pegado
+  assert.deepEqual(candidatosNumeroPegado("Calle 7A 1375"), ["Calle 7A # 13-75", "Calle 7A # 1-375"]);
   assert.deepEqual(candidatosNumeroPegado("Calle 5 #123"), ["Calle 5 # 1-23", "Calle 5 # 12-3"]);
   assert.deepEqual(candidatosNumeroPegado("Cra 40 # 23-23"), []);
 });
@@ -307,5 +309,20 @@ test("Bogotá: Google la pone en el departamento «Bogotá», LucidSales en Cund
   const r = await v.validar({ direccion: "Cra 5 # 4-98, Centro", ciudad: "Bogota", departamento: "Cundinamarca" });
   assert.equal(r.veredicto, "valida");
   assert.equal(r.mapa.veredicto, "exacta");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("numero pegado sin «#»: Google dice como se separa (aunque no tenga la placa)", async () => {
+  // lo que respondio Google para Puerto Lleras: coincidencia parcial
+  const { v, ruta } = armar(
+    ok({ tipo: "route", precision: "GEOMETRIC_CENTER", parcial: true, municipio: "Puerto Lleras", depto: "Meta", texto: "Cl. 7ª # 13-75, Puerto Lleras, Meta, Colombia" }),
+  );
+  const r = await v.validar({ direccion: "Calle 7A 1375, sobre la avenida central", ciudad: "Puerto Lleras", departamento: "Meta" });
+  assert.equal(r.formato.ok, true);
+  assert.equal(r.sugerida, "Calle 7A # 13-75, Sobre la avenida central");
+  assert.match(r.formato.detalle, /así la lee Google/);
+  // pueblo: el mapa no tiene la placa -> no frena
+  assert.equal(r.mapa.sinCobertura, true);
+  assert.equal(r.calificacion.puntos, 50);
   fs.rmSync(ruta, { force: true });
 });
