@@ -179,9 +179,10 @@ export function crearDropiNavegador(config = {}) {
       .catch(() => "");
     const plano = String(texto).replace(/\s+/g, " ").trim();
     let motivo = "el botón «Enviar al cliente» no apareció";
-    if (/no (existe|encontr)|not found|404/i.test(plano)) motivo = "Dropi dice que el producto no existe (revisa el dropiLink del sheet)";
+    // primero DONDE quedo: si Dropi redirigio, el texto es de otra pagina
+    if (!/product-details/i.test(url)) motivo = "Dropi no abrió la ficha del producto y redirigió a otra página";
     else if (/agotad|sin stock|no disponible|sin existencias/i.test(plano)) motivo = "el producto aparece agotado o no disponible en Dropi";
-    else if (!/product-details/i.test(url)) motivo = "Dropi no dejó abrir la ficha del producto y mandó a otra página (¿sesión de Dropi inválida?)";
+    else if (/no (existe|encontr)|not found|404/i.test(plano)) motivo = "Dropi dice que el producto no existe (revisa el dropiLink del sheet)";
     else if (plano.length < 40) motivo = "la ficha de Dropi no terminó de cargar (página en blanco)";
     return { motivo, url, titulo, texto: plano.slice(0, 200) };
   }
@@ -1065,7 +1066,13 @@ export function crearDropiNavegador(config = {}) {
       if (await hayCaptcha(p)) return { ok: false, requiereCaptcha: true, detalle: "captcha en la pagina" };
 
       // 2) "Enviar al cliente" de la ficha -> abre el formulario Crear Orden
-      const ficha = await esperarFicha(p, lento);
+      let ficha = await esperarFicha(p, lento);
+      // Dropi a veces redirige al cargar (p. ej. a /dashboard/search con una
+      // sesion recien restablecida): se intenta abrir el producto una vez mas
+      if (!ficha.ok && !ficha.login && !ficha.captcha && !/product-details/i.test(p.url())) {
+        await p.goto(datos.productoUrl, { waitUntil: "domcontentloaded" });
+        ficha = await esperarFicha(p, lento);
+      }
       if (ficha.login) {
         return {
           ok: false,
@@ -1079,7 +1086,7 @@ export function crearDropiNavegador(config = {}) {
           ok: false,
           creado: false,
           detalle:
-            `No se envió a Dropi: ${ficha.motivo}. Página: ${ficha.url}` +
+            `No se envió a Dropi: ${ficha.motivo}. Link del producto (sheet): ${datos.productoUrl}. Quedó en: ${ficha.url}` +
             (ficha.titulo ? ` («${ficha.titulo}»)` : "") +
             (ficha.texto ? `. Se ve: "${ficha.texto}"` : ""),
         };

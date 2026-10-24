@@ -293,12 +293,31 @@ test("ficha: captcha que aparece despues de cargar se reconoce", async (t) => {
 
 test("ficha: sin boton dice por que y que se ve", async (t) => {
   if (motivoSalto) return t.skip(motivoSalto);
-  const p = await pagina(`<!doctype html><title>Dropi</title><body>Este producto está agotado por ahora en el catálogo del proveedor</body>`);
+  const p = await navegador.newPage();
+  await p.route("https://app.dropi.co/**", (r) =>
+    r.fulfill({ contentType: "text/html", body: "<!doctype html><title>Dropi</title><body>Este producto está agotado por ahora en el catálogo del proveedor</body>" }),
+  );
+  await p.goto("https://app.dropi.co/dashboard/product-details/1/taladro");
   try {
     const r = await nav.esperarFicha(p, 1200);
     assert.equal(r.ok, undefined);
     assert.match(r.motivo, /agotado/);
     assert.match(r.texto, /agotado/);
+  } finally {
+    await p.close();
+  }
+});
+
+test("ficha: si Dropi redirige a otra pagina lo dice (no que el producto no existe)", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  const p = await navegador.newPage();
+  await p.route("https://app.dropi.co/**", (r) =>
+    r.fulfill({ contentType: "text/html", body: "<!doctype html><title>Dropi</title><body>Miembro De: TIENDA Inicio Dashboard Productos No encontramos productos</body>" }),
+  );
+  await p.goto("https://app.dropi.co/dashboard/search");
+  try {
+    const r = await nav.esperarFicha(p, 1000);
+    assert.match(r.motivo, /redirigió/);
   } finally {
     await p.close();
   }
