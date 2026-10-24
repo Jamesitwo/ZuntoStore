@@ -20,6 +20,8 @@ import { crearPedidosLucidBot } from "./pedidosLucidBot.js";
 import { crearRegistroIntentos } from "./registroIntentos.js";
 import { crearProductosDropi } from "./productosDropi.js";
 import { crearLucidBotContactos } from "./lucidbotContactos.js";
+import { cifrarArchivosEnClaro } from "./secretos.js";
+import { crearAuditoria } from "./auditoria.js";
 
 /**
  * Turno del navegador de Dropi, compartido por TODAS las cuentas: un solo
@@ -49,6 +51,9 @@ export function crearTurnoDropi({ log = console } = {}) {
  * turnoDropi: crearTurnoDropi() compartido
  */
 export function crearServiciosCuenta({ cuenta, config, inter, turnoDropi = null }) {
+  // con CLAVE_MAESTRA, las claves que sigan en claro quedan cifradas
+  const cifrados = cifrarArchivosEnClaro([config.CREDENCIALES, config.LLM_CONFIG, config.MAPAS_CONFIG, config.LUCIDBOT_CONTACTOS_CONFIG]);
+  if (cifrados) console.log(`[cifrado] cuenta ${cuenta.id}: ${cifrados} archivo(s) con claves quedaron cifrados`);
   const cliente = crearClienteLucid(config);
   const historial = crearHistorial(config.HISTORIAL);
   // chat de cada pedido: lo manda el bot y lo lee el agente de Dropi
@@ -134,6 +139,8 @@ export function crearServiciosCuenta({ cuenta, config, inter, turnoDropi = null 
     ruta: config.LUCIDBOT_PEDIDOS,
   });
   const estadosEnvio = crearEstadosEnvio({ ruta: config.ENVIOS });
+  // quien cambio que en la configuracion de esta cuenta
+  const auditoria = crearAuditoria({ ruta: config.AUDITORIA });
 
   return {
     cuenta,
@@ -156,6 +163,7 @@ export function crearServiciosCuenta({ cuenta, config, inter, turnoDropi = null 
     apiKeys,
     pedidosLucidBot,
     estadosEnvio,
+    auditoria,
     /** Arranca los trabajos automaticos (cada uno mira si esta encendido). */
     arrancar() {
       reparto.arrancar();

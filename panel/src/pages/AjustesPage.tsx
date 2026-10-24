@@ -9,6 +9,8 @@ import { SubidaDropi } from "../components/SubidaDropi";
 import { MapasConfig } from "../components/MapasConfig";
 import { ApiKeyConfig } from "../components/ApiKeyConfig";
 import { CuentasAdmin } from "../components/CuentasAdmin";
+import { ChecklistCuenta } from "../components/ChecklistCuenta";
+import { RegistroCambios } from "../components/RegistroCambios";
 import { EditorMensajeInicial } from "../components/MensajeInicial";
 import { EditorTestimonios } from "../components/Testimonios";
 import {
@@ -1965,7 +1967,10 @@ function UsuariosTab() {
 
   return (
     <>
-      {/* la lista primero: aqui se ve quien tiene acceso */}
+      {/* lo que le falta a esta cuenta para subir pedidos sola */}
+      <ChecklistCuenta />
+
+      {/* aqui se ve quien tiene acceso */}
       <ListaUsuarios tick={tick} />
 
       {/* cuentas de ZuntoStore (solo quien lo administra) */}
@@ -1979,6 +1984,9 @@ function UsuariosTab() {
 
       {/* clave para integraciones (Lucid Bot -> estado del envio) */}
       <ApiKeyConfig />
+
+      {/* quien cambio que en la configuracion */}
+      <RegistroCambios />
 
       <Seccion
         titulo="Buscar usuario por token"

@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ErrorApi } from "./errores.js";
 import { normalizarTextoDir, parsearDireccion, recogeEnOficina, validarDireccion } from "./direccionColombia.js";
+import { escribirJsonSeguro, leerJsonSeguro } from "./secretos.js";
 
 const GEOCODE = "https://maps.googleapis.com/maps/api/geocode/json";
 const MAX_CACHE = 500;
@@ -262,7 +263,7 @@ export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThi
   function leerDisco() {
     if (!ruta) return null;
     try {
-      return JSON.parse(fs.readFileSync(ruta, "utf8"));
+      return leerJsonSeguro(ruta);
     } catch {
       return null;
     }
@@ -271,10 +272,7 @@ export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThi
   if (enDisco?.apiKey) apiKey = enDisco.apiKey;
 
   function escribir(datos) {
-    fs.mkdirSync(path.dirname(ruta), { recursive: true });
-    const tmp = `${ruta}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify({ ...datos, actualizado: new Date().toISOString() }, null, 2), { mode: 0o600 });
-    fs.renameSync(tmp, ruta);
+    escribirJsonSeguro(ruta, { ...datos, actualizado: new Date().toISOString() });
     try {
       fs.chmodSync(ruta, 0o600);
     } catch {

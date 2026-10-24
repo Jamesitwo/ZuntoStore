@@ -20,6 +20,7 @@ const RUTAS = {
   CREDENCIALES: "credenciales.json",
   ENVIOS: "envios.json",
   INTENTOS: "intentos.jsonl",
+  AUDITORIA: "auditoria.jsonl",
   LUCIDBOT_PEDIDOS: "lucidbot-pedidos.json",
   LUCIDBOT_CONTACTOS_CONFIG: "config/lucidbot-contactos.json",
   LLM_CONFIG: "config/llm.json",
@@ -151,6 +152,17 @@ export function crearRegistroCuentas({ ruta, semilla = [] } = {}) {
       const id = Math.max(0, ...leer().cuentas.map((c) => c.id)) + 1;
       const c = normalizar({ id, nombre, tiendas: ts, creada: new Date().toISOString() });
       datos.cuentas.push(c);
+      guardar();
+      return { ...c };
+    },
+    /** Quita la cuenta del registro (sus archivos los borra quien llama). */
+    borrar(id) {
+      const n = Number(id);
+      if (n === 1) throw new Error("la cuenta 1 no se puede borrar");
+      const c = leer().cuentas.find((x) => x.id === n);
+      if (!c) throw new Error("esa cuenta no existe");
+      if (c.activa) throw new Error("primero desactiva la cuenta");
+      datos.cuentas = datos.cuentas.filter((x) => x.id !== n);
       guardar();
       return { ...c };
     },

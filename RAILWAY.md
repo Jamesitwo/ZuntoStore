@@ -35,6 +35,14 @@ suyo desde el panel. Administra quien tenga «Ajustes Tienda» en una tienda de
 la cuenta 1, o los correos de `SUPERADMINS` (separados por coma). Un solo
 navegador de Dropi trabaja a la vez, por turnos entre cuentas.
 
+**Claves cifradas.** Define `CLAVE_MAESTRA` (una frase larga y aleatoria, 32+
+caracteres) en las variables de Railway: las claves que guarda el panel
+(LucidSales, IA, Google Maps, Lucid Bot, token de Meta) quedan cifradas en el
+volumen (AES-256-GCM) y las que estaban en claro se cifran al arrancar. No la
+cambies ni la pierdas: sin ella esas claves no se pueden leer y cada cuenta
+tendria que volver a guardarlas. La sesion de Dropi vive en el perfil de
+Chrome y no se cifra.
+
 **No dejes corriendo a la vez tu equipo y Railway con la subida automatica:**
 los dos subirian los mismos pedidos.
 

@@ -58,6 +58,8 @@ export function cargarConfig(env = process.env) {
     DATA_DIR: String(g("DATA_DIR", dir)),
     /** registro de cuentas (negocios) y sus tiendas de LucidSales */
     CUENTAS: String(g("CUENTAS", path.join(String(g("DATA_DIR", dir)), "cuentas.json"))),
+    /** clave para cifrar en disco las claves guardadas (secretos.js); vacia = sin cifrar */
+    CLAVE_MAESTRA: String(g("CLAVE_MAESTRA", "")),
     /** correos que administran las cuentas (ademas de los admins de la cuenta 1) */
     SUPERADMINS: String(g("SUPERADMINS", ""))
       .split(",")
@@ -65,6 +67,8 @@ export function cargarConfig(env = process.env) {
       .filter(Boolean),
     /** estados de envio que manda Lucid Bot */
     ENVIOS: String(g("ENVIOS", path.join(dir, "envios.json"))),
+    /** registro de cambios de configuracion (quien cambio que) */
+    AUDITORIA: String(g("AUDITORIA", path.join(String(g("DATA_DIR", dir)), "auditoria.jsonl"))),
     /** historial de intentos de subida a Dropi (JSONL) */
     INTENTOS: String(g("INTENTOS", path.join(dir, "intentos.jsonl"))),
     /** clave de la API generada desde el panel (solo su huella) */

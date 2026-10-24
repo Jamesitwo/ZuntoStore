@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ErrorApi } from "./errores.js";
 import { PROMPT_DEFECTO } from "./llm.js";
+import { escribirJsonSeguro, leerJsonSeguro, textoJsonSeguro } from "./secretos.js";
 
 const PROMPT_MIN = 50;
 const PROMPT_MAX = 20000;
@@ -49,7 +50,7 @@ export function crearConfigLLM({ ruta, config }) {
   function keyEnDisco() {
     if (!ruta) return false;
     try {
-      return Boolean(JSON.parse(fs.readFileSync(ruta, "utf8"))?.apiKey);
+      return Boolean(leerJsonSeguro(ruta)?.apiKey);
     } catch {
       return false;
     }
@@ -61,13 +62,7 @@ export function crearConfigLLM({ ruta, config }) {
   }
 
   function escribir(datos) {
-    fs.mkdirSync(path.dirname(ruta), { recursive: true });
-    const tmp = `${ruta}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify({ ...datos, actualizado: new Date().toISOString() }, null, 2), {
-      encoding: "utf8",
-      mode: 0o600,
-    });
-    fs.renameSync(tmp, ruta);
+    escribirJsonSeguro(ruta, { ...datos, actualizado: new Date().toISOString() });
     try {
       fs.chmodSync(ruta, 0o600);
     } catch {
@@ -79,7 +74,7 @@ export function crearConfigLLM({ ruta, config }) {
   function cargar() {
     if (!ruta) return false;
     try {
-      const j = JSON.parse(fs.readFileSync(ruta, "utf8"));
+      const j = leerJsonSeguro(ruta);
       if (j && typeof j === "object") {
         if (typeof j.apiKey === "string" && j.apiKey) config.LLM_API_KEY = j.apiKey;
         if (typeof j.base === "string" && j.base) config.LLM_BASE = j.base;
@@ -180,7 +175,7 @@ export function crearConfigLLM({ ruta, config }) {
         const tmp = `${ruta}.tmp`;
         fs.writeFileSync(
           tmp,
-          JSON.stringify(
+          textoJsonSeguro(
             {
               // la key solo se guarda si vino del panel (no se copia la del .env)
               ...(keyDelPanel() ? { apiKey: config.LLM_API_KEY } : {}),
@@ -189,7 +184,6 @@ export function crearConfigLLM({ ruta, config }) {
               ...(config.LLM_PROMPT ? { prompt: config.LLM_PROMPT } : {}),
               actualizado: new Date().toISOString(),
             },
-            null,
             2,
           ),
           { encoding: "utf8", mode: 0o600 },

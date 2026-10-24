@@ -15,6 +15,15 @@ interface Cuenta {
   lucidsales: boolean | null;
   subida: { automatico: boolean; dryRun: boolean } | null;
   sesionDropi: string | null;
+  consumo: Record<string, number> | null;
+}
+
+/** "2026-10" en hora de Colombia, y el mes anterior. */
+function mesesRecientes() {
+  const ahora = new Date(Date.now() - 5 * 3600_000);
+  const este = ahora.toISOString().slice(0, 7);
+  const antes = new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
+  return { este, antes };
 }
 
 const tiendasDeTexto = (t: string) =>
@@ -23,7 +32,15 @@ const tiendasDeTexto = (t: string) =>
     .map((x) => x.trim())
     .filter(Boolean);
 
-function FilaCuenta({ c, onCambio }: { c: Cuenta; onCambio: (c: Cuenta) => void }) {
+function FilaCuenta({
+  c,
+  onCambio,
+  onBorrada,
+}: {
+  c: Cuenta;
+  onCambio: (c: Cuenta) => void;
+  onBorrada: (id: number) => void;
+}) {
   const toast = useToast();
   const [tiendas, setTiendas] = useState(c.tiendas.join(", "));
   const [ocupado, setOcupado] = useState(false);
@@ -43,9 +60,32 @@ function FilaCuenta({ c, onCambio }: { c: Cuenta; onCambio: (c: Cuenta) => void 
     }
   };
 
+  const borrar = async () => {
+    const escrito = window.prompt(
+      `Esto borra TODOS los datos de «${c.nombre}» (pedidos tratados, historiales, configuración y claves) y no se puede deshacer. Escribe el nombre de la cuenta para confirmar:`,
+    );
+    if (escrito === null) return;
+    setOcupado(true);
+    try {
+      await backend(`/api/cuentas/${c.id}`, { method: "DELETE", body: { confirmar: escrito.trim() } });
+      onBorrada(c.id);
+      toast.success(`Cuenta «${c.nombre}» borrada con sus datos`);
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      setOcupado(false);
+    }
+  };
+
   const estado = [
     c.lucidsales === null ? null : c.lucidsales ? "LucidSales conectado" : "falta LucidSales",
-    c.sesionDropi ? (c.sesionDropi === "ok" ? "Dropi ok" : `Dropi: ${c.sesionDropi}`) : null,
+    c.sesionDropi
+      ? c.sesionDropi === "ok"
+        ? "Dropi ok"
+        : c.sesionDropi === "desconocido"
+          ? "sin sesión de Dropi"
+          : `Dropi: ${c.sesionDropi}`
+      : null,
     c.subida ? (c.subida.automatico ? (c.subida.dryRun ? "subida en prueba" : "subida activa") : "subida apagada") : null,
   ]
     .filter(Boolean)
@@ -83,11 +123,29 @@ function FilaCuenta({ c, onCambio }: { c: Cuenta; onCambio: (c: Cuenta) => void 
         </div>
       </td>
       <td className="small">{estado || <span className="muted">sin usar todavía</span>}</td>
+      <td className="small" style={{ whiteSpace: "nowrap" }}>
+        {(() => {
+          const { este, antes } = mesesRecientes();
+          return (
+            <>
+              <strong>{c.consumo?.[este] ?? 0}</strong> este mes
+              <div className="muted">{c.consumo?.[antes] ?? 0} el mes pasado</div>
+            </>
+          );
+        })()}
+      </td>
       <td>
         {c.id !== 1 ? (
-          <button type="button" className="btn sm" disabled={ocupado} onClick={() => void guardar({ activa: !c.activa })}>
-            {c.activa ? "Desactivar" : "Activar"}
-          </button>
+          <div className="row gap" style={{ marginBottom: 0 }}>
+            <button type="button" className="btn sm" disabled={ocupado} onClick={() => void guardar({ activa: !c.activa })}>
+              {c.activa ? "Desactivar" : "Activar"}
+            </button>
+            {!c.activa ? (
+              <button type="button" className="btn sm danger" disabled={ocupado} onClick={() => void borrar()}>
+                Borrar datos
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </td>
     </tr>
@@ -158,12 +216,18 @@ export function CuentasAdmin() {
               <th>Cuenta</th>
               <th>Tiendas (ids de LucidSales)</th>
               <th>Estado</th>
+              <th title="Pedidos subidos a Dropi">Pedidos subidos</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {cuentas.map((c) => (
-              <FilaCuenta key={c.id} c={c} onCambio={(n) => setCuentas((cs) => (cs ?? []).map((x) => (x.id === n.id ? { ...x, ...n } : x)))} />
+              <FilaCuenta
+                key={c.id}
+                c={c}
+                onCambio={(n) => setCuentas((cs) => (cs ?? []).map((x) => (x.id === n.id ? { ...x, ...n } : x)))}
+                onBorrada={(id) => setCuentas((cs) => (cs ?? []).filter((x) => x.id !== id))}
+              />
             ))}
           </tbody>
         </table>

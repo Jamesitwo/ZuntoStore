@@ -64,6 +64,7 @@ import { faltantesDeConfig } from "./config.js";
 import { crearEstadosEnvio } from "./estadosEnvio.js";
 import { crearPedidosPorEnvio } from "./pedidosPorEnvio.js";
 import { crearApiKeys } from "./apiKeys.js";
+import { cifradoActivo } from "./secretos.js";
 import { crearVerificadorSesion, tienePermiso, tieneTienda } from "./sesionPanel.js";
 import { direccionConReferencias, recogeEnOficina } from "./direccionColombia.js";
 
@@ -131,6 +132,7 @@ export function crearManejador({
   // tiendas de LucidSales de ESTA cuenta (con varias cuentas): nadie entra
   // a esta cuenta con una tienda que no es suya
   tiendasCuenta = null,
+  auditoria = null,
 }) {
   // clave de integraciones: la de la variable API_KEY y/o la generada en el panel
   const claves = apiKeys ?? crearApiKeys({ claveEnv: config.API_KEY });
@@ -187,6 +189,16 @@ export function crearManejador({
   };
 
   function json(res, status, datos) {
+    // quien cambio que (sin valores): registro de cambios de la cuenta
+    const aud = res.__auditoria;
+    if (aud && auditoria) {
+      delete res.__auditoria;
+      try {
+        auditoria.anotar({ ...aud, estado: status });
+      } catch {
+        /* no frena la respuesta */
+      }
+    }
     // subida manual: el resultado queda en el historial de intentos del pedido
     const intento = res.__intento;
     if (intento && registroIntentos) {
@@ -461,6 +473,9 @@ export function crearManejador({
 
     // quien pide y si puede (antes de cualquier ruta)
     await controlarAcceso(req, ruta);
+    if (req.method !== "GET" && auditoria) {
+      res.__auditoria = { usuario: usuarioDe(req), metodo: req.method, ruta };
+    }
 
     if (req.method === "GET" && ruta === "/api/lucidbot/config") {
       autorizar(req);
@@ -484,6 +499,7 @@ export function crearManejador({
         version: VERSION,
         listo: faltan.length === 0,
         faltantes: faltan,
+        cifrado: cifradoActivo(),
         upstream: config.LUCID_BASE,
       });
       return;
@@ -588,6 +604,107 @@ export function crearManejador({
         ok: true,
         ...r,
         nombreAnterior: ESTADOS_PEDIDO[r.estadoAnterior],
+      });
+      return;
+    }
+
+    // ---- GET /api/auditoria: registro de cambios de la cuenta ----
+    if (req.method === "GET" && ruta === "/api/auditoria") {
+      autorizar(req);
+      json(res, 200, { ok: true, cambios: auditoria?.ultimos(Number(url.searchParams.get("n")) || 100) ?? [] });
+      return;
+    }
+
+    // ---- GET /api/configuracion/estado: lo que le falta a esta cuenta ----
+    if (req.method === "GET" && ruta === "/api/configuracion/estado") {
+      autorizar(req);
+      const sub = subida.config?.() ?? {};
+      const tiendas = subida.tiendasARevisar?.() ?? [];
+      const sinDropi = tiendas.filter((t) => !String(sub.tiendasDropi?.[t] ?? "").trim());
+      const sesionDropi = subida.sesion?.()?.estado ?? "desconocido";
+      const lb = lucidBotContactos?.estado?.() ?? {};
+      const llm = llmCfg.estado?.() ?? {};
+      const mapa = validador?.estado?.() ?? {};
+      const sheet = productosDropi?.estado?.() ?? {};
+      const clave = claves.estado();
+      const pasos = [
+        {
+          id: "lucidsales",
+          titulo: "Usuario de LucidSales del servidor",
+          ok: Boolean(config.LUCID_EMAIL && config.LUCID_PASSWORD),
+          detalle: "Con él la subida automática y el reparto leen los pedidos.",
+          donde: "Ajustes → Conexión del backend con LucidSales",
+        },
+        {
+          id: "tienda-dropi",
+          titulo: "Tienda de Dropi de cada tienda",
+          ok: tiendas.length > 0 && sinDropi.length === 0,
+          detalle: sinDropi.length ? `Falta el nombre de la tienda en Dropi para: ${sinDropi.join(", ")}` : "En qué tienda de Dropi se crea cada pedido.",
+          donde: "Ajustes → Subida automática a Dropi → Tienda en Dropi de cada tienda",
+        },
+        {
+          id: "sesion-dropi",
+          titulo: "Sesión de Dropi",
+          ok: sesionDropi === "ok",
+          detalle: sesionDropi === "ok" ? "Dropi acepta la sesión." : sesionDropi === "desconocido" ? "Todavía no se ha cargado una sesión." : `Estado: ${sesionDropi}`,
+          donde: "Ajustes → Subida automática a Dropi → Sesión de Dropi",
+        },
+        {
+          id: "sheet",
+          titulo: "Google Sheets de productos",
+          ok: Boolean(sheet.configurado),
+          detalle: "El link de Dropi de cada producto.",
+          donde: "Ajustes → Subida automática a Dropi → Google Sheets de productos",
+        },
+        {
+          id: "ia",
+          titulo: "Clave de la IA",
+          ok: Boolean(llm.configurada),
+          detalle: "Lee los chats para confirmar producto, precio, dirección y confirmación.",
+          donde: "Ajustes → Subida automática a Dropi → IA que lee los chats",
+        },
+        {
+          id: "mapas",
+          titulo: "Clave de Google Maps",
+          ok: Boolean(mapa.configurada),
+          opcional: true,
+          detalle: "Opcional: sin ella las direcciones se revisan solo por formato.",
+          donde: "Ajustes → Verificación de direcciones",
+        },
+        {
+          id: "lucidbot",
+          titulo: "Lucid Bot",
+          ok: Boolean(lb.tokenConfigurado && lb.conversationFieldId),
+          detalle: lb.tokenConfigurado
+            ? lb.conversationFieldId
+              ? "Token y campo de la conversación listos."
+              : "Falta el ID del campo con la conversación."
+            : "Falta el X-ACCESS-TOKEN: sin él no se leen los chats.",
+          donde: "Ajustes → Subida automática a Dropi → Conversación y avisos de Lucid Bot",
+        },
+        {
+          id: "apikey",
+          titulo: "Clave de la API para Lucid Bot",
+          ok: Boolean(clave.generada || clave.variableServidor),
+          opcional: true,
+          detalle: "Opcional: para que Lucid Bot mande el estado del envío.",
+          donde: "Ajustes → Clave de la API (integraciones)",
+        },
+        {
+          id: "subida",
+          titulo: "Subida automática encendida",
+          ok: Boolean(sub.automatico) && sub.dryRun === false,
+          opcional: true,
+          detalle: sub.automatico ? (sub.dryRun === false ? "Sube pedidos de verdad." : "Encendida en modo prueba: prepara sin crear.") : "Apagada: enciéndela cuando lo demás esté listo.",
+          donde: "Ajustes → Subida automática a Dropi",
+        },
+      ];
+      const obligatorios = pasos.filter((p) => !p.opcional);
+      json(res, 200, {
+        ok: true,
+        listos: obligatorios.filter((p) => p.ok).length,
+        total: obligatorios.length,
+        pasos,
       });
       return;
     }

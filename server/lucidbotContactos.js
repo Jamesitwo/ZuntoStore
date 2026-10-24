@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ErrorApi } from "./errores.js";
 import { normalizarMensajes, parsearTranscripcion } from "./conversacion.js";
+import { escribirJsonSeguro, leerJsonSeguro } from "./secretos.js";
 
 const DEFECTO = {
   activo: false,
@@ -59,7 +60,7 @@ export function crearLucidBotContactos({ ruta, fetcher = fetch, timeoutMs = 1200
 
   function leer() {
     try {
-      const v = JSON.parse(fs.readFileSync(archivo, "utf8"));
+      const v = leerJsonSeguro(archivo);
       return {
         ...DEFECTO,
         ...v,
@@ -73,10 +74,7 @@ export function crearLucidBotContactos({ ruta, fetcher = fetch, timeoutMs = 1200
 
   function guardar(c) {
     try {
-      fs.mkdirSync(path.dirname(archivo), { recursive: true });
-      const tmp = `${archivo}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(c, null, 2), { encoding: "utf8", mode: 0o600 });
-      fs.renameSync(tmp, archivo);
+      escribirJsonSeguro(archivo, c);
       return true;
     } catch (e) {
       throw new ErrorApi(500, `No se pudo guardar la configuración de Lucid Bot: ${e?.message ?? e}`);

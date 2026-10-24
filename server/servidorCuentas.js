@@ -5,7 +5,9 @@
 //
 //   /api/cuentas   -> administrar cuentas (solo superadmin)
 //   /api/cuenta    -> la cuenta de quien pregunta (nombre y tiendas)
+import fs from "node:fs";
 import http from "node:http";
+import { carpetaCuenta } from "./cuentas.js";
 import { ErrorApi } from "./errores.js";
 import { mensajeDeError } from "./estado.js";
 import { crearManejador } from "./servidor.js";
@@ -79,6 +81,7 @@ export function crearServidorCuentas({ config, registro, crearServicios, comunes
       apiKeys: servicios.apiKeys,
       pedidosLucidBot: servicios.pedidosLucidBot,
       registroIntentos: servicios.registroIntentos,
+      auditoria: servicios.auditoria,
       verificarSesion: sesiones,
       // con una sola cuenta todo funciona como antes; con varias, cada una
       // solo admite sus tiendas
@@ -127,8 +130,15 @@ export function crearServidorCuentas({ config, registro, crearServicios, comunes
     } catch {
       /* sin datos */
     }
+    let consumo = null;
+    try {
+      consumo = s?.subidaAuto?.consumo?.() ?? null;
+    } catch {
+      /* sin registro */
+    }
     return {
       ...c,
+      consumo,
       lucidsales: s ? Boolean(s.config.LUCID_EMAIL && s.config.LUCID_PASSWORD) : null,
       subida,
       sesionDropi: s?.subidaAuto?.sesion?.()?.estado ?? null,
@@ -185,6 +195,32 @@ export function crearServidorCuentas({ config, registro, crearServicios, comunes
       else de(c).servicios.arrancar();
       log.log?.(`[cuentas] cuenta ${c.id} «${c.nombre}» actualizada`);
       json(res, 200, { ok: true, cuenta: vista(c) });
+      return;
+    }
+    if (m && req.method === "DELETE") {
+      // borrar los datos de una cuenta que se va (Ley 1581): solo desactivada
+      // y escribiendo su nombre para confirmar
+      const b = await leerCuerpo(req);
+      const c = registro.get(Number(m[1]));
+      if (!c) throw new ErrorApi(404, "Esa cuenta no existe");
+      if (String(b?.confirmar ?? "").trim() !== c.nombre) {
+        throw new ErrorApi(400, `Para borrar escribe el nombre exacto de la cuenta: ${c.nombre}`);
+      }
+      try {
+        registro.borrar(c.id);
+      } catch (e) {
+        throw new ErrorApi(400, e.message);
+      }
+      const x = activas.get(c.id);
+      if (x) {
+        x.servicios.detener();
+        await x.servicios.dropiNavegador?.cerrar?.().catch(() => {});
+        activas.delete(c.id);
+      }
+      const carpeta = carpetaCuenta(config, c.id);
+      if (carpeta) fs.rmSync(carpeta, { recursive: true, force: true });
+      log.log?.(`[cuentas] cuenta ${c.id} «${c.nombre}» borrada con todos sus datos (por ${sesionAdmin?.usuario?.email ?? "?"})`);
+      json(res, 200, { ok: true, borrada: c.id });
       return;
     }
     throw new ErrorApi(404, `Ruta no encontrada: ${req.method} ${ruta}`);

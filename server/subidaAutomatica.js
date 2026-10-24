@@ -1130,6 +1130,23 @@ export function crearSubidaAutomatica({
     tiendasARevisar() {
       return tiendasARevisar(leer());
     },
+
+    /**
+     * Pedidos subidos a Dropi por mes (hora de Colombia), de lo que queda en
+     * el registro: { "2026-10": 42, ... } (para la suscripcion futura).
+     */
+    consumo() {
+      const c = leer();
+      const meses = {};
+      for (const r of Object.values(c.procesados ?? {})) {
+        if (!["subido", "subido-pendiente-confirmacion"].includes(r?.accion) || !r?.ts) continue;
+        const d = new Date(Date.parse(r.ts) - 5 * 3600_000); // Colombia (UTC-5, sin horario de verano)
+        if (Number.isNaN(d.getTime())) continue;
+        const mes = d.toISOString().slice(0, 7);
+        meses[mes] = (meses[mes] ?? 0) + 1;
+      }
+      return meses;
+    },
     tiendaDropiPara(idEmpresa) {
       return tiendaDropiDe(leer(), idEmpresa);
     },

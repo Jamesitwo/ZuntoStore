@@ -1133,3 +1133,13 @@ test("un pedido frenado que se revisa cada vuelta no llena el historial", async 
   assert.match(lista[1].detalle, /intento 1 de 2/);
   fs.rmSync(ruta, { force: true });
 });
+
+test("consumo: pedidos subidos por mes", async () => {
+  const { s, ruta } = armar({ pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }] });
+  s.configurar({ automatico: true, dryRun: false });
+  s.detener();
+  await s.tick({ forzar: true });
+  const mes = new Date(Date.now() - 5 * 3600_000).toISOString().slice(0, 7);
+  assert.equal(s.consumo()[mes], 1);
+  fs.rmSync(ruta, { force: true });
+});

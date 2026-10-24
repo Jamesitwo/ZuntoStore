@@ -13,6 +13,7 @@
 // `dir/productos.json` y se pueden editar desde el panel sin tocar la cache.
 import fs from "node:fs";
 import path from "node:path";
+import { cifrarJson, descifrarJson } from "./secretos.js";
 
 const CLAVES_COMPRA = [
   "omni_purchase",
@@ -38,7 +39,7 @@ export function dinero(v) {
 
 export function leerJson(ruta, defecto) {
   try {
-    return JSON.parse(fs.readFileSync(ruta, "utf8"));
+    return descifrarJson(JSON.parse(fs.readFileSync(ruta, "utf8")));
   } catch {
     return typeof defecto === "function" ? defecto() : defecto;
   }
@@ -46,7 +47,9 @@ export function leerJson(ruta, defecto) {
 
 export function escribirJson(ruta, datos) {
   fs.mkdirSync(path.dirname(ruta), { recursive: true });
-  fs.writeFileSync(ruta, JSON.stringify(datos, null, 1), "utf8");
+  // el ajuste con el token de Meta va cifrado (si hay CLAVE_MAESTRA)
+  const conToken = datos && typeof datos === "object" && !Array.isArray(datos) && "token" in datos;
+  fs.writeFileSync(ruta, JSON.stringify(conToken ? cifrarJson(datos) : datos, null, 1), "utf8");
 }
 
 // Las fechas van en hora de Colombia (no en la del servidor: en Railway el

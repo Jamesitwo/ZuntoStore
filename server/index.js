@@ -3,6 +3,8 @@
 //   npm run dev      -> igual, con recarga automatica (node --watch)
 //   npm test         -> pruebas contra un LucidSales falso
 import fs from "node:fs";
+import path from "node:path";
+import { cifradoActivo, cifrarArchivosEnClaro, configurarClaveMaestra } from "./secretos.js";
 import { cargarConfig, faltantesDeConfig } from "./config.js";
 import { crearClienteInter } from "./interrapidisimo.js";
 import { crearRegistroAnuncios } from "./anunciosTenant.js";
@@ -13,6 +15,23 @@ import { crearServidorCuentas } from "./servidorCuentas.js";
 
 const config = cargarConfig();
 config.CUENTA_ID = 1;
+// las claves guardadas (LucidSales, IA, Maps, Lucid Bot, Meta) van cifradas
+configurarClaveMaestra(config.CLAVE_MAESTRA);
+if (!cifradoActivo() && config.NODE_ENV === "production") {
+  console.warn("[cifrado] sin CLAVE_MAESTRA: las claves guardadas quedan en claro en el volumen");
+}
+{
+  // el token de Meta de cada usuario (anuncios) tambien
+  const ajustes = [config.ANUNCIOS_CONFIG];
+  try {
+    const dirUsuarios = path.join(config.ANUNCIOS_DIR, "usuarios");
+    for (const u of fs.readdirSync(dirUsuarios)) ajustes.push(path.join(dirUsuarios, u, "config.json"));
+  } catch {
+    /* sin usuarios de anuncios */
+  }
+  const n = cifrarArchivosEnClaro(ajustes);
+  if (n) console.log(`[cifrado] anuncios: ${n} ajuste(s) con token de Meta quedaron cifrados`);
+}
 // compartido por todas las cuentas: oficinas de Inter (datos publicos)
 const inter = crearClienteInter(config);
 

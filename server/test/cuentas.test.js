@@ -32,7 +32,7 @@ function armar() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cuentas-"));
   const base = cargarConfig({});
   // la cuenta 1 en su propia carpeta temporal (sin tocar los archivos reales)
-  for (const k of ["HISTORIAL", "CONVERSACION", "SUBIDA_AUTO", "ASIGNACION", "CREDENCIALES", "ENVIOS", "INTENTOS", "LUCIDBOT_PEDIDOS", "LUCIDBOT_CONTACTOS_CONFIG", "LLM_CONFIG", "MAPAS_CONFIG", "DROPI_PRODUCTOS_CONFIG", "APIKEY_CONFIG", "DROPI_PERFIL"]) {
+  for (const k of ["HISTORIAL", "CONVERSACION", "SUBIDA_AUTO", "ASIGNACION", "CREDENCIALES", "ENVIOS", "INTENTOS", "LUCIDBOT_PEDIDOS", "LUCIDBOT_CONTACTOS_CONFIG", "LLM_CONFIG", "MAPAS_CONFIG", "DROPI_PRODUCTOS_CONFIG", "APIKEY_CONFIG", "DROPI_PERFIL", "AUDITORIA"]) {
     base[k] = path.join(dir, "c1", path.basename(base[k]));
   }
   Object.assign(base, { DATA_DIR: dir, CUENTAS: path.join(dir, "cuentas.json"), LUCID_EMAIL: "dueno@zunto.co", LUCID_PASSWORD: "x", LLM_API_KEY: "sk-de-james", API_KEY: "clave-env-de-james-1234567890123456" });
@@ -135,6 +135,57 @@ test("la clave de API dice de que cuenta es el aviso de Lucid Bot", async () => 
     // una clave que no es de nadie
     r = await pedir(multi, "POST", "/api/envios/estado", { clave: "inventada", cuerpo: { estado: "x", telefono: "3001112222" } });
     assert.equal(r.status, 401);
+  } finally {
+    multi.server.close();
+  }
+});
+
+test("la lista de configuracion dice que le falta a una cuenta nueva", async () => {
+  const { multi, registro } = armar();
+  try {
+    registro.crear({ nombre: "Amigo", tiendas: ["7000"] });
+    const r = await pedir(multi, "GET", "/api/configuracion/estado", { token: "amigo", tienda: "7000" });
+    assert.equal(r.status, 200, JSON.stringify(r.datos));
+    const paso = (id) => r.datos.pasos.find((p) => p.id === id);
+    assert.equal(paso("lucidsales").ok, false);
+    assert.equal(paso("ia").ok, false);
+    assert.equal(paso("tienda-dropi").ok, false);
+    assert.match(paso("tienda-dropi").detalle, /7000/);
+    assert.equal(r.datos.listos, 0);
+    // la de ZuntoStore si tiene LucidSales e IA (las del .env)
+    const r1 = await pedir(multi, "GET", "/api/configuracion/estado", { token: "james", tienda: "6881" });
+    assert.equal(r1.datos.pasos.find((p) => p.id === "lucidsales").ok, true);
+    assert.equal(r1.datos.pasos.find((p) => p.id === "ia").ok, true);
+  } finally {
+    multi.server.close();
+  }
+});
+
+test("borrar una cuenta: solo desactivada, con su nombre, y se van sus datos", async () => {
+  const { multi, registro, base } = armar();
+  try {
+    registro.crear({ nombre: "Amigo", tiendas: ["7000"] });
+    // usar la cuenta crea su carpeta y sus archivos
+    let r = await pedir(multi, "PUT", "/api/subida/config", { token: "amigo", tienda: "7000", cuerpo: { cadaSegundos: 600 } });
+    assert.equal(r.status, 200);
+    const carpeta = path.join(base.DATA_DIR, "cuentas", "2");
+    assert.ok(fs.existsSync(path.join(carpeta, "subidaAutomatica.json")));
+    // el cambio quedo en su registro de cambios, con quien lo hizo
+    r = await pedir(multi, "GET", "/api/auditoria", { token: "amigo", tienda: "7000" });
+    assert.equal(r.datos.cambios[0].usuario, "amigo@tienda.co");
+    assert.match(r.datos.cambios[0].accion, /subida/);
+
+    r = await pedir(multi, "DELETE", "/api/cuentas/2", { token: "james", tienda: "6881", cuerpo: { confirmar: "Amigo" } });
+    assert.equal(r.status, 400); // sigue activa
+    await pedir(multi, "PUT", "/api/cuentas/2", { token: "james", tienda: "6881", cuerpo: { activa: false } });
+    r = await pedir(multi, "DELETE", "/api/cuentas/2", { token: "james", tienda: "6881", cuerpo: { confirmar: "otro" } });
+    assert.equal(r.status, 400); // nombre mal
+    r = await pedir(multi, "DELETE", "/api/cuentas/2", { token: "james", tienda: "6881", cuerpo: { confirmar: "Amigo" } });
+    assert.equal(r.status, 200, JSON.stringify(r.datos));
+    assert.equal(fs.existsSync(carpeta), false);
+    assert.equal(registro.get(2), null);
+    r = await pedir(multi, "DELETE", "/api/cuentas/1", { token: "james", tienda: "6881", cuerpo: { confirmar: "ZuntoStore" } });
+    assert.equal(r.status, 400);
   } finally {
     multi.server.close();
   }

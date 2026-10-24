@@ -10,13 +10,14 @@
 // (a***z@dominio.com) y ni la clave ni el correo completos salen del servidor.
 import fs from "node:fs";
 import path from "node:path";
+import { escribirJsonSeguro, leerJsonSeguro } from "./secretos.js";
 
 export function crearCredenciales({ ruta, config }) {
   /** Al arrancar: si el archivo ya existe, manda el sobre el .env. */
   function cargar() {
     if (!ruta) return false;
     try {
-      const j = JSON.parse(fs.readFileSync(ruta, "utf8"));
+      const j = leerJsonSeguro(ruta);
       if (j && typeof j.email === "string" && j.email) {
         config.LUCID_EMAIL = j.email;
         config.LUCID_PASSWORD = String(j.password ?? "");
@@ -81,14 +82,7 @@ export function crearCredenciales({ ruta, config }) {
       config.LUCID_PASSWORD = p;
       if (!ruta) return { ...estado(), aviso: "Sin archivo de credenciales: solo en memoria" };
       try {
-        fs.mkdirSync(path.dirname(ruta), { recursive: true });
-        const tmp = `${ruta}.tmp`;
-        fs.writeFileSync(
-          tmp,
-          JSON.stringify({ email: e, password: p, actualizado: new Date().toISOString() }, null, 2),
-          "utf8",
-        );
-        fs.renameSync(tmp, ruta);
+        escribirJsonSeguro(ruta, { email: e, password: p, actualizado: new Date().toISOString() });
         try {
           fs.chmodSync(ruta, 0o600);
         } catch {
