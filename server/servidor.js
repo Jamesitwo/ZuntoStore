@@ -583,7 +583,11 @@ export function crearServidor({
       if (!id) throw new ErrorApi(400, "Indica el id del pedido para probar");
       if (!lucidBotContactos?.guardarIdPedido) throw new ErrorApi(503, "Lucid Bot no está montado en este servidor");
       const pedido = await cliente.obtenerPedido(id, tiendaDe(req));
-      const r = await lucidBotContactos.guardarIdPedido(pedido, { forzar: true });
+      const r = await lucidBotContactos.guardarIdPedido(pedido, {
+        forzar: true,
+        fieldId: cuerpo?.pedidoFieldId ?? null,
+        valorTipo: cuerpo?.pedidoValor ?? null,
+      });
       json(res, r.ok ? 200 : 502, { ok: r.ok, msg: r.detalle, ...r });
       return;
     }

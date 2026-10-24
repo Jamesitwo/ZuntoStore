@@ -315,8 +315,18 @@ export function crearLucidBotContactos({ ruta, fetcher = fetch, timeoutMs = 1200
    * POST /api/contacts/{contact_id}/custom_fields/{custom_field_id} (value).
    * El contacto es el telefono del pedido sin "+" (igual que el inbox).
    */
-  async function guardarIdPedido(pedido = {}, { forzar = false } = {}) {
-    const c = leer();
+  async function guardarIdPedido(pedido = {}, { forzar = false, fieldId = null, valorTipo = null } = {}) {
+    const guardada = leer();
+    // la prueba del panel puede mandar lo que esta escrito (aun sin guardar)
+    const idCampo = String(fieldId ?? "").trim();
+    if (idCampo && !/^[\w-]{1,80}$/.test(idCampo)) {
+      return { ok: false, detalle: "El ID del campo solo puede tener letras, números, - y _" };
+    }
+    const c = {
+      ...guardada,
+      ...(idCampo ? { pedidoFieldId: idCampo } : {}),
+      ...(valorTipo === "id" || valorTipo === "numero" ? { pedidoValor: valorTipo } : {}),
+    };
     if (!c.token) return { ok: false, omitido: true, detalle: "Falta X-ACCESS-TOKEN de Lucid Bot" };
     if (!c.pedidoFieldId) return { ok: false, omitido: true, detalle: "No hay ID de campo para el id del pedido" };
     if (!c.pedidoActivo && !forzar) return { ok: false, omitido: true, detalle: "Envío del id del pedido apagado" };

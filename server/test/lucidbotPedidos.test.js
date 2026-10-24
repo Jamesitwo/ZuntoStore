@@ -97,3 +97,15 @@ test("solo los pedidos NUEVOS reciben el id, una vez cada uno", async () => {
   fs.rmSync(ruta, { force: true });
   fs.rmSync(rutaEstado, { force: true });
 });
+
+test("probar usa el ID del campo escrito aunque no este guardado", async () => {
+  const { lb, llamadas, ruta } = lucidBotFalso();
+  lb.configurar({ token: "tok" });
+  const sin = await lb.guardarIdPedido({ id: 1, Movil: "3001112233" }, { forzar: true });
+  assert.match(sin.detalle, /No hay ID de campo/);
+  const r = await lb.guardarIdPedido({ id: 1, idPedido: 9, Movil: "3001112233" }, { forzar: true, fieldId: "555", valorTipo: "numero" });
+  assert.equal(r.ok, true, r.detalle);
+  assert.match(llamadas[0].url, /custom_fields\/555$/);
+  assert.equal(llamadas[0].cuerpo, "value=9");
+  fs.rmSync(ruta, { force: true });
+});

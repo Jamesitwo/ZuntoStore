@@ -36,7 +36,10 @@ export function IdPedidoLucidBot({ form, onChange }: { form: Form; onChange: (pa
     setProbando(true);
     setResultado(null);
     try {
-      const r: any = await backend("/api/lucidbot/pedido/probar", { method: "POST", body: { id: prueba.trim() } });
+      const r: any = await backend("/api/lucidbot/pedido/probar", {
+        method: "POST",
+        body: { id: prueba.trim(), pedidoFieldId: form.pedidoFieldId.trim(), pedidoValor: form.pedidoValor },
+      });
       setResultado({ ok: true, msg: r?.msg ?? "Guardado en Lucid Bot" });
     } catch (e) {
       setResultado({ ok: false, msg: errMsg(e) });
@@ -102,11 +105,19 @@ export function IdPedidoLucidBot({ form, onChange }: { form: Form; onChange: (pa
               placeholder="Id interno del pedido"
               style={{ flex: "1 1 140px", minWidth: 0 }}
             />
-            <button type="button" className="btn" disabled={!prueba.trim() || probando} onClick={() => void probar()}>
+            <button
+              type="button"
+              className="btn"
+              disabled={!prueba.trim() || !form.pedidoFieldId.trim() || probando}
+              onClick={() => void probar()}
+            >
               {probando ? "Probando…" : "Probar"}
             </button>
           </div>
-          <span className="campo-ayuda">Usa lo ya guardado (guarda primero el ID del campo).</span>
+          <span className="campo-ayuda">
+            Prueba con el ID del campo escrito arriba. Para que se haga solo con cada pedido nuevo, enciende «Enviar el
+            id» y guarda la tarjeta.
+          </span>
         </div>
       </div>
       {resultado ? <div className={`banner ${resultado.ok ? "ok" : "error"}`}>{resultado.msg}</div> : null}
