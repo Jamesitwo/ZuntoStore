@@ -20,6 +20,7 @@ ENV NODE_ENV=production \
     HISTORIAL=/data/historial.jsonl \
     CONVERSACION=/data/conversacion.jsonl \
     SUBIDA_AUTO=/data/subidaAutomatica.json \
+    ENVIOS=/data/envios.json \
     LUCIDBOT_CONTACTOS_CONFIG=/data/config/lucidbot-contactos.json \
     ASIGNACION=/data/asignacion.json \
     CREDENCIALES=/data/credenciales.json \

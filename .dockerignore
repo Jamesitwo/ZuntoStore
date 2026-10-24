@@ -20,3 +20,4 @@ server/_capturar.mjs
 package-lock.json
 !panel/package-lock.json
 !server/package-lock.json
+server/envios.json*

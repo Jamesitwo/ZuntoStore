@@ -5208,3 +5208,6 @@ input::placeholder, textarea::placeholder { color: #a09da7; }
 .validar-direccion-checks li span[aria-hidden] { display: inline-block; width: 14px; font-weight: 700; }
 .validar-direccion-sugerida { display: grid; gap: 6px; }
 .validar-direccion-sugerida code { font-size: 14px; padding: 4px 8px; border-radius: 6px; background: var(--bg); width: fit-content; max-width: 100%; overflow-wrap: anywhere; }
+
+/* estado del envio recibido de Lucid Bot */
+.envio-bot { white-space: nowrap; }

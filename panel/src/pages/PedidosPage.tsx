@@ -11,10 +11,11 @@ import {
   usuarios,
   type Filtro,
 } from "../api/endpoints";
-import { EnvioBadge, ErrorBanner, JsonTable, PageHeader, Spinner, money } from "../components/ui";
+import { ErrorBanner, JsonTable, PageHeader, Spinner, money } from "../components/ui";
 import { ConfirmDialog, Modal } from "../components/Modal";
 import { useToast } from "../components/Toast";
 import { claveTelefono, fmtFecha, haceCuanto, telefono } from "../lib/format";
+import { EnvioConBot, useEstadosEnvioBot } from "../components/EnvioLucidBot";
 import { useEtiquetaTienda } from "../lib/tiendas";
 import { useInboxBot } from "../lib/botInbox";
 import { useEtiquetas } from "../lib/etiquetas";
@@ -83,6 +84,8 @@ export function PedidosPage() {
   const et = useEtiquetas();
 
   const [rows, setRows] = useState<PedidoLight[]>([]);
+  // estado del envio que manda Lucid Bot (pedidos que en LucidSales siguen "Sin Envio")
+  const enviosBot = useEstadosEnvioBot(rows);
   const [total, setTotal] = useState(0);
   const [numPages, setNumPages] = useState(0);
   const [page, setPage] = useState(1);
@@ -878,7 +881,7 @@ export function PedidosPage() {
                               : "Estado del envio"
                           }
                         >
-                          <EnvioBadge value={p.EstadoFullfilment} />
+                          <EnvioConBot valor={p.EstadoFullfilment} bot={enviosBot[String(p.id ?? p.idPedido)]} />
                         </td>
                         <td className="hide-sm">
                           {asignado ? (
@@ -987,7 +990,7 @@ export function PedidosPage() {
                     )}
                     <div className="pedido-movil-estado">
                       {selectorEstado(p)}
-                      <EnvioBadge value={p.EstadoFullfilment} />
+                      <EnvioConBot valor={p.EstadoFullfilment} bot={enviosBot[String(p.id ?? p.idPedido)]} />
                     </div>
                     <div className="pedido-movil-meta muted small">
                       <span title={fmtFecha(fecha)}>{haceCuanto(fecha) || "—"}</span>

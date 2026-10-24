@@ -18,6 +18,7 @@ import { crearValidadorDireccion } from "./validadorDireccion.js";
 import { crearRepartoAutomatico } from "./repartoAutomatico.js";
 import { crearRegistroAnuncios } from "./anunciosTenant.js";
 import { crearPanelEstatico } from "./panelEstatico.js";
+import { crearEstadosEnvio } from "./estadosEnvio.js";
 import { crearProductosDropi } from "./productosDropi.js";
 import { crearLucidBotContactos } from "./lucidbotContactos.js";
 import { crearServidor } from "./servidor.js";
@@ -127,6 +128,7 @@ const server = crearServidor({
   resolverProductoDropi,
   productosDropi,
   panel,
+  estadosEnvio: crearEstadosEnvio({ ruta: config.ENVIOS }),
 });
 
 if (config.NODE_ENV === "production") {

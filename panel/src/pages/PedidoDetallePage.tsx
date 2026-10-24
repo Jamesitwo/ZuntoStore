@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { errMsg } from "../api/client";
 import { cambiarEstadoPedido, ESTADOS_PEDIDO, pedidos, TIPOS_PAGO } from "../api/endpoints";
-import { ErrorBanner, EstadoBadge, EnvioBadge, JsonView, PageHeader, Spinner, money } from "../components/ui";
+import { ErrorBanner, EstadoBadge, JsonView, PageHeader, Spinner, money } from "../components/ui";
 import { LocationPicker, type Ubicacion } from "../components/LocationPicker";
 import { Combo, type OpcionCombo } from "../components/Combo";
 import { StockDropi } from "../components/StockDropi";
@@ -15,6 +15,7 @@ import { ValidarDireccion } from "../components/ValidarDireccion";
 import { BloqueEtiquetas } from "../components/Etiquetas";
 import { useToast } from "../components/Toast";
 import { claveTelefono, fmtFecha, haceCuanto, telefono } from "../lib/format";
+import { EnvioConBot, useEstadosEnvioBot } from "../components/EnvioLucidBot";
 import { prodId, prodImg, prodName, prodPrice, useCatalogo } from "../lib/catalogo";
 import { useEtiquetaTienda } from "../lib/tiendas";
 import { useInboxBot } from "../lib/botInbox";
@@ -240,6 +241,8 @@ export function PedidoDetallePage() {
 
   /* ---------------- otros pedidos del mismo cliente ---------------- */
   const [otros, setOtros] = useState<any[]>([]);
+  // estado del envio que manda Lucid Bot (este pedido y los otros del cliente)
+  const enviosBot = useEstadosEnvioBot(original ? [original, ...otros] : otros);
   const [totalOtros, setTotalOtros] = useState(0);
   const [cargandoOtros, setCargandoOtros] = useState(false);
   const [errorOtros, setErrorOtros] = useState<string | null>(null);
@@ -684,8 +687,11 @@ export function PedidoDetallePage() {
                 Estado de envío
               </label>
               <div className="valor-solo">
-                <EnvioBadge value={original?.EstadoFullfilment} />
-                {!original?.EstadoFullfilment && (
+                <EnvioConBot
+                  valor={original?.EstadoFullfilment}
+                  bot={enviosBot[String(original?.id ?? original?.idPedido ?? "")]}
+                />
+                {!original?.EstadoFullfilment && !enviosBot[String(original?.id ?? original?.idPedido ?? "")] && (
                   <span className="muted small">Aun sin envio asignado</span>
                 )}
               </div>
@@ -838,7 +844,7 @@ export function PedidoDetallePage() {
                           <EstadoBadge value={p?.EstadoPedido} />
                         </td>
                         <td>
-                          <EnvioBadge value={p?.EstadoFullfilment} />
+                          <EnvioConBot valor={p?.EstadoFullfilment} bot={enviosBot[String(pid)]} />
                         </td>
                         <td className="hide-sm">{money(p?.Total)}</td>
                         <td>

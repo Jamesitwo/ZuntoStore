@@ -28,6 +28,7 @@ RUN chmod 755 /usr/local/bin/zuntostore-entrypoint
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PANEL_DIR=/app/panel \
+    ENVIOS=/data/envios.json \
     DROPI_CHROME=/usr/bin/chromium \
     DROPI_HEADLESS=1 \
     DROPI_PERFIL=/data/dropi-profile \

@@ -191,6 +191,30 @@ Errores: `400` validacion · `401` API key · `404` pedido inexistente ·
 `413` cuerpo grande · `502` LucidSales rechazo · `503` sin configurar ·
 `504` timeout. Siempre `{ "ok": false, "msg": "..." }`.
 
+### Estado del envio desde Lucid Bot
+
+Si el pedido se sube a Dropi por fuera de LucidSales, LucidSales se queda en
+"Sin Envio"; Lucid Bot si recibe el estado de la guia. Un flujo de Lucid Bot
+con **Solicitud externa** lo manda aqui y el panel lo muestra (lista y detalle,
+con la marca «Lucid Bot») en los pedidos que LucidSales tiene "Sin Envio".
+
+```bash
+curl -X POST https://TU-DOMINIO/api/envios/estado \
+  -H "content-type: application/json" -H "x-api-key: $API_KEY" \
+  -d '{"telefono":"+573001234567","estado":"EN REPARTO","guia":"240012345678",
+       "transportadora":"COORDINADORA","pedido":"6106","novedad":""}'
+```
+
+- Obligatorios: `estado` y uno de `telefono`, `guia` o `pedido` (numero o id
+  de LucidSales). Tambien acepta `status`, `phone`, `numero_guia`, `carrier`...
+  Una variable vacia de Lucid Bot (`{{guia}}`) se ignora.
+- A cada pedido le toca el ultimo aviso del mismo pedido; si no, de la misma
+  guia; si no, del mismo telefono recibido despues de crear el pedido.
+- Solo con `x-api-key` (un usuario del panel no puede inventar estados).
+- `POST /api/envios/consultar {pedidos:[{id,idPedido,telefono,fecha}]}` (panel)
+  y `GET /api/envios/ultimos` (admin) para revisar que esten llegando.
+- Se guarda en `ENVIOS` (`/data/envios.json` en Railway).
+
 ### Historial
 
 ```bash

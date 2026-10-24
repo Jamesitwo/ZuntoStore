@@ -14,3 +14,4 @@ anuncios
 .dropi-*
 *.log
 coverage
+envios.json*

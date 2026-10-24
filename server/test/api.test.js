@@ -1671,3 +1671,16 @@ test("credenciales guardadas: el cliente de LucidSales las usa", async () => {
     await s.cerrar();
   }
 });
+
+test("envios: Lucid Bot manda el estado y el panel lo consulta", async () => {
+  let r = await post("/api/envios/estado", { estado: "EN REPARTO", telefono: "+57 300 123 4567", guia: "{{guia}}" });
+  assert.equal(r.status, 200, JSON.stringify(r.datos));
+  assert.equal(r.datos.recibido.estado, "EN REPARTO");
+  r = await post("/api/envios/estado", { telefono: "3001234567" });
+  assert.equal(r.status, 400);
+  assert.match(r.datos.msg, /estado/);
+  r = await post("/api/envios/estado", { estado: "ENTREGADO", telefono: "3001234567" }, { clave: null });
+  assert.equal(r.status, 401);
+  r = await post("/api/envios/consultar", { pedidos: [{ id: 10, idPedido: 10, telefono: "+573001234567" }] });
+  assert.equal(r.datos.estados["10"].estado, "EN REPARTO");
+});

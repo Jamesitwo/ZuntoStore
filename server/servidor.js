@@ -61,6 +61,7 @@ import { crearClienteDropi, armarPedidoDropi } from "./dropi.js";
 import { crearDropiNavegador } from "./dropiNavegador.js";
 import { crearSubidaAutomatica } from "./subidaAutomatica.js";
 import { faltantesDeConfig } from "./config.js";
+import { crearEstadosEnvio } from "./estadosEnvio.js";
 import { crearVerificadorSesion, tienePermiso, tieneTienda } from "./sesionPanel.js";
 import { direccionConReferencias, recogeEnOficina } from "./direccionColombia.js";
 
@@ -121,7 +122,10 @@ export function crearServidor({
   productosDropi = null,
   verificarSesion,
   panel = null,
+  estadosEnvio = null,
 }) {
+  // estado del envio que manda Lucid Bot (sin instancia: solo memoria)
+  const envios = estadosEnvio ?? crearEstadosEnvio({ ruta: null });
   // acceso del panel: sesion real de LucidSales (x-token + x-tienda)
   const sesiones = verificarSesion ?? crearVerificadorSesion({ base: config.LUCID_BASE });
   const interCliente = inter ?? crearClienteInter(config);
@@ -329,6 +333,8 @@ export function crearServidor({
     [/^\/api\/pedidos\/[^/]+\/direccion(\/validar)?$/, "2"],
     [/^\/api\/subida\/pedido\/[^/]+$/, "2"],
     [/^\/api\/historial$/, "2"],
+    [/^\/api\/envios\/ultimos$/, "8"],
+    [/^\/api\/envios\//, "2"],
     [/^\/api\/asignacion\/horario$/, "7"],
     [/^\/api\/asignacion\/(config|probar)$/, "8"],
     [/^\/api\/asignacion(\/|$)/, "2"],
@@ -539,6 +545,40 @@ export function crearServidor({
         ...r,
         nombreAnterior: ESTADOS_PEDIDO[r.estadoAnterior],
       });
+      return;
+    }
+
+    // ---- POST /api/envios/estado  (Lucid Bot -> aqui) ----
+    // Solo integraciones con x-api-key: un usuario del panel no inventa estados.
+    if (req.method === "POST" && ruta === "/api/envios/estado") {
+      autorizar(req);
+      if (!req.__acceso?.interna) throw new ErrorApi(403, "Solo Lucid Bot (con x-api-key) puede mandar estados de envío");
+      const cuerpo = await leerCuerpo(req);
+      let ev;
+      try {
+        ev = envios.registrar(cuerpo ?? {});
+      } catch (e) {
+        throw new ErrorApi(400, e.message);
+      }
+      console.log(
+        `[envios] ${ev.estado}${ev.guia ? ` · guía ${ev.guia}` : ""}${ev.pedido ? ` · pedido ${ev.pedido}` : ""}${ev.telefono ? ` · tel …${ev.telefono.slice(-4)}` : ""}`,
+      );
+      json(res, 200, { ok: true, recibido: { estado: ev.estado, guia: ev.guia, pedido: ev.pedido, transportadora: ev.transportadora, ts: ev.ts } });
+      return;
+    }
+
+    // ---- POST /api/envios/consultar  {pedidos:[{id,idPedido,telefono,fecha,guia}]} ----
+    if (req.method === "POST" && ruta === "/api/envios/consultar") {
+      autorizar(req);
+      const cuerpo = await leerCuerpo(req);
+      json(res, 200, { ok: true, estados: envios.consultar(cuerpo?.pedidos ?? []) });
+      return;
+    }
+
+    // ---- GET /api/envios/ultimos ----
+    if (req.method === "GET" && ruta === "/api/envios/ultimos") {
+      autorizar(req);
+      json(res, 200, { ok: true, avisos: envios.ultimos(url.searchParams.get("n")) });
       return;
     }
 

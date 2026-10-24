@@ -54,6 +54,8 @@ export function cargarConfig(env = process.env) {
     LUCID_BASE: String(g("LUCID_BASE", "https://panel.lucidsales.co/b")).replace(/\/+$/, ""),
     /** carpeta del build del panel (dist) para servirlo desde aqui; vacio = no */
     PANEL_DIR: String(g("PANEL_DIR", "")).trim(),
+    /** estados de envio que manda Lucid Bot */
+    ENVIOS: String(g("ENVIOS", path.join(dir, "envios.json"))),
     /** API publica de Inter Rapidisisimo (oficinas por municipio). */
     INTER_BASE: String(
       g("INTER_BASE", "https://www3.interrapidisimo.com/Apicanalesventa/api"),

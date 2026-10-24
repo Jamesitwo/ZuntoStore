@@ -19,3 +19,5 @@ node_modules/
 .dropi-sesion.mjs
 .dropi-localstorage.json
 subidaAutomatica.json
+envios.json
+envios.json.tmp
