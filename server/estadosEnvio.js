@@ -170,6 +170,39 @@ export function crearEstadosEnvio({ ruta = null, log = console } = {}) {
       return salida;
     },
 
+    /**
+     * Todos los avisos de UN pedido, del mas viejo al mas nuevo (linea de
+     * tiempo). Mismo criterio que `consultar`: los que dicen ser del pedido,
+     * los de su guia y, si no hay de esos, los del telefono desde que se creo.
+     * Repeticiones seguidas del mismo estado se juntan (Lucid Bot reenvia).
+     */
+    historial(p = {}) {
+      const id = texto(p?.id, 40);
+      const numeros = new Set([id, texto(p?.idPedido, 40)].filter(Boolean));
+      const lista = todos();
+      let evs = lista.filter((e) => e.pedido && numeros.has(e.pedido));
+      const guias = new Set([texto(p?.guia, 60).replace(/\s+/g, ""), ...evs.map((e) => e.guia)].filter(Boolean));
+      if (guias.size) evs = [...evs, ...lista.filter((e) => e.guia && guias.has(e.guia) && !evs.includes(e))];
+      if (!evs.length) {
+        const tel = claveTelefono(p?.telefono);
+        const creado = Date.parse(p?.fecha ?? "");
+        const desde = Number.isFinite(creado) ? creado - 24 * 3600_000 : null;
+        evs = (datos.porTelefono[tel] ?? []).filter((e) => !e.pedido && (desde === null || Date.parse(e.ts) >= desde));
+      }
+      evs.sort((a, b) => a.ts.localeCompare(b.ts));
+      const salida = [];
+      for (const e of evs) {
+        const previo = salida.at(-1);
+        const igual = previo && previo.estado.toLowerCase() === e.estado.toLowerCase() && (previo.novedad ?? "") === (e.novedad ?? "");
+        if (igual) {
+          previo.repeticiones = (previo.repeticiones ?? 1) + 1;
+          continue;
+        }
+        salida.push({ ts: e.ts, estado: e.estado, transportadora: e.transportadora, guia: e.guia, novedad: e.novedad });
+      }
+      return salida;
+    },
+
     /** Los ultimos avisos recibidos (para revisar que Lucid Bot si manda). */
     ultimos(n = 20) {
       return todos()

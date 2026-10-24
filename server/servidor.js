@@ -615,6 +615,14 @@ export function crearServidor({
       return;
     }
 
+    // ---- POST /api/envios/historial  {id,idPedido,telefono,fecha,guia} ----
+    if (req.method === "POST" && ruta === "/api/envios/historial") {
+      autorizar(req);
+      const cuerpo = await leerCuerpo(req);
+      json(res, 200, { ok: true, eventos: envios.historial(cuerpo ?? {}) });
+      return;
+    }
+
     // ---- GET /api/envios/ultimos ----
     if (req.method === "GET" && ruta === "/api/envios/ultimos") {
       autorizar(req);

@@ -61,3 +61,24 @@ test("se guarda en disco y se lee al reiniciar", () => {
   assert.equal(otra.ultimos(5).length, 1);
   fs.rmSync(ruta, { force: true });
 });
+
+test("historial: linea de tiempo del pedido, sin repeticiones seguidas", () => {
+  const e = crearEstadosEnvio();
+  e.registrar({ estado: "Creado", pedido: "6106", guia: "G1", fecha: "2026-10-10T10:00:00Z" });
+  e.registrar({ estado: "EN TRANSITO", guia: "G1", fecha: "2026-10-11T10:00:00Z" });
+  e.registrar({ estado: "EN TRANSITO", guia: "G1", fecha: "2026-10-11T18:00:00Z" });
+  e.registrar({ estado: "EN REPARTO", pedido: "6106", fecha: "2026-10-12T09:00:00Z" });
+  e.registrar({ estado: "ENTREGADO", telefono: "3001112222", pedido: "999", fecha: "2026-10-12T10:00:00Z" }); // otro pedido
+  const h = e.historial({ id: 3256175, idPedido: 6106, telefono: "3001112222" });
+  assert.deepEqual(h.map((x) => x.estado), ["Creado", "EN TRANSITO", "EN REPARTO"]);
+  assert.equal(h[1].repeticiones, 2);
+  assert.equal(h[0].ts, "2026-10-10T10:00:00.000Z");
+});
+
+test("historial por telefono cuando Lucid Bot no manda el pedido", () => {
+  const e = crearEstadosEnvio();
+  e.registrar({ estado: "Creado", telefono: "3001112222", fecha: "2026-10-10T10:00:00Z" });
+  e.registrar({ estado: "ENTREGADO", telefono: "3001112222", fecha: "2026-10-13T10:00:00Z" });
+  const h = e.historial({ id: 1, telefono: "+573001112222", fecha: "2026-10-09" });
+  assert.deepEqual(h.map((x) => x.estado), ["Creado", "ENTREGADO"]);
+});

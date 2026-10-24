@@ -16,6 +16,7 @@ import { BloqueEtiquetas } from "../components/Etiquetas";
 import { useToast } from "../components/Toast";
 import { claveTelefono, fmtFecha, haceCuanto, telefono } from "../lib/format";
 import { EnvioConBot, useEstadosEnvioBot } from "../components/EnvioLucidBot";
+import { LineaTiempoEnvio } from "../components/LineaTiempoEnvio";
 import { prodId, prodImg, prodName, prodPrice, useCatalogo } from "../lib/catalogo";
 import { useEtiquetaTienda } from "../lib/tiendas";
 import { useInboxBot } from "../lib/botInbox";
@@ -750,6 +751,8 @@ export function PedidoDetallePage() {
               <input value={form.logistic} onChange={(e) => set("logistic", e.target.value)} />
             </div>
           </div>
+
+          <LineaTiempoEnvio pedido={original} />
 
           <div className="card-title" style={{ marginTop: 8 }}>
             Totales

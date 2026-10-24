@@ -5211,3 +5211,20 @@ input::placeholder, textarea::placeholder { color: #a09da7; }
 
 /* estado del envio recibido de Lucid Bot */
 .envio-bot { white-space: nowrap; }
+
+/* linea de tiempo del envio (detalle del pedido) */
+.timeline { list-style: none; margin: 0 0 8px; padding: 0; }
+.timeline li { position: relative; display: flex; gap: 10px; padding: 0 0 14px; }
+.timeline li::before {
+  content: ""; position: absolute; left: 5px; top: 14px; bottom: 0;
+  border-left: 2px solid var(--border);
+}
+.timeline li:last-child { padding-bottom: 0; }
+.timeline li:last-child::before { display: none; }
+.timeline-punto {
+  flex: 0 0 12px; width: 12px; height: 12px; margin-top: 4px; border-radius: 50%;
+  background: var(--border); position: relative; z-index: 1;
+}
+.timeline li.actual .timeline-punto { background: #8500ff; box-shadow: 0 0 0 3px #efe4ff; }
+.timeline-cuerpo { min-width: 0; }
+.timeline-linea { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
