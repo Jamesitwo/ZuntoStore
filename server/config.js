@@ -52,6 +52,8 @@ export function cargarConfig(env = process.env) {
     /** Tienda por defecto; si no se indica se usa la primera de la cuenta. */
     LUCID_TIENDA: String(g("LUCID_TIENDA", "")),
     LUCID_BASE: String(g("LUCID_BASE", "https://panel.lucidsales.co/b")).replace(/\/+$/, ""),
+    /** carpeta del build del panel (dist) para servirlo desde aqui; vacio = no */
+    PANEL_DIR: String(g("PANEL_DIR", "")).trim(),
     /** API publica de Inter Rapidisisimo (oficinas por municipio). */
     INTER_BASE: String(
       g("INTER_BASE", "https://www3.interrapidisimo.com/Apicanalesventa/api"),

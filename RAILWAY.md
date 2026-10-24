@@ -4,24 +4,32 @@ El backend ya tiene un contenedor para Railway en `server/Dockerfile`. Incluye
 Chromium para la automatización de Dropi, lo ejecuta en modo headless y guarda
 los archivos de estado y el perfil del navegador bajo `/data`.
 
-## Configurar el servicio API
+## Un solo servicio (API + panel)
 
-1. Crea un servicio desde el repositorio y configura su **Root Directory** como
-   `/server`. Railway construirá el `Dockerfile` de esa carpeta.
-2. Añade un volumen persistente montado en `/data`. Los pedidos procesados,
-   ajustes, tokens guardados y sesión de Dropi usan ese volumen.
-3. Configura `/api/salud` como ruta de health check. Este endpoint confirma que
-   el proceso responde; revisa también su campo `faltantes` antes de aceptar
-   tráfico real.
-4. Deja una sola réplica. El estado actual usa archivos JSON/JSONL y un único
-   perfil de Chrome; varias instancias podrían procesar el mismo pedido o
-   escribir datos a la vez.
-5. Añade las variables secretas desde Railway, nunca desde el repositorio:
-   `API_KEY` (opcional, solo integraciones; 32+ caracteres), credenciales de LucidSales, tokens de
-   Dropi y LLM, además de `CORS_ORIGIN` con el origen HTTPS exacto del panel.
-   Railway proporciona `PORT`; el contenedor usa `HOST=0.0.0.0`.
-6. La API puede quedar en la red privada de Railway y exponerse solo a través
-   del servicio del panel (mismo origen `/api`).
+El `Dockerfile` de la **raiz** del repositorio compila el panel y lo sirve el
+mismo servidor (`PANEL_DIR=/app/panel`): un dominio, `/api` es la API, `/b` se
+reenvia a LucidSales (como el proxy de Vite) y lo demas es el panel. No hace
+falta `CORS_ORIGIN` (mismo dominio) ni un segundo servicio.
+
+1. New Project -> Deploy from GitHub repo -> `Jamesitwo/ZuntoStore`. Deja el
+   **Root Directory vacio** (raiz): Railway usa el `Dockerfile` de la raiz.
+2. Volumen persistente montado en `/data` (pedidos procesados, ajustes, tokens,
+   sesion y perfil de Chrome de Dropi).
+3. Health check: `/api/salud`.
+4. **Una sola replica** (archivos JSON y un unico perfil de Chrome).
+5. Variables (Variables del servicio, nunca en el repo): `LUCID_EMAIL`,
+   `LUCID_PASSWORD`, `LUCID_TIENDA`, `TZ_ASIGNACION`, `LLM_API_KEY`,
+   `LLM_MODELO`, `DROPI_TOKEN`, `DROPI_USER_ID`, `DROPI_SUPPLIER_ID`,
+   `DROPI_SHOP_ID`, `DROPI_WAREHOUSE_ID`, `DROPI_SEGURO`, `DROPI_PRODUCTOS_CSV`
+   y, si se usa, `API_KEY` (32+). `GOOGLE_MAPS_KEY`, la IA, el sheet y Lucid
+   Bot tambien se pueden poner desde el panel. Railway da `PORT`.
+6. Settings -> Networking -> Generate Domain.
+
+`server/Dockerfile` (solo la API, Root Directory `/server`) sigue sirviendo si
+se quiere el panel aparte; entonces si hay que definir `CORS_ORIGIN`.
+
+**No dejes corriendo a la vez tu equipo y Railway con la subida automatica:**
+los dos subirian los mismos pedidos.
 
 Railway monta el volumen al iniciar el contenedor (no durante el build); por eso
 la imagen inicializa `/data` en su entrypoint. El proceso Node se ejecuta como

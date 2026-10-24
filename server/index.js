@@ -17,6 +17,7 @@ import { crearConfigLLM } from "./llmConfig.js";
 import { crearValidadorDireccion } from "./validadorDireccion.js";
 import { crearRepartoAutomatico } from "./repartoAutomatico.js";
 import { crearRegistroAnuncios } from "./anunciosTenant.js";
+import { crearPanelEstatico } from "./panelEstatico.js";
 import { crearProductosDropi } from "./productosDropi.js";
 import { crearLucidBotContactos } from "./lucidbotContactos.js";
 import { crearServidor } from "./servidor.js";
@@ -103,6 +104,10 @@ const anuncios = crearRegistroAnuncios({
   // leen su catalogo y sus pedidos con SU propia sesion de LucidSales
   lucid: cliente,
 });
+// el panel (build de Vite) en el mismo servicio, si PANEL_DIR lo trae
+const panel = crearPanelEstatico({ dir: config.PANEL_DIR, lucidOrigen: new URL(config.LUCID_BASE).origin });
+if (panel) console.log(`[panel] sirviendo el panel desde ${panel.dir}`);
+
 const server = crearServidor({
   config,
   cliente,
@@ -121,6 +126,7 @@ const server = crearServidor({
   lucidBotContactos,
   resolverProductoDropi,
   productosDropi,
+  panel,
 });
 
 if (config.NODE_ENV === "production") {
@@ -128,7 +134,8 @@ if (config.NODE_ENV === "production") {
   if (config.API_KEY && config.API_KEY.length < 32) {
     throw new Error("En produccion, API_KEY (si se usa) debe tener al menos 32 caracteres aleatorios");
   }
-  if (!config.CORS_ORIGIN || config.CORS_ORIGIN === "*") {
+  // con el panel en el mismo servicio no hace falta CORS (mismo dominio)
+  if (!panel && (!config.CORS_ORIGIN || config.CORS_ORIGIN === "*")) {
     throw new Error("En produccion, define CORS_ORIGIN con el origen HTTPS exacto del panel");
   }
 }

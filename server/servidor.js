@@ -120,6 +120,7 @@ export function crearServidor({
   resolverProductoDropi,
   productosDropi = null,
   verificarSesion,
+  panel = null,
 }) {
   // acceso del panel: sesion real de LucidSales (x-token + x-tienda)
   const sesiones = verificarSesion ?? crearVerificadorSesion({ base: config.LUCID_BASE });
@@ -381,12 +382,24 @@ export function crearServidor({
     }
   }
 
+  /** El panel servido por este mismo servidor (mismo dominio): siempre permitido. */
+  function mismoOrigen(req, origen) {
+    if (!panel) return false;
+    const host = String(req.headers["x-forwarded-host"] ?? req.headers.host ?? "").split(",")[0].trim();
+    if (!host) return false;
+    try {
+      return new URL(origen).host === host;
+    } catch {
+      return false;
+    }
+  }
+
   async function manejar(req, res) {
     const url = new URL(req.url ?? "/", "http://localhost");
     const ruta = url.pathname;
 
     const origen = req.headers.origin;
-    if (origen && config.CORS_ORIGIN !== "*" && origen !== config.CORS_ORIGIN) {
+    if (origen && config.CORS_ORIGIN !== "*" && origen !== config.CORS_ORIGIN && !mismoOrigen(req, origen)) {
       throw new ErrorApi(403, "Origen no permitido por CORS");
     }
 
@@ -1691,7 +1704,11 @@ export function crearServidor({
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Referrer-Policy", "no-referrer");
-    manejar(req, res).catch((err) => {
+    const atender = async () => {
+      if (panel && (await panel.manejar(req, res, new URL(req.url ?? "/", "http://localhost")))) return;
+      await manejar(req, res);
+    };
+    atender().catch((err) => {
       const e = mensajeDeError(err);
       if (res.headersSent) return res.end();
       try {
