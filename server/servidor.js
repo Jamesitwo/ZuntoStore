@@ -58,7 +58,7 @@ import { crearExtractorLLM, probarLLM } from "./llm.js";
 import { crearConfigLLM } from "./llmConfig.js";
 import { ejecutarAgente, resumenDePedido } from "./agente.js";
 import { crearClienteDropi, armarPedidoDropi } from "./dropi.js";
-import { crearDropiNavegador } from "./dropiNavegador.js";
+import { crearDropiNavegador, DIRECCION_OFICINA_INTER } from "./dropiNavegador.js";
 import { crearSubidaAutomatica } from "./subidaAutomatica.js";
 import { faltantesDeConfig } from "./config.js";
 import { crearEstadosEnvio } from "./estadosEnvio.js";
@@ -1010,7 +1010,12 @@ export function crearServidor({
           telefono: resumen?.telefono,
           email: cuerpo?.email,
           // direccion, coma y las referencias del pedido (barrio, puntos de referencia)
-          direccion: aOficina ? resumen?.direccion : direccionConReferencias(resumen?.direccion, resumen?.referencias),
+          // oficina detectada: "Oficina Interrapidisimo" y se elige la del cliente
+          direccion: oficinaDetectada
+            ? DIRECCION_OFICINA_INTER
+            : aOficina
+              ? resumen?.direccion
+              : direccionConReferencias(resumen?.direccion, resumen?.referencias),
           departamento: depto,
           ciudad,
           transportadoras,

@@ -72,6 +72,9 @@ const pesos = (v) => `$${Math.round(Number(v) || 0).toLocaleString("es-CO")}`;
  * Texto de la direccion para un pedido que recoge en oficina de Inter: Dropi
  * solo muestra el selector de oficinas si la direccion lo dice.
  */
+/** Direccion que se escribe en Dropi cuando la oficina la detecto el sistema. */
+export const DIRECCION_OFICINA_INTER = "Oficina Interrapidisimo";
+
 export function direccionOficinaInter(direccion) {
   const t = String(direccion ?? "").trim();
   const n = t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();

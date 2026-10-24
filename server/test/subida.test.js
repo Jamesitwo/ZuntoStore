@@ -1018,6 +1018,8 @@ test("la direccion es una oficina de Inter: va por Inter a ESA oficina", async (
   assert.deepEqual(subidos[0].transportadoras, [3]);
   assert.equal(subidos[0].oficinaInter, true);
   assert.equal(subidos[0].oficinaObjetivo, "OF. PRINC CL 30 A 65 B 59");
+  // en Dropi la direccion queda "Oficina Interrapidisimo" para que salga la lista
+  assert.equal(subidos[0].direccion, "Oficina Interrapidisimo");
   assert.equal(consultas[0].ciudad, "Medellin");
   assert.match(s.ultimos(5)[0].detalle, /es una oficina de Interrapidísimo/);
   fs.rmSync(ruta, { force: true });

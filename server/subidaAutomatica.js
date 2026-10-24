@@ -20,6 +20,7 @@ import { ejecutarAgente, parsearPrecio, resumenDePedido } from "./agente.js";
 import { cambiarEstado } from "./estado.js";
 import { direccionConReferencias, recogeEnOficina } from "./direccionColombia.js";
 import { oficinaQueCoincide } from "./oficinasInter.js";
+import { DIRECCION_OFICINA_INTER } from "./dropiNavegador.js";
 
 const MAX_PROCESADOS = 3000;
 /**
@@ -740,7 +741,14 @@ export function crearSubidaAutomatica({
               telefono: resumen?.telefono,
               // la direccion validada (normalizada o corregida por formato),
               // coma y las referencias del pedido (barrio, puntos de referencia)
-              direccion: aOficina ? direccionEnvio : direccionConReferencias(direccionEnvio, resumen?.referencias),
+              // oficina detectada (el cliente no dijo "oficina"): en Dropi la
+              // direccion queda "Oficina Interrapidisimo" (asi muestra la lista
+              // de oficinas) y se elige la oficina que coincide con la del cliente
+              direccion: oficinaDetectada
+                ? DIRECCION_OFICINA_INTER
+                : aOficina
+                  ? direccionEnvio
+                  : direccionConReferencias(direccionEnvio, resumen?.referencias),
               departamento: depto,
               ciudad,
               transportadoras: plan.transportadoras,
