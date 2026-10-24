@@ -124,15 +124,29 @@ export function crearDropiNavegador(config = {}) {
       throw new ErrorApi(503, "DROPI_PERFIL no esta configurado (carpeta del perfil del navegador)");
     }
     const { chromium } = await import("playwright-core");
-    navegador = await chromium.launchPersistentContext(perfil, {
+    const opciones = {
       headless,
       executablePath: chrome,
       viewport: { width: 1440, height: 950 },
       locale: "es-CO",
       timezoneId: "America/Bogota",
       args: ["--disable-blink-features=AutomationControlled"],
-    });
+    };
+    navegador = await chromium.launchPersistentContext(perfil, opciones);
     pagina = navegador.pages()[0] ?? (await navegador.newPage());
+    // Sin pantalla (Railway) Chromium se presenta como "HeadlessChrome" y
+    // Dropi puede negarse a mostrar productos: se relanza como Chrome normal
+    // (misma version y sistema).
+    if (headless) {
+      const ua = await pagina.evaluate(() => navigator.userAgent).catch(() => "");
+      if (/HeadlessChrome/i.test(ua)) {
+        // solo se quita "Headless": el resto (Linux) coincide con la maquina
+        const normal = ua.replace(/HeadlessChrome/g, "Chrome");
+        await navegador.close().catch(() => {});
+        navegador = await chromium.launchPersistentContext(perfil, { ...opciones, userAgent: normal });
+        pagina = navegador.pages()[0] ?? (await navegador.newPage());
+      }
+    }
     pagina.setDefaultTimeout(lento);
     return pagina;
   }
@@ -1048,6 +1062,21 @@ export function crearDropiNavegador(config = {}) {
 
       const p = await asegurar();
 
+      // respuestas con error de la API de Dropi mientras se abre la ficha:
+      // si Dropi saca de la ficha, esto dice por que
+      const erroresApi = [];
+      const verRespuesta = (r) => {
+        try {
+          const u = new URL(r.url());
+          if (r.status() >= 400 && /dropi/i.test(u.hostname) && erroresApi.length < 5) {
+            erroresApi.push(`${r.status()} ${u.hostname}${u.pathname.slice(0, 60)}`);
+          }
+        } catch {
+          /* url rara */
+        }
+      };
+      p.on("response", verRespuesta);
+
       // 1) navegar directo a la ficha del producto (el dropiLink ya trae el
       //    slug: product-details/{id}/{slug})
       if (datos.productoUrl) {
@@ -1057,13 +1086,17 @@ export function crearDropiNavegador(config = {}) {
       }
 
       if (await enLogin(p)) {
+        p.off("response", verRespuesta);
         return {
           ok: false,
           requiereLogin: true,
           detalle: "la sesion de Dropi vencio: actualízala desde el panel (Sesión de Dropi)",
         };
       }
-      if (await hayCaptcha(p)) return { ok: false, requiereCaptcha: true, detalle: "captcha en la pagina" };
+      if (await hayCaptcha(p)) {
+        p.off("response", verRespuesta);
+        return { ok: false, requiereCaptcha: true, detalle: "captcha en la pagina" };
+      }
 
       // 2) "Enviar al cliente" de la ficha -> abre el formulario Crear Orden
       let ficha = await esperarFicha(p, lento);
@@ -1073,6 +1106,7 @@ export function crearDropiNavegador(config = {}) {
         await p.goto(datos.productoUrl, { waitUntil: "domcontentloaded" });
         ficha = await esperarFicha(p, lento);
       }
+      p.off("response", verRespuesta);
       if (ficha.login) {
         return {
           ok: false,
@@ -1088,7 +1122,8 @@ export function crearDropiNavegador(config = {}) {
           detalle:
             `No se envió a Dropi: ${ficha.motivo}. Link del producto (sheet): ${datos.productoUrl}. Quedó en: ${ficha.url}` +
             (ficha.titulo ? ` («${ficha.titulo}»)` : "") +
-            (ficha.texto ? `. Se ve: "${ficha.texto}"` : ""),
+            (erroresApi.length ? `. La API de Dropi respondió: ${erroresApi.join(" · ")}` : ". La API de Dropi no devolvió errores") +
+            (ficha.texto ? `. Se ve: "${ficha.texto.slice(0, 120)}"` : ""),
         };
       }
       const btnAbrir = p.locator('[data-cy="send-to-client-button"]');
