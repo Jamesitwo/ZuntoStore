@@ -1684,3 +1684,8 @@ test("envios: Lucid Bot manda el estado y el panel lo consulta", async () => {
   r = await post("/api/envios/consultar", { pedidos: [{ id: 10, idPedido: 10, telefono: "+573001234567" }] });
   assert.equal(r.datos.estados["10"].estado, "EN REPARTO");
 });
+
+test("apikey: una integracion (x-api-key) no puede administrar la clave", async () => {
+  const r = await post("/api/apikey/generar", {});
+  assert.equal(r.status, 403);
+});

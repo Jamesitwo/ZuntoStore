@@ -19,6 +19,8 @@ import { crearRepartoAutomatico } from "./repartoAutomatico.js";
 import { crearRegistroAnuncios } from "./anunciosTenant.js";
 import { crearPanelEstatico } from "./panelEstatico.js";
 import { crearEstadosEnvio } from "./estadosEnvio.js";
+import { crearApiKeys } from "./apiKeys.js";
+import { crearPedidosLucidBot } from "./pedidosLucidBot.js";
 import { crearProductosDropi } from "./productosDropi.js";
 import { crearLucidBotContactos } from "./lucidbotContactos.js";
 import { crearServidor } from "./servidor.js";
@@ -109,6 +111,18 @@ const anuncios = crearRegistroAnuncios({
 const panel = crearPanelEstatico({ dir: config.PANEL_DIR, lucidOrigen: new URL(config.LUCID_BASE).origin });
 if (panel) console.log(`[panel] sirviendo el panel desde ${panel.dir}`);
 
+// clave de la API generada desde el panel (ademas de la variable API_KEY)
+const apiKeys = crearApiKeys({ ruta: config.APIKEY_CONFIG, claveEnv: config.API_KEY });
+
+// cuando llega un pedido, su id se guarda en el contacto de Lucid Bot
+const pedidosLucidBot = crearPedidosLucidBot({
+  cliente,
+  lucidBot: lucidBotContactos,
+  tiendas: () => subidaAuto.tiendasARevisar(),
+  ruta: config.LUCIDBOT_PEDIDOS,
+});
+pedidosLucidBot.iniciar();
+
 const server = crearServidor({
   config,
   cliente,
@@ -129,6 +143,8 @@ const server = crearServidor({
   productosDropi,
   panel,
   estadosEnvio: crearEstadosEnvio({ ruta: config.ENVIOS }),
+  apiKeys,
+  pedidosLucidBot,
 });
 
 if (config.NODE_ENV === "production") {

@@ -376,6 +376,18 @@ export function crearSubidaAutomatica({
     }
   }
 
+  /** Tiendas a revisar: las de la subida; si no, las con Dropi; si no, las del reparto; si no, LUCID_TIENDA. */
+  function tiendasARevisar(c) {
+    const propias = Array.isArray(c.tiendas) ? c.tiendas.filter(Boolean) : [];
+    const delReparto = Array.isArray(asignacion?.getConfig?.()?.tiendas) ? asignacion.getConfig().tiendas : [];
+    // sin tiendas marcadas: las que tienen tienda de Dropi configurada (las
+    // demas no se podrian subir de todos modos); luego las de siempre
+    const conDropi = Object.keys(c.tiendasDropi ?? {}).filter((k) => String(c.tiendasDropi[k] ?? "").trim());
+    return (propias.length ? propias : conDropi.length ? conDropi : delReparto.length ? delReparto : [config.LUCID_TIENDA])
+      .map((t) => String(t ?? "").trim())
+      .filter(Boolean);
+  }
+
   function tiendaDropiDe(c, idEmpresa) {
     const mapa = c?.tiendasDropi && typeof c.tiendasDropi === "object" ? c.tiendasDropi : {};
     return String(mapa[String(idEmpresa ?? "")] ?? "").trim();
@@ -445,16 +457,7 @@ export function crearSubidaAutomatica({
     try {
       // Tiendas que revisar: las de la config de subida; si no, las del reparto
       // (asignacion.json); si no, LUCID_TIENDA. Asi no hay que duplicarlas.
-      const propias = Array.isArray(c.tiendas) ? c.tiendas.filter(Boolean) : [];
-      const delReparto = Array.isArray(asignacion?.getConfig?.()?.tiendas)
-        ? asignacion.getConfig().tiendas
-        : [];
-      // sin tiendas marcadas: las que tienen tienda de Dropi configurada (las
-      // demas no se podrian subir de todos modos); luego las de siempre
-      const conDropi = Object.keys(c.tiendasDropi ?? {}).filter((k) => String(c.tiendasDropi[k] ?? "").trim());
-      const tiendas = (propias.length ? propias : conDropi.length ? conDropi : delReparto.length ? delReparto : [config.LUCID_TIENDA])
-        .map((t) => String(t ?? "").trim())
-        .filter(Boolean);
+      const tiendas = tiendasARevisar(c);
       if (!tiendas.length) {
         throw new ErrorApi(
           400,
@@ -1045,6 +1048,9 @@ export function crearSubidaAutomatica({
     },
 
     /** Nombre de la tienda de Dropi para una tienda de LucidSales ("" si no hay). */
+    tiendasARevisar() {
+      return tiendasARevisar(leer());
+    },
     tiendaDropiPara(idEmpresa) {
       return tiendaDropiDe(leer(), idEmpresa);
     },

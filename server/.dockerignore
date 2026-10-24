@@ -15,3 +15,4 @@ anuncios
 *.log
 coverage
 envios.json*
+lucidbot-pedidos.json*

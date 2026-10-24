@@ -17,6 +17,10 @@ const DEFECTO = {
   tagName: "",
   flowId: "",
   fields: [],
+  // id del pedido -> campo personalizado del contacto (cuando llega un pedido)
+  pedidoFieldId: "",
+  pedidoValor: "id", // "id" (interno de LucidSales) o "numero" (#6106)
+  pedidoActivo: false,
 };
 
 function normalizarTelefono(valor) {
@@ -123,6 +127,18 @@ export function crearLucidBotContactos({ ruta, fetcher = fetch, timeoutMs = 1200
         .map((x) => ({ field_name: textoSeguro(x?.field_name, 120), value: textoSeguro(x?.value, 1000) }))
         .filter((x) => x.field_name);
     }
+    if (patch.pedidoFieldId !== undefined) {
+      const id = String(patch.pedidoFieldId ?? "").trim();
+      if (id && !/^[\w-]{1,80}$/.test(id)) throw new ErrorApi(400, "El ID del campo para el id del pedido solo puede tener letras, números, - y _");
+      siguiente.pedidoFieldId = id;
+    }
+    if (patch.pedidoValor !== undefined) {
+      if (!["id", "numero"].includes(patch.pedidoValor)) throw new ErrorApi(400, "pedidoValor debe ser «id» o «numero»");
+      siguiente.pedidoValor = patch.pedidoValor;
+    }
+    if (typeof patch.pedidoActivo === "boolean") siguiente.pedidoActivo = patch.pedidoActivo;
+    if (siguiente.pedidoActivo && !siguiente.pedidoFieldId) throw new ErrorApi(400, "Indica el ID del campo personalizado donde va el id del pedido");
+    if (siguiente.pedidoActivo && !siguiente.token) throw new ErrorApi(400, "Guarda el X-ACCESS-TOKEN de Lucid Bot antes de activar el envío del id del pedido");
     if (siguiente.activo && !siguiente.token) throw new ErrorApi(400, "Guarda el X-ACCESS-TOKEN antes de activar las notificaciones");
     if (siguiente.activo && !siguiente.adminPhone) throw new ErrorApi(400, "Indica el teléfono del admin que recibirá los avisos");
     if (siguiente.activo && !siguiente.summaryField) throw new ErrorApi(400, "Indica el campo personalizado donde se guardará el resumen");
@@ -288,5 +304,57 @@ export function crearLucidBotContactos({ ruta, fetcher = fetch, timeoutMs = 1200
     }
   }
 
-  return { estado, configurar, notificar, obtenerConversacion };
+  /** ¿Esta encendido el envio del id del pedido a Lucid Bot? */
+  function pedidoActivo() {
+    const c = leer();
+    return Boolean(c.pedidoActivo && c.pedidoFieldId && c.token);
+  }
+
+  /**
+   * Guarda el id del pedido en el campo personalizado del contacto del cliente:
+   * POST /api/contacts/{contact_id}/custom_fields/{custom_field_id} (value).
+   * El contacto es el telefono del pedido sin "+" (igual que el inbox).
+   */
+  async function guardarIdPedido(pedido = {}, { forzar = false } = {}) {
+    const c = leer();
+    if (!c.token) return { ok: false, omitido: true, detalle: "Falta X-ACCESS-TOKEN de Lucid Bot" };
+    if (!c.pedidoFieldId) return { ok: false, omitido: true, detalle: "No hay ID de campo para el id del pedido" };
+    if (!c.pedidoActivo && !forzar) return { ok: false, omitido: true, detalle: "Envío del id del pedido apagado" };
+    const contactId =
+      idContactoDesdeEnlace(pedido.chatUrl ?? pedido.linkChat ?? pedido.inboxUrl) ||
+      normalizarTelefono(pedido.Movil ?? pedido.telefono ?? pedido.phone).replace(/\D/g, "");
+    if (!contactId) return { ok: false, detalle: "El pedido no tiene teléfono: no se sabe qué contacto es" };
+    const valor = String(c.pedidoValor === "numero" ? (pedido.idPedido ?? pedido.id ?? "") : (pedido.id ?? pedido.idPedido ?? ""));
+    if (!valor) return { ok: false, detalle: "El pedido no tiene id" };
+
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
+    try {
+      const response = await fetcher(
+        `https://panel.lucidbot.co/api/contacts/${encodeURIComponent(contactId)}/custom_fields/${encodeURIComponent(c.pedidoFieldId)}`,
+        {
+          method: "POST",
+          signal: ctl.signal,
+          headers: {
+            accept: "application/json",
+            "content-type": "application/x-www-form-urlencoded",
+            "X-ACCESS-TOKEN": c.token,
+          },
+          body: new URLSearchParams({ value: valor }).toString(),
+        },
+      );
+      const body = await response.json().catch(() => null);
+      if (!response.ok || body?.success === false || body?.isSuccess === false) {
+        const reason = textoSeguro(body?.message ?? body?.msg ?? body?.detail, 300);
+        return { ok: false, contactId, detalle: `Lucid Bot respondió HTTP ${response.status}${reason ? `: ${reason}` : ""}` };
+      }
+      return { ok: true, contactId, valor, detalle: `Id ${valor} guardado en el contacto ${contactId}` };
+    } catch (e) {
+      return { ok: false, contactId, detalle: e?.name === "AbortError" ? "Lucid Bot no respondió antes del timeout" : `No se pudo contactar Lucid Bot: ${e?.message ?? e}` };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  return { estado, configurar, notificar, obtenerConversacion, pedidoActivo, guardarIdPedido };
 }

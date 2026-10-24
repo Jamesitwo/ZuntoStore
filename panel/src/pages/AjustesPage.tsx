@@ -7,6 +7,7 @@ import { Campo, CheckPermiso, ErrorBanner, JsonView, PageHeader } from "../compo
 import { ListaUsuarios } from "../components/ListaUsuarios";
 import { SubidaDropi } from "../components/SubidaDropi";
 import { MapasConfig } from "../components/MapasConfig";
+import { ApiKeyConfig } from "../components/ApiKeyConfig";
 import { EditorMensajeInicial } from "../components/MensajeInicial";
 import { EditorTestimonios } from "../components/Testimonios";
 import {
@@ -1971,6 +1972,9 @@ function UsuariosTab() {
 
       {/* validador de direcciones propio: API key de Google Maps */}
       <MapasConfig />
+
+      {/* clave para integraciones (Lucid Bot -> estado del envio) */}
+      <ApiKeyConfig />
 
       <Seccion
         titulo="Buscar usuario por token"

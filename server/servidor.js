@@ -62,6 +62,7 @@ import { crearDropiNavegador } from "./dropiNavegador.js";
 import { crearSubidaAutomatica } from "./subidaAutomatica.js";
 import { faltantesDeConfig } from "./config.js";
 import { crearEstadosEnvio } from "./estadosEnvio.js";
+import { crearApiKeys } from "./apiKeys.js";
 import { crearVerificadorSesion, tienePermiso, tieneTienda } from "./sesionPanel.js";
 import { direccionConReferencias, recogeEnOficina } from "./direccionColombia.js";
 
@@ -123,7 +124,11 @@ export function crearServidor({
   verificarSesion,
   panel = null,
   estadosEnvio = null,
+  apiKeys = null,
+  pedidosLucidBot = null,
 }) {
+  // clave de integraciones: la de la variable API_KEY y/o la generada en el panel
+  const claves = apiKeys ?? crearApiKeys({ claveEnv: config.API_KEY });
   // estado del envio que manda Lucid Bot (sin instancia: solo memoria)
   const envios = estadosEnvio ?? crearEstadosEnvio({ ruta: null });
   // acceso del panel: sesion real de LucidSales (x-token + x-tienda)
@@ -314,12 +319,7 @@ export function crearServidor({
 
   /** ¿x-api-key valida? (integraciones servidor-a-servidor, p. ej. el bot) */
   function apiKeyValida(req) {
-    if (!config.API_KEY) return false;
-    const recibida = String(req.headers["x-api-key"] ?? "");
-    if (!recibida) return false;
-    const a = crypto.createHash("sha256").update(recibida).digest();
-    const b = crypto.createHash("sha256").update(config.API_KEY).digest();
-    return crypto.timingSafeEqual(a, b);
+    return claves.valida(req.headers["x-api-key"]);
   }
 
   /**
@@ -340,7 +340,7 @@ export function crearServidor({
     [/^\/api\/asignacion(\/|$)/, "2"],
     [/^\/api\/anuncios(\/|$)/, "4"],
     // configuracion sensible: subida, IA, Lucid Bot, sesion de Dropi, credenciales
-    [/^\/api\/(subida|llm|lucidbot|dropi|credenciales|mapas)(\/|$)/, "8"],
+    [/^\/api\/(subida|llm|lucidbot|dropi|credenciales|mapas|apikey)(\/|$)/, "8"],
   ];
   const NOMBRE_PERMISO = { 2: "Pedidos", 4: "Métricas", 7: "Usuarios y Permisos", 8: "Ajustes Tienda" };
 
@@ -545,6 +545,46 @@ export function crearServidor({
         ...r,
         nombreAnterior: ESTADOS_PEDIDO[r.estadoAnterior],
       });
+      return;
+    }
+
+    // ---- /api/apikey: la clave de integraciones, desde Ajustes ----
+    // Solo personas del panel (una integracion no se cambia su propia clave).
+    if (ruta === "/api/apikey" || ruta === "/api/apikey/generar") {
+      autorizar(req);
+      if (req.__acceso?.interna) throw new ErrorApi(403, "La clave de la API solo se administra desde el panel");
+      if (req.method === "GET" && ruta === "/api/apikey") {
+        json(res, 200, { ok: true, ...claves.estado() });
+        return;
+      }
+      if (req.method === "POST" && ruta === "/api/apikey/generar") {
+        const r = claves.generar({ usuario: usuarioDe(req) });
+        console.log(`[apikey] clave nueva ${r.vista} generada (por ${usuarioDe(req) ?? "?"})`);
+        json(res, 200, { ok: true, ...r });
+        return;
+      }
+      if (req.method === "DELETE" && ruta === "/api/apikey") {
+        console.log(`[apikey] clave del panel revocada (por ${usuarioDe(req) ?? "?"})`);
+        json(res, 200, { ok: true, ...claves.revocar() });
+        return;
+      }
+    }
+
+    // ---- id del pedido -> Lucid Bot ----
+    if (req.method === "GET" && ruta === "/api/lucidbot/pedidos") {
+      autorizar(req);
+      json(res, 200, { ok: true, activo: lucidBotContactos?.pedidoActivo?.() ?? false, pedidos: pedidosLucidBot?.ultimos?.(20) ?? [] });
+      return;
+    }
+    if (req.method === "POST" && ruta === "/api/lucidbot/pedido/probar") {
+      autorizar(req);
+      const cuerpo = await leerCuerpo(req);
+      const id = String(cuerpo?.id ?? "").trim();
+      if (!id) throw new ErrorApi(400, "Indica el id del pedido para probar");
+      if (!lucidBotContactos?.guardarIdPedido) throw new ErrorApi(503, "Lucid Bot no está montado en este servidor");
+      const pedido = await cliente.obtenerPedido(id, tiendaDe(req));
+      const r = await lucidBotContactos.guardarIdPedido(pedido, { forzar: true });
+      json(res, r.ok ? 200 : 502, { ok: r.ok, msg: r.detalle, ...r });
       return;
     }
 

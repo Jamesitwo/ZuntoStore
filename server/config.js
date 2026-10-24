@@ -56,6 +56,10 @@ export function cargarConfig(env = process.env) {
     PANEL_DIR: String(g("PANEL_DIR", "")).trim(),
     /** estados de envio que manda Lucid Bot */
     ENVIOS: String(g("ENVIOS", path.join(dir, "envios.json"))),
+    /** clave de la API generada desde el panel (solo su huella) */
+    APIKEY_CONFIG: String(g("APIKEY_CONFIG", path.join(dir, "config", "apikey.json"))),
+    /** pedidos cuyo id ya se mando a Lucid Bot */
+    LUCIDBOT_PEDIDOS: String(g("LUCIDBOT_PEDIDOS", path.join(dir, "lucidbot-pedidos.json"))),
     /** API publica de Inter Rapidisisimo (oficinas por municipio). */
     INTER_BASE: String(
       g("INTER_BASE", "https://www3.interrapidisimo.com/Apicanalesventa/api"),

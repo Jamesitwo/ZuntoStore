@@ -191,6 +191,25 @@ Errores: `400` validacion · `401` API key · `404` pedido inexistente ·
 `413` cuerpo grande · `502` LucidSales rechazo · `503` sin configurar ·
 `504` timeout. Siempre `{ "ok": false, "msg": "..." }`.
 
+### Clave de la API desde el panel
+
+Ajustes > **Clave de la API (integraciones)** genera una clave `zs_...` que se
+muestra **una sola vez** (en disco, `APIKEY_CONFIG`, solo queda su huella
+sha256). Vale ademas de la variable `API_KEY`. Generar otra invalida la
+anterior; «Revocar» la quita. Solo la administran personas del panel con el
+permiso Ajustes Tienda (una integracion no puede cambiarse la clave).
+
+### Id del pedido -> contacto de Lucid Bot
+
+Con «Id del pedido en el contacto» encendido (tarjeta de Lucid Bot), cada
+minuto se mira la primera pagina de pedidos de las tiendas de la subida y a
+cada pedido **nuevo** se le guarda el id en el contacto del cliente:
+`POST https://panel.lucidbot.co/api/contacts/{telefono sin +}/custom_fields/{ID}`
+con `value` (form). Se elige id interno o numero de pedido. La primera vez que
+ve una tienda solo toma nota de lo que ya habia. Hasta 3 intentos por pedido;
+estado en `LUCIDBOT_PEDIDOS`. `POST /api/lucidbot/pedido/probar {id}` lo prueba
+con un pedido y `GET /api/lucidbot/pedidos` muestra los ultimos.
+
 ### Estado del envio desde Lucid Bot
 
 Si el pedido se sube a Dropi por fuera de LucidSales, LucidSales se queda en

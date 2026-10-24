@@ -21,3 +21,6 @@ node_modules/
 subidaAutomatica.json
 envios.json
 envios.json.tmp
+config/apikey.json
+lucidbot-pedidos.json
+lucidbot-pedidos.json.tmp

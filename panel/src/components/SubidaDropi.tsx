@@ -6,6 +6,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useEtiquetaTienda } from "../lib/tiendas";
 import { useInboxBot } from "../lib/botInbox";
 import { AnalisisPedido } from "./AnalisisPedido";
+import { IdPedidoLucidBot } from "./IdPedidoLucidBot";
 import { ReglasEnvio, type ConfigEnvio, type ReglaProducto } from "./ReglasEnvio";
 import { SheetProductos } from "./SheetProductos";
 import { useToast } from "./Toast";
@@ -107,7 +108,7 @@ export function SubidaDropi() {
 
   const [config, setConfig] = useState<any>(null);
   const [lucidBotConfig, setLucidBotConfig] = useState<any>(null);
-  const [lucidBotForm, setLucidBotForm] = useState<any>({ activo: false, adminPhone: "", summaryField: "resumen_dropi", conversationFieldId: "", tagName: "", flowId: "", fields: [] });
+  const [lucidBotForm, setLucidBotForm] = useState<any>({ activo: false, adminPhone: "", summaryField: "resumen_dropi", conversationFieldId: "", tagName: "", flowId: "", fields: [], pedidoFieldId: "", pedidoValor: "id", pedidoActivo: false });
   const [lucidBotToken, setLucidBotToken] = useState("");
   const [guardandoLucidBot, setGuardandoLucidBot] = useState(false);
   const [ultimos, setUltimos] = useState<any[]>([]);
@@ -157,6 +158,9 @@ export function SubidaDropi() {
           tagName: rb.config.tagName ?? "",
           flowId: rb.config.flowId ?? "",
           fields: Array.isArray(rb.config.fields) ? rb.config.fields : [],
+          pedidoFieldId: rb.config.pedidoFieldId ?? "",
+          pedidoValor: rb.config.pedidoValor === "numero" ? "numero" : "id",
+          pedidoActivo: !!rb.config.pedidoActivo,
         });
       }
       if (!r || r.ok === false) {
@@ -686,6 +690,10 @@ export function SubidaDropi() {
               <span className="switch-texto">{lucidBotForm.activo ? "Notificaciones activas" : "Notificaciones apagadas"}</span>
             </label>
           </div>
+          <IdPedidoLucidBot
+            form={lucidBotForm}
+            onChange={(patch) => setLucidBotForm((f: any) => ({ ...f, ...patch }))}
+          />
           <div className="card-title" style={{ marginTop: 12 }}>Campos personalizados adicionales</div>
           <p className="muted small">
             Se guardan en el contacto del admin para dar contexto al aviso. Valores dinámicos: <code>{"{{resumen}}"}</code>, <code>{"{{resultado}}"}</code>, <code>{"{{pedido}}"}</code>, <code>{"{{idDropi}}"}</code> y, del cliente, <code>{"{{cliente}}"}</code>, <code>{"{{phone}}"}</code>, <code>{"{{first_name}}"}</code>, <code>{"{{last_name}}"}</code> y <code>{"{{email}}"}</code>.
