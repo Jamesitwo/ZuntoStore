@@ -8,6 +8,7 @@ import path from "node:path";
 export const CAMBIOS = [
   [/^PUT \/api\/subida\/config$/, "Cambió la configuración de la subida a Dropi"],
   [/^POST \/api\/subida\/reintentar$/, "Pidió reintentar un pedido en la subida automática"],
+  [/^POST \/api\/subida\/pedido\/[^/]+\/aprobar-duplicado$/, "Confirmó que un pedido marcado como repetido es una compra nueva"],
   [/^POST \/api\/dropi\/sesion$/, "Cargó una sesión de Dropi"],
   [/^PUT \/api\/dropi\/productos$/, "Cambió el Google Sheets de productos"],
   [/^PUT \/api\/credenciales$/, "Guardó el usuario de LucidSales del servidor"],

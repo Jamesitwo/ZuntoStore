@@ -54,6 +54,9 @@ const VEREDICTOS: Record<string, { texto: string; tono: "ok" | "warn" | "alerta"
   "requiere-login": { texto: "En espera — la sesión de Dropi venció", tono: "warn" },
   "requiere-captcha": { texto: "En espera — Dropi pidió captcha", tono: "warn" },
   "estado-incompatible": { texto: "No aplica — el estado del pedido no se sube", tono: "" },
+  "posible-duplicado": { texto: "POSIBLE REPETIDO — el cliente ya tiene otro pedido reciente; revísalo", tono: "alerta" },
+  "envio-caro": { texto: "Envío muy caro — no se subió", tono: "warn" },
+  "sin-transportadora": { texto: "Sin transportadora disponible", tono: "warn" },
 };
 
 /**
@@ -87,6 +90,16 @@ function VeredictoAutomatico({ id, recarga }: { id: number | string; recarga: nu
     );
   }
   const v = VEREDICTOS[reg.accion] ?? { texto: reg.accion, tono: "" };
+  const aprobarDuplicado = async () => {
+    if (!window.confirm("¿Revisaste el chat y es una compra NUEVA (no el mismo pedido repetido)? Se subirá en la próxima vuelta.")) return;
+    try {
+      await backend(`/api/subida/pedido/${encodeURIComponent(String(id))}/aprobar-duplicado`, { method: "POST", body: {} });
+      toast.info("Se subirá en la próxima vuelta de la subida automática");
+      setOtra((x) => x + 1);
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
   const reintentar = async () => {
     try {
       await backend("/api/subida/reintentar", { method: "POST", body: { id: String(id) } });
@@ -107,6 +120,11 @@ function VeredictoAutomatico({ id, recarga }: { id: number | string; recarga: nu
       </div>
       {reg.detalle ? <p className="small" style={{ margin: "6px 0 0" }}>{reg.detalle}</p> : null}
       {reg.analisis ? <AnalisisPedido analisis={reg.analisis} abierto /> : null}
+      {reg.accion === "posible-duplicado" ? (
+        <button className="btn sm" style={{ marginTop: 8 }} onClick={() => void aprobarDuplicado()}>
+          Es una compra nueva: subirlo
+        </button>
+      ) : null}
       {reg.accion === "requiere-revision" || reg.accion === "direccion-invalida" ? (
         <button className="btn sm" style={{ marginTop: 8 }} onClick={() => void reintentar()}>
           Reintentar en la subida automática
@@ -128,6 +146,7 @@ const NOMBRES_CHECK: Record<string, string> = {
   entregaFutura: "Fecha de entrega",
   estado: "Estado del pedido",
   confirmacion: "Confirmación",
+  duplicado: "Pedido repetido",
 };
 
 export function SubirPedidoDropi({
@@ -185,12 +204,15 @@ export function SubirPedidoDropi({
     }
   };
 
-  const subir = async () => {
+  const subir = async (aceptarDuplicado = false) => {
     setSubiendo(true);
     setErr(null);
     setSubida(null);
     try {
-      const { status, datos } = await postAgente(`${url}/subir`, { via: "navegador" });
+      const { status, datos } = await postAgente(`${url}/subir`, {
+        via: "navegador",
+        ...(aceptarDuplicado ? { aceptarDuplicado: true } : {}),
+      });
 
       if (status === 0) throw new Error(datos?.msg || "No se pudo conectar con el servidor");
 
@@ -390,6 +412,21 @@ export function SubirPedidoDropi({
           <strong>Frenado: no se envió otra vez.</strong>{" "}{subida.msg ? `${subida.msg} ` : ""}
           {subida.motivos?.length ? (
             <>Problemas: {subida.motivos.map((m: any) => `${NOMBRES_CHECK[m?.campo] ?? m?.campo ?? "Validación"}${m?.detalle ? `: ${m.detalle}` : ""}`).join(" · ")}.</>
+          ) : null}
+          {subida.motivos?.length && subida.motivos.every((m: any) => m?.campo === "duplicado") ? (
+            <div style={{ marginTop: 8 }}>
+              <button
+                className="btn sm"
+                disabled={subiendo}
+                onClick={() => {
+                  if (window.confirm("¿Revisaste el chat y es una compra NUEVA? Se subirá aunque el cliente tenga otro pedido reciente.")) {
+                    void subir(true);
+                  }
+                }}
+              >
+                Subir de todas formas
+              </button>
+            </div>
           ) : null}
         </div>
       ) : null}

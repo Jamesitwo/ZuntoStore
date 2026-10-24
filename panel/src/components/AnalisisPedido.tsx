@@ -12,6 +12,7 @@ export const NOMBRES_CHEQUEO: Record<string, string> = {
   direccionMapa: "Dirección en el mapa",
   confirmacion: "Confirmó",
   entregaFutura: "Entrega futura",
+  duplicado: "Pedido repetido",
 };
 
 /** Lo que la IA leyó del chat y cada verificación del código, con su cita. */

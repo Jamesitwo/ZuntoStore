@@ -32,7 +32,7 @@ const MAX_SEGUNDOS = 12 * 3600;
 
 /** Resultados que se pueden reintentar desde el panel. */
 const REINTENTABLES = ["requiere-revision", "direccion-invalida", "envio-caro", "sin-transportadora"];
-const EN_ALERTA = [...REINTENTABLES, "resultado-incierto"];
+const EN_ALERTA = [...REINTENTABLES, "resultado-incierto", "posible-duplicado"];
 
 /** "2 h 30 min", "45 min", "90 s". */
 function textoDuracion(seg: number): string {
@@ -366,6 +366,17 @@ export function SubidaDropi() {
       toast.error(m);
     } finally {
       setProbando(false);
+    }
+  };
+
+  const aprobarDuplicado = async (id: string) => {
+    if (!window.confirm(`Pedido ${id}: ¿revisaste el chat y es una compra NUEVA (no el mismo pedido repetido)?`)) return;
+    try {
+      await backend(`/api/subida/pedido/${encodeURIComponent(id)}/aprobar-duplicado`, { method: "POST", body: {} });
+      toast.info(`Pedido ${id}: se subirá en la próxima vuelta`);
+      refrescar();
+    } catch (e) {
+      toast.error(errMsg(e));
     }
   };
 
@@ -1048,6 +1059,10 @@ export function SubidaDropi() {
                         {u.accion === "resultado-incierto" ? (
                           <button className="btn sm" onClick={() => void reintentarIncierto(String(u.id))}>
                             Verifiqué que no existe
+                          </button>
+                        ) : u.accion === "posible-duplicado" ? (
+                          <button className="btn sm" onClick={() => void aprobarDuplicado(String(u.id))}>
+                            Es compra nueva
                           </button>
                         ) : REINTENTABLES.includes(u.accion) ? (
                           <button className="btn sm" onClick={() => void reintentarRevision(String(u.id))}>

@@ -232,3 +232,22 @@ test("direccion del chat con ciudad y barrio antes coincide si la calle y los nu
   );
   assert.equal(coincideDireccion("Kennedy Calle 51B Sur #82 C18", "Calle 51B Sur #82 C19").ok, false);
 });
+
+test("pedido repetido: sin segunda compra en el chat se frena por duplicado", async () => {
+  const base = { producto: "Taladro", cantidad: 1, precioAcordado: 100000, direccion: "Calle 10 # 5-20", clienteConfirmo: true, entregaFutura: false, incertidumbre: [] };
+  const resumen = { productos: [{ id: "1", nombre: "Taladro", cantidad: 1, precio: 100000 }], total: "100000", direccion: "Calle 10 # 5-20", estadoPedido: 0 };
+  let contexto = null;
+  const r = await ejecutarAgente({
+    resumen,
+    mensajes: [{ de: "cliente", texto: "quiero el taladro" }],
+    extraer: async (_m, ctx) => ((contexto = ctx), { ...base, segundaCompra: false }),
+    otrosPedidos: [{ id: 9, idPedido: 6105, producto: "Taladro", Total: "100000", subido: true }],
+  });
+  assert.match(contexto.otrosPedidos, /#6105.*YA se subio/);
+  const dup = r.validacion.checks.find((c) => c.campo === "duplicado");
+  assert.equal(dup.ok, false);
+  assert.match(dup.detalle, /#6105/);
+  // sin otros pedidos no hay chequeo de duplicado
+  const r2 = await ejecutarAgente({ resumen, mensajes: [], extraer: async () => base });
+  assert.equal(r2.validacion.checks.some((c) => c.campo === "duplicado"), false);
+});

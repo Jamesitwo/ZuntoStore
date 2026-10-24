@@ -8,7 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { crearRegistroIntentos } from "../registroIntentos.js";
-import { crearSubidaAutomatica } from "../subidaAutomatica.js";
+import { crearSubidaAutomatica, otrosPedidosDelCliente } from "../subidaAutomatica.js";
 
 /** Cliente de LucidSales falso. */
 function clienteFalso(pedidos) {
@@ -1141,5 +1141,64 @@ test("consumo: pedidos subidos por mes", async () => {
   await s.tick({ forzar: true });
   const mes = new Date(Date.now() - 5 * 3600_000).toISOString().slice(0, 7);
   assert.equal(s.consumo()[mes], 1);
+  fs.rmSync(ruta, { force: true });
+});
+
+// ---------------------------------------------------------------------------
+// Pedido repetido (el bot lo creo dos veces)
+
+const repetidos = () => [
+  // la lista viene del mas nuevo al mas viejo, como en LucidSales
+  { id: 2, idPedido: 112, EstadoPedido: 0, Movil: "+573009998877", producto: "Taladro", Total: "105.690", completo: { ...COMPLETO, id: 2, idPedido: 112 } },
+  { id: 1, idPedido: 111, EstadoPedido: 0, Movil: "+573009998877", producto: "Taladro", Total: "105.690", completo: COMPLETO },
+];
+
+test("otrosPedidosDelCliente: solo los ANTERIORES del mismo telefono y no cancelados", () => {
+  const lista = [
+    { id: 5, Movil: "3009998877" },
+    { id: 4, Movil: "+57 300 999 8877", idPedido: 104, producto: "X" },
+    { id: 3, Movil: "3001112222" },
+    { id: 2, Movil: "3009998877", EstadoPedido: 1 },
+  ];
+  const r = otrosPedidosDelCliente({ id: 5, Movil: "3009998877" }, lista);
+  assert.deepEqual(r.map((x) => x.id), [4]);
+  assert.deepEqual(otrosPedidosDelCliente({ id: 4, Movil: "3009998877" }, lista), []);
+});
+
+test("pedido repetido: el primero se sube y el segundo queda para revisar", async () => {
+  const contextos = [];
+  const { s, ruta, subidos } = armar({ pedidos: repetidos(), alExtraer: () => {} });
+  // la IA ve el otro pedido y no encuentra una segunda compra
+  s.configurar({ automatico: true, dryRun: true });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  assert.equal(s.estadoPedido(1).accion, "preparado");
+  const e2 = s.estadoPedido(2);
+  assert.equal(e2.accion, "posible-duplicado");
+  assert.match(e2.detalle, /#111/);
+  // una persona confirma que es una compra nueva: se sube en la siguiente vuelta
+  s.aprobarDuplicado(2);
+  await s.tick({ forzar: true });
+  // (en modo prueba el 1 se vuelve a preparar; lo que importa es el 2)
+  assert.equal(s.estadoPedido(2).accion, "preparado");
+  assert.throws(() => s.aprobarDuplicado(2), /no está marcado/);
+  void contextos;
+  fs.rmSync(ruta, { force: true });
+});
+
+test("pedido repetido: si el chat muestra una compra nueva, se sube", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: repetidos(),
+    extraido: {
+      producto: "Taladro Inalambrico 68V", cantidad: 1, precioAcordado: 105690, direccion: "Carrera 92 #78b-02",
+      clienteConfirmo: true, entregaFutura: false, incertidumbre: [],
+      segundaCompra: true, evidencia: { segundaCompra: "quiero otro igual para mi hermano" },
+    },
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 2);
   fs.rmSync(ruta, { force: true });
 });

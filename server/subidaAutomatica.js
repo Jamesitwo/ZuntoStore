@@ -42,7 +42,46 @@ const FINALES = new Set([
   "direccion-invalida",
   "envio-caro",
   "sin-transportadora",
+  // otro pedido reciente del mismo cliente y el chat no muestra otra compra
+  "posible-duplicado",
 ]);
+/** Dias hacia atras en que otro pedido del mismo telefono cuenta como posible repetido. */
+const DIAS_DUPLICADO = 7;
+
+/** Ultimos 10 digitos del telefono (+57 300... = 300...). */
+const claveTel = (v) => {
+  const d = String(v ?? "").replace(/\D/g, "");
+  return d.length >= 8 ? d.slice(-10) : "";
+};
+
+/**
+ * Otros pedidos del mismo cliente, ANTERIORES a este (el primero se sube; el
+ * que llega despues es el que puede estar repetido), de los ultimos dias y
+ * no cancelados.
+ */
+export function otrosPedidosDelCliente(p, lista = [], { procesados = {}, ahora = Date.now() } = {}) {
+  const tel = claveTel(p?.Movil);
+  const id = Number(p?.id ?? p?.idPedido);
+  if (!tel || !Number.isFinite(id)) return [];
+  const desde = ahora - DIAS_DUPLICADO * 86_400_000;
+  return lista
+    .filter((x) => {
+      const otro = Number(x?.id ?? x?.idPedido);
+      if (!Number.isFinite(otro) || otro >= id) return false;
+      if (claveTel(x?.Movil) !== tel) return false;
+      if (Number(x?.EstadoPedido) === 1) return false; // cancelado
+      const f = Date.parse(x?.Fecha ?? x?.CreatedAt ?? "");
+      return !Number.isFinite(f) || f >= desde;
+    })
+    .map((x) => ({
+      id: x.id,
+      idPedido: x.idPedido,
+      producto: x.producto ?? "",
+      Total: x.Total ?? null,
+      fecha: x.Fecha ?? x.CreatedAt ?? null,
+      subido: ["subido", "subido-pendiente-confirmacion"].includes(procesados?.[String(x.id ?? x.idPedido)]?.accion),
+    }));
+}
 /** Finales que se pueden volver a intentar desde el panel sin mas confirmacion. */
 const REARMABLES = new Set(["requiere-revision", "direccion-invalida", "envio-caro", "sin-transportadora"]);
 /** Cada cuanto se revisa: de 30 s a 12 h. */
@@ -660,7 +699,12 @@ export function crearSubidaAutomatica({
           }
 
           // 3) el agente decide
-          const r2 = await ejecutarAgente({ resumen, mensajes, extraer, oficina: oficinaAuto ? oficina : null });
+          // ¿el mismo cliente tiene otro pedido reciente? (salvo que una persona
+          // ya dijera que este es una compra nueva)
+          const otrosPedidos = c.duplicadosAprobados?.[id]
+            ? []
+            : otrosPedidosDelCliente(p, pedidos, { procesados: c.procesados });
+          const r2 = await ejecutarAgente({ resumen, mensajes, extraer, oficina: oficinaAuto ? oficina : null, otrosPedidos });
           analisisActual = resumirAnalisis(r2);
           // la IA no respondio (timeout, saldo, clave): error tecnico, no un
           // pedido frenado por su contenido
@@ -677,6 +721,17 @@ export function crearSubidaAutomatica({
             invalidas.push({ id, detalle: det, contacto: { ...contacto } });
             frenados++;
             detalle.push({ id, accion: "direccion-invalida" });
+            continue;
+          }
+          // solo falla lo de "repetido": lo revisa una persona (no se reintenta solo)
+          if (r2.accion !== "subir" && r2.problemas.every((x) => x.campo === "duplicado")) {
+            const det = r2.problemas[0].detalle;
+            if (!c.dryRun) {
+              await notificarUnaVez(c, id, { id: resumen?.id, idPedido: resumen?.idPedido, Movil: resumen?.telefono }, "fallido", det);
+            }
+            marcarP("posible-duplicado", det);
+            frenados++;
+            detalle.push({ id, accion: "posible-duplicado", detalle: det });
             continue;
           }
           if (r2.accion !== "subir") {
@@ -1164,6 +1219,25 @@ export function crearSubidaAutomatica({
         resultadosTerminales.set(String(id), resultado);
       }
       return resultado;
+    },
+
+    /**
+     * Una persona revisó un "posible duplicado" y es una compra nueva: se
+     * vuelve a mirar en la proxima vuelta sin la revision de repetidos.
+     */
+    aprobarDuplicado(id) {
+      const c = leer();
+      const k = String(id);
+      if (c.procesados?.[k]?.accion !== "posible-duplicado") {
+        throw new ErrorApi(409, "Este pedido no está marcado como posible duplicado");
+      }
+      c.duplicadosAprobados = { ...(c.duplicadosAprobados ?? {}), [k]: new Date().toISOString() };
+      // se guardan los ultimos 500
+      const claves = Object.keys(c.duplicadosAprobados);
+      if (claves.length > 500) for (const x of claves.slice(0, claves.length - 500)) delete c.duplicadosAprobados[x];
+      delete c.procesados[k];
+      if (!guardar(c)) throw new ErrorApi(500, "No se pudo guardar la aprobación");
+      return { ok: true };
     },
 
     /** Vuelve a habilitar TODOS los pedidos en revisión (p. ej. tras arreglar la configuración). */

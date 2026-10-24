@@ -48,7 +48,7 @@ Reglas:
 - La evidencia debe ser una cita real del chat, no un resumen ni una deduccion.
 - Responde SOLO el JSON, sin marcas de codigo ni explicacion.`;
 
-const CLAVES_EVIDENCIA = ["producto", "cantidad", "precioAcordado", "direccion", "clienteConfirmo", "entregaFutura"];
+const CLAVES_EVIDENCIA = ["producto", "cantidad", "precioAcordado", "direccion", "clienteConfirmo", "entregaFutura", "segundaCompra"];
 
 /** gpt-5*, o1/o3/o4 en OpenAI (u OpenRouter con prefijo openai/) aceptan reasoning_effort. */
 export function esModeloRazonamiento(modelo, base = "") {
@@ -88,6 +88,8 @@ function normalizarSalida(v) {
     fechaEntregaSolicitada: typeof o.fechaEntregaSolicitada === "string" ? o.fechaEntregaSolicitada.trim() : "",
     incertidumbre: Array.isArray(o.incertidumbre) ? o.incertidumbre.map(String) : [],
     razonamiento: typeof o.razonamiento === "string" ? o.razonamiento.trim().slice(0, 800) : "",
+    // solo cuando se le mostraron otros pedidos del mismo cliente
+    segundaCompra: typeof o.segundaCompra === "boolean" ? o.segundaCompra : null,
     // la IA solo descompone la direccion: la valida el codigo (direccionColombia.js)
     direccionEnvio:
       o.direccionEnvio && typeof o.direccionEnvio === "object"
@@ -157,6 +159,13 @@ export function crearExtractorLLM(config = {}) {
               content:
                 `Conversacion:\n${texto}\n\n` +
                 `Direccion del pedido (la que se enviara a la transportadora): ${String(contexto?.direccionPedido ?? "").trim() || "(vacia)"}\n\n` +
+                (contexto?.otrosPedidos
+                  ? `Este cliente ya tiene OTRO pedido reciente:\n${contexto.otrosPedidos}\n` +
+                    "Puede ser el mismo pedido repetido por error del bot. Agrega al JSON el campo " +
+                    '"segundaCompra": true SOLO si en el chat el cliente pidio claramente una compra NUEVA ademas de esa ' +
+                    "(otra unidad, otro producto, volvio a pedir despues de confirmar el primero); false si el chat solo muestra " +
+                    "una compra; y en evidencia.segundaCompra la frase del cliente que lo muestra.\n\n"
+                  : "") +
                 "Devuelve el JSON.",
             },
           ],

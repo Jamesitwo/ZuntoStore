@@ -59,7 +59,7 @@ import { crearConfigLLM } from "./llmConfig.js";
 import { ejecutarAgente, resumenDePedido } from "./agente.js";
 import { crearClienteDropi, armarPedidoDropi } from "./dropi.js";
 import { crearDropiNavegador, DIRECCION_OFICINA_INTER } from "./dropiNavegador.js";
-import { crearSubidaAutomatica, resumirAnalisis } from "./subidaAutomatica.js";
+import { crearSubidaAutomatica, otrosPedidosDelCliente, resumirAnalisis } from "./subidaAutomatica.js";
 import { faltantesDeConfig } from "./config.js";
 import { crearEstadosEnvio } from "./estadosEnvio.js";
 import { crearPedidosPorEnvio } from "./pedidosPorEnvio.js";
@@ -381,7 +381,7 @@ export function crearManejador({
     [/^\/api\/interrapidisimo\//, null],
     [/^\/api\/pedidos\/[^/]+\/(estado|conversacion|validar|subir)$/, "2"],
     [/^\/api\/pedidos\/[^/]+\/direccion(\/validar)?$/, "2"],
-    [/^\/api\/subida\/pedido\/[^/]+(\/intentos)?$/, "2"],
+    [/^\/api\/subida\/pedido\/[^/]+(\/intentos|\/aprobar-duplicado)?$/, "2"],
     [/^\/api\/historial$/, "2"],
     [/^\/api\/envios\/ultimos$/, "8"],
     [/^\/api\/envios\//, "2"],
@@ -753,6 +753,18 @@ export function crearManejador({
       return;
     }
 
+    // ---- POST /api/subida/pedido/:id/aprobar-duplicado ----
+    // una persona revisó el "posible duplicado": es una compra nueva
+    const aprobarDup = ruta.match(/^\/api\/subida\/pedido\/([^/]+)\/aprobar-duplicado$/);
+    if (req.method === "POST" && aprobarDup) {
+      autorizar(req);
+      const id = decodeURIComponent(aprobarDup[1]);
+      const r = subida.aprobarDuplicado(id);
+      console.log(`[subida] pedido ${id}: ${usuarioDe(req) ?? "?"} confirmó que NO es un duplicado`);
+      json(res, 200, { ...r, msg: "Se subirá en la próxima vuelta de la subida automática" });
+      return;
+    }
+
     // ---- GET /api/subida/pedido/:id/intentos (historial de intentos) ----
     const verIntentos = ruta.match(/^\/api\/subida\/pedido\/([^/]+)\/intentos$/);
     if (req.method === "GET" && verIntentos) {
@@ -1017,7 +1029,27 @@ export function crearManejador({
       }
 
       // 1) el agente decide
-      const r = await ejecutarAgente({ resumen, mensajes, extraer, oficina: oficinaAuto ? oficina : null });
+      // ¿el mismo cliente tiene otro pedido reciente? (salvo que quien sube
+      // ya dijo que es una compra nueva: "Subir de todas formas")
+      let otrosPedidos = [];
+      if (cuerpo?.aceptarDuplicado !== true) {
+        try {
+          const lista = await cliente.listarPedidos({
+            idEmpresa: pedidoLucid?.idEmpresa ?? tiendaDe(req),
+            page: 1,
+            itemsPerPage: 100,
+            filtros: [{ name: "date", searchValues: [], sortOrder: "desc" }],
+          });
+          const filas = (Array.isArray(lista?.pedidos) ? lista.pedidos : []).map((x) => x);
+          otrosPedidos = otrosPedidosDelCliente(
+            { id: pedidoLucid?.id ?? id, Movil: resumen?.telefono },
+            filas,
+          ).map((o) => ({ ...o, subido: ["subido", "subido-pendiente-confirmacion"].includes(subida.estadoPedido?.(o.id)?.accion) }));
+        } catch (e) {
+          console.warn("[dropi] no se pudieron revisar otros pedidos del cliente:", e?.message ?? e);
+        }
+      }
+      const r = await ejecutarAgente({ resumen, mensajes, extraer, oficina: oficinaAuto ? oficina : null, otrosPedidos });
       if (res.__intento) res.__intento.analisis = resumirAnalisis(r);
 
       // 2) si frena, NO se sube nada

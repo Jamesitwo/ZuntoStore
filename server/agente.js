@@ -298,9 +298,30 @@ export function decidir(validacion) {
  */
 const FECHA_FUTURA_EN_CHAT = /\b(?:para\s+(?:(?:el\s+)?(?:dia\s+)?)|el\s+dia\s+|lo\s+(?:quiero|quieres|quiere|necesito|necesita)\s+(?:para\s+)?(?:el\s+)?|entregar(?:lo)?\s+(?:para\s+)?(?:el\s+)?|recibir(?:lo)?\s+(?:para\s+)?(?:el\s+)?)(?:\d{1,2}(?:\s+de\s+(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre))?|manana|pasado manana|lunes|martes|miercoles|jueves|viernes|sabado|domingo|proxima semana|proximo mes)\b/;
 
-export async function ejecutarAgente({ resumen, mensajes, extraer, oficina = null }) {
-  // la IA tambien descompone la direccion del pedido (la que se envia)
-  const extraido = await extraer(mensajes, { direccionPedido: resumen?.direccion ?? "" });
+/**
+ * Otros pedidos recientes del mismo cliente, en texto para la IA.
+ * otros: [{ idPedido, producto, Total, fecha, estado, subido }]
+ */
+export function textoOtrosPedidos(otros = []) {
+  return otros
+    .map(
+      (o) =>
+        `- Pedido #${o.idPedido ?? o.id}: ${o.producto || "producto sin nombre"} · total ${o.Total ?? "?"}` +
+        `${o.fecha ? ` · creado ${String(o.fecha).slice(0, 16).replace("T", " ")}` : ""}` +
+        `${o.subido ? " · YA se subio a Dropi" : ""}`,
+    )
+    .join("\n");
+}
+
+export async function ejecutarAgente({ resumen, mensajes, extraer, oficina = null, otrosPedidos = [] }) {
+  // la IA tambien descompone la direccion del pedido (la que se envia) y, si
+  // el cliente tiene otro pedido reciente, dice si el chat muestra una
+  // segunda compra (el codigo decide)
+  const hayOtros = Array.isArray(otrosPedidos) && otrosPedidos.length > 0;
+  const extraido = await extraer(mensajes, {
+    direccionPedido: resumen?.direccion ?? "",
+    ...(hayOtros ? { otrosPedidos: textoOtrosPedidos(otrosPedidos) } : {}),
+  });
   const fechaSolicitadaEnChat = (Array.isArray(mensajes) ? mensajes : [])
     .filter((m) => m?.de === "cliente")
     .map((m) => normalizarTexto(m?.texto))
@@ -316,6 +337,23 @@ export async function ejecutarAgente({ resumen, mensajes, extraer, oficina = nul
       : {}),
   };
   const validacion = validarPedido(resumen, extraidoSeguro, { oficina });
+  // ¿pedido repetido? Solo pasa si la IA vio en el chat una compra nueva
+  if (hayOtros && !extraido?.falloTecnico) {
+    const nuevo = extraidoSeguro.segundaCompra === true;
+    const lista = otrosPedidos.map((o) => `#${o.idPedido ?? o.id}`).join(", ");
+    validacion.checks = [
+      ...(validacion.checks ?? []),
+      {
+        campo: "duplicado",
+        ok: nuevo,
+        detalle: nuevo
+          ? `el cliente ya tenía el pedido ${lista}, pero en el chat pidió una compra nueva`
+          : `posible pedido repetido: el cliente ya tiene el pedido ${lista} y en el chat no se ve una segunda compra`,
+        ...(extraidoSeguro.evidencia?.segundaCompra ? { evidencia: extraidoSeguro.evidencia.segundaCompra } : {}),
+      },
+    ];
+    validacion.ok = validacion.checks.every((c) => c.ok);
+  }
   const decision = decidir(validacion);
   return {
     extraido: extraidoSeguro,

@@ -46,6 +46,7 @@ const RESULTADO: Record<string, { texto: string; tono: "ok" | "warn" | "mal" }> 
   "requiere-captcha": { texto: "Captcha en Dropi", tono: "warn" },
   "estado-incompatible": { texto: "Estado que no se sube", tono: "warn" },
   error: { texto: "Error", tono: "mal" },
+  "posible-duplicado": { texto: "Posible pedido repetido", tono: "mal" },
 };
 
 const peso = (n: unknown) => (typeof n === "number" ? `$${Math.round(n).toLocaleString("es-CO")}` : "—");
