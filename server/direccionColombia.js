@@ -85,7 +85,10 @@ function capitalizarResto(r) {
  * placa, resto, normalizada} o null si no tiene el formato.
  */
 export function parsearDireccion(direccion) {
-  const t = normalizarTextoDir(direccion).replace(/\s*#\s*/g, " # ");
+  const t = normalizarTextoDir(direccion)
+    .replace(/\s*#\s*/g, " # ")
+    // letra del cruce pegada a la placa: "# 82 C19" / "# 82c19" = cruce 82C, placa 19
+    .replace(/(#\s*\d{1,3}\s*[a-z])(\d{1,3})\b/, "$1 $2");
   let m = t.match(RE_DIR);
   const sinGuion = !m;
   if (!m) m = t.match(RE_DIR_SIN_GUION);
@@ -116,7 +119,11 @@ export function parsearDireccion(direccion) {
  * regla sobre el original en minusculas (mismo largo) y se corta ahi.
  */
 function restoConMismaRegla(original, re) {
-  const orig = original.replace(/\s+/g, " ").trim().replace(/\s*#\s*/g, " # ");
+  const orig = original
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\s*#\s*/g, " # ")
+    .replace(/(#\s*\d{1,3}\s*[a-zA-Z])(\d{1,3})\b/, "$1 $2");
   const bajo = orig.toLowerCase();
   if (bajo.length !== orig.length) return null;
   const m = bajo.match(re);
@@ -132,6 +139,23 @@ function restoOriginal(original) {
   const m = t.slice(desde).match(/[-–]\s*\d{1,3}(\s+(sur|este)\b)?/i);
   if (!m) return "";
   return t.slice(desde + m.index + m[0].length);
+}
+
+/**
+ * Clave "tipo|via|cruce|placa" de la calle que aparezca en un texto, aunque
+ * tenga cosas antes ("Bogotá Kennedy Calle 51B Sur #82 C19 ...") o despues.
+ * Sirve para comparar dos direcciones escritas distinto. null si no hay.
+ */
+export function claveCalle(texto) {
+  const palabras = String(texto ?? "").replace(/\s+/g, " ").trim().split(" ");
+  for (let i = 0; i < palabras.length; i++) {
+    if (!tipoViaCanonico(palabras[i])) continue;
+    const p = parsearDireccion(palabras.slice(i).join(" "));
+    if (!p) continue;
+    const limpio = (x) => normalizarTextoDir(x).replace(/\b(sur|este)\b/g, "").replace(/[^a-z0-9]/g, "").replace(/^0+(?=\d)/, "");
+    return `${p.tipoVia}|${limpio(p.via)}|${limpio(p.cruce)}|${limpio(p.placa)}`;
+  }
+  return null;
 }
 
 /** Digitos de la parte numerica (via, cruce, placa) en orden, sin letras. */

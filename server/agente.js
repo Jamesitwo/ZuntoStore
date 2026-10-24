@@ -9,7 +9,7 @@
 //
 // Todo lo de comparacion es puro y sin red: se puede probar sin LLM ni APIs.
 
-import { recogeEnOficina, validarDireccion } from "./direccionColombia.js";
+import { claveCalle, recogeEnOficina, validarDireccion } from "./direccionColombia.js";
 
 /** Separa los acentos y baja a minusculas: "Medellin" == "medellín". */
 export function normalizarTexto(v) {
@@ -161,6 +161,9 @@ export function coincideDireccion(chat, pedido) {
   if (!tokens(pedido).length) {
     return { ok: false, razon: "el pedido no tiene direccion para comparar" };
   }
+  // misma calle y numeros (aunque una traiga ciudad o barrio de mas): coincide
+  const kChat = claveCalle(chat);
+  if (kChat && kChat === claveCalle(pedido)) return { ok: true, razon: "" };
   const c = cobertura(chat, pedido);
   const numerosChat = tokens(chat).filter((t) => /^\d+[a-z]?$/.test(t));
   const numerosPedido = tokens(pedido).filter((t) => /^\d+[a-z]?$/.test(t));

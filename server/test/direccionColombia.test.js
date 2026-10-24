@@ -1,7 +1,7 @@
 // Direcciones de Colombia: reglas fijas, correccion de la IA y su verificacion.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validarDireccion, parsearDireccion, tipoViaCanonico, recogeEnOficina } from "../direccionColombia.js";
+import { claveCalle, validarDireccion, parsearDireccion, tipoViaCanonico, recogeEnOficina } from "../direccionColombia.js";
 
 const validas = [
   ["cra 40#23-23, centro", "Cra 40 # 23-23, Centro"],
@@ -190,4 +190,18 @@ test("direccionConReferencias: direccion, coma y referencias sin repetir", async
   assert.equal(direccionConReferencias("Cra 40 # 23-23", "Barrio Centro"), "Cra 40 # 23-23, Barrio Centro");
   assert.equal(direccionConReferencias("Mz A Cs 14, Urbanización Los Pinos", "urbanizacion los pinos"), "Mz A Cs 14, Urbanización Los Pinos");
   assert.equal(direccionConReferencias("Cra 5 # 4-98", "   "), "Cra 5 # 4-98");
+});
+
+test("letra del cruce pegada a la placa: «#82 C19» = cruce 82C, placa 19", () => {
+  assert.equal(parsearDireccion("Calle 51B Sur #82 C19, urbanización de casas").normalizada, "Calle 51B Sur # 82C-19, Urbanización de casas");
+  assert.equal(parsearDireccion("Calle 51B Sur # 82c19").normalizada, "Calle 51B Sur # 82C-19");
+});
+
+test("claveCalle encuentra la calle aunque el texto traiga ciudad y barrio antes", () => {
+  assert.equal(
+    claveCalle("Cundinamarca Bogotá Villa Andrea Kennedy Calle 51B Sur #82 C19 urbanización de casas"),
+    claveCalle("Calle 51B Sur #82 C19, urbanización de casas"),
+  );
+  assert.notEqual(claveCalle("Kennedy Calle 51B Sur #82 C18"), claveCalle("Calle 51B Sur #82 C19"));
+  assert.equal(claveCalle("casa verde frente al parque"), null);
 });

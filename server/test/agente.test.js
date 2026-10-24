@@ -224,3 +224,11 @@ test("cada verificacion lleva la cita del chat que dio la IA", async () => {
   assert.equal(porCampo.direccion.evidencia, undefined);
   assert.equal(r.accion, "subir"); // la evidencia no cambia la decision
 });
+
+test("direccion del chat con ciudad y barrio antes coincide si la calle y los numeros son iguales", () => {
+  assert.equal(
+    coincideDireccion("Cundinamarca Bogotá Villa Andrea Kennedy Calle 51B Sur #82 C19 urbanización de casas", "Calle 51B Sur #82 C19, urbanización de casas").ok,
+    true,
+  );
+  assert.equal(coincideDireccion("Kennedy Calle 51B Sur #82 C18", "Calle 51B Sur #82 C19").ok, false);
+});
