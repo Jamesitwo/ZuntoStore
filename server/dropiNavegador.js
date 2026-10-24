@@ -157,6 +157,35 @@ export function crearDropiNavegador(config = {}) {
     return /\/auth\/(login|forgot)/i.test(p.url());
   }
 
+  /**
+   * Espera la ficha del producto: el boton "Enviar al cliente", o lo que
+   * aparezca en su lugar. Dropi es una SPA: el salto al login (sesion vencida)
+   * o un captcha pueden llegar segundos DESPUES de cargar la pagina.
+   * -> { ok } | { login } | { captcha } | { motivo, url, titulo, texto }
+   */
+  async function esperarFicha(p, timeoutMs) {
+    const boton = p.locator('[data-cy="send-to-client-button"]');
+    const fin = Date.now() + timeoutMs;
+    while (Date.now() < fin) {
+      if (await boton.isVisible().catch(() => false)) return { ok: true };
+      if (await enLogin(p)) return { login: true };
+      if (await hayCaptcha(p)) return { captcha: true };
+      await p.waitForTimeout(500);
+    }
+    const url = p.url();
+    const titulo = await p.title().catch(() => "");
+    const texto = await p
+      .evaluate(() => (document.body ? document.body.innerText : ""))
+      .catch(() => "");
+    const plano = String(texto).replace(/\s+/g, " ").trim();
+    let motivo = "el botón «Enviar al cliente» no apareció";
+    if (/no (existe|encontr)|not found|404/i.test(plano)) motivo = "Dropi dice que el producto no existe (revisa el dropiLink del sheet)";
+    else if (/agotad|sin stock|no disponible|sin existencias/i.test(plano)) motivo = "el producto aparece agotado o no disponible en Dropi";
+    else if (!/product-details/i.test(url)) motivo = "Dropi no dejó abrir la ficha del producto y mandó a otra página (¿sesión de Dropi inválida?)";
+    else if (plano.length < 40) motivo = "la ficha de Dropi no terminó de cargar (página en blanco)";
+    return { motivo, url, titulo, texto: plano.slice(0, 200) };
+  }
+
   /** Elige una opcion de un p-dropdown de PrimeNG con filtro (depto / ciudad). */
   async function dropdown(p, idSel, texto) {
     // #state existe como <p-dropdown> y como <div.p-dropdown> interno:
@@ -937,6 +966,11 @@ export function crearDropiNavegador(config = {}) {
       return elegirTransportadora(p, ids, opciones);
     },
 
+    /** Espera la ficha del producto (se usa en pruebas). */
+    esperarFicha(p, timeoutMs) {
+      return esperarFicha(p, timeoutMs ?? lento);
+    },
+
     /** Elige la oficina de Inter si hay una sola (se usa en pruebas). */
     elegirOficinaInter(p, opciones) {
       return elegirOficinaInter(p, opciones);
@@ -1031,8 +1065,26 @@ export function crearDropiNavegador(config = {}) {
       if (await hayCaptcha(p)) return { ok: false, requiereCaptcha: true, detalle: "captcha en la pagina" };
 
       // 2) "Enviar al cliente" de la ficha -> abre el formulario Crear Orden
+      const ficha = await esperarFicha(p, lento);
+      if (ficha.login) {
+        return {
+          ok: false,
+          requiereLogin: true,
+          detalle: "la sesion de Dropi vencio: actualízala desde el panel (Sesión de Dropi)",
+        };
+      }
+      if (ficha.captcha) return { ok: false, requiereCaptcha: true, detalle: "captcha en la pagina" };
+      if (!ficha.ok) {
+        return {
+          ok: false,
+          creado: false,
+          detalle:
+            `No se envió a Dropi: ${ficha.motivo}. Página: ${ficha.url}` +
+            (ficha.titulo ? ` («${ficha.titulo}»)` : "") +
+            (ficha.texto ? `. Se ve: "${ficha.texto}"` : ""),
+        };
+      }
       const btnAbrir = p.locator('[data-cy="send-to-client-button"]');
-      await btnAbrir.waitFor({ state: "visible", timeout: lento });
       await btnAbrir.click();
 
       // 3) espera a que se abra el formulario Crear Orden

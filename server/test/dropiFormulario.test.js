@@ -270,3 +270,36 @@ test("oficina de Inter: objetivo sin direccion legible usa la regla de una sola"
     await p.close();
   }
 });
+
+test("ficha: el boton aparece tarde y se espera", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  const p = await pagina(`<!doctype html><body><script>setTimeout(() => { const b = document.createElement("button"); b.setAttribute("data-cy","send-to-client-button"); b.textContent = "Enviar al cliente"; document.body.appendChild(b); }, 800)</script></body>`);
+  try {
+    assert.deepEqual(await nav.esperarFicha(p, 3000), { ok: true });
+  } finally {
+    await p.close();
+  }
+});
+
+test("ficha: captcha que aparece despues de cargar se reconoce", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  const p = await pagina(`<!doctype html><body><script>setTimeout(() => { document.body.innerHTML = '<div class="cf-turnstile">Verify you are human</div>'; }, 600)</script></body>`);
+  try {
+    assert.deepEqual(await nav.esperarFicha(p, 3000), { captcha: true });
+  } finally {
+    await p.close();
+  }
+});
+
+test("ficha: sin boton dice por que y que se ve", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  const p = await pagina(`<!doctype html><title>Dropi</title><body>Este producto está agotado por ahora en el catálogo del proveedor</body>`);
+  try {
+    const r = await nav.esperarFicha(p, 1200);
+    assert.equal(r.ok, undefined);
+    assert.match(r.motivo, /agotado/);
+    assert.match(r.texto, /agotado/);
+  } finally {
+    await p.close();
+  }
+});
