@@ -247,6 +247,7 @@ export function crearSubidaAutomatica({
   // historial de intentos por pedido (transparencia en el panel)
   intentos = null,
 }) {
+  let numeroVuelta = 0;
   let timer = null;
   let corriendo = false;
   let ultimoAviso = null;
@@ -511,7 +512,8 @@ export function crearSubidaAutomatica({
       let detenido = null;
       const agotados = [];
       const invalidas = [];
-      const claveVuelta = new Date().toISOString();
+      // unica por vuelta (dos vueltas en el mismo milisegundo no se juntan)
+      const claveVuelta = `${new Date().toISOString()}#${++numeroVuelta}`;
       vueltaTiendas: for (const idEmpresa of tiendas) {
         const r = await cliente.listarPedidos({
           idEmpresa,
