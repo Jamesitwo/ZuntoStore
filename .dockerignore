@@ -23,3 +23,5 @@ package-lock.json
 server/envios.json*
 server/lucidbot-pedidos.json*
 server/intentos.jsonl
+server/cuentas.json*
+server/cuentas

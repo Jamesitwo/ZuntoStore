@@ -47,6 +47,19 @@ export function tienePermiso(sesion, numero) {
   return sesion.rol?.numeros?.includes(String(numero)) ?? false;
 }
 
+/**
+ * La tienda que pide una peticion del panel SIN verificar nada (solo para
+ * saber a que cuenta mandarla; la cuenta luego la verifica con LucidSales).
+ */
+export function tiendaDePeticion(headers = {}) {
+  const t = String(headers["x-tienda"] ?? "").trim();
+  if (/^\d{1,12}$/.test(t)) return t;
+  const crudo = payloadJWT(String(headers["x-token"] ?? "").trim());
+  const p = crudo?.uid && typeof crudo.uid === "object" ? { ...crudo, ...crudo.uid } : crudo;
+  const d = String(p?.tiendaActiva ?? "").trim();
+  return /^\d{1,12}$/.test(d) ? d : null;
+}
+
 /** El usuario tiene acceso a esa tienda (las que devolvio LucidSales). */
 export function tieneTienda(sesion, tienda) {
   if (sesion?.interna) return true;

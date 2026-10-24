@@ -28,6 +28,13 @@ falta `CORS_ORIGIN` (mismo dominio) ni un segundo servicio.
 `server/Dockerfile` (solo la API, Root Directory `/server`) sigue sirviendo si
 se quiere el panel aparte; entonces si hay que definir `CORS_ORIGIN`.
 
+**Varias cuentas.** ZuntoStore es la cuenta 1 (archivos de siempre en `/data`
+y las variables de Railway). Las demas se crean en Ajustes > Cuentas y viven en
+`/data/cuentas/<id>/`, sin ninguna variable de la cuenta 1: cada una conecta lo
+suyo desde el panel. Administra quien tenga «Ajustes Tienda» en una tienda de
+la cuenta 1, o los correos de `SUPERADMINS` (separados por coma). Un solo
+navegador de Dropi trabaja a la vez, por turnos entre cuentas.
+
 **No dejes corriendo a la vez tu equipo y Railway con la subida automatica:**
 los dos subirian los mismos pedidos.
 

@@ -2,155 +2,60 @@
 //   npm start        -> escucha en PORT (8787 por defecto)
 //   npm run dev      -> igual, con recarga automatica (node --watch)
 //   npm test         -> pruebas contra un LucidSales falso
+import fs from "node:fs";
 import { cargarConfig, faltantesDeConfig } from "./config.js";
-import { crearClienteLucid } from "./lucidsales.js";
 import { crearClienteInter } from "./interrapidisimo.js";
-import { crearHistorial } from "./historial.js";
-import { crearConversaciones } from "./conversacion.js";
-import { crearClienteDropi } from "./dropi.js";
-import { crearDropiNavegador } from "./dropiNavegador.js";
-import { crearSubidaAutomatica } from "./subidaAutomatica.js";
-import { crearExtractorLLM } from "./llm.js";
-import { crearAsignacion } from "./asignacion.js";
-import { crearCredenciales } from "./credenciales.js";
-import { crearConfigLLM } from "./llmConfig.js";
-import { crearValidadorDireccion } from "./validadorDireccion.js";
-import { crearRepartoAutomatico } from "./repartoAutomatico.js";
 import { crearRegistroAnuncios } from "./anunciosTenant.js";
 import { crearPanelEstatico } from "./panelEstatico.js";
-import { crearEstadosEnvio } from "./estadosEnvio.js";
-import { crearApiKeys } from "./apiKeys.js";
-import { crearPedidosLucidBot } from "./pedidosLucidBot.js";
-import { crearRegistroIntentos } from "./registroIntentos.js";
-import { crearProductosDropi } from "./productosDropi.js";
-import { crearLucidBotContactos } from "./lucidbotContactos.js";
-import { crearServidor } from "./servidor.js";
+import { configDeCuenta, crearRegistroCuentas } from "./cuentas.js";
+import { crearServiciosCuenta, crearTurnoDropi } from "./serviciosCuenta.js";
+import { crearServidorCuentas } from "./servidorCuentas.js";
 
 const config = cargarConfig();
-const cliente = crearClienteLucid(config);
+config.CUENTA_ID = 1;
+// compartido por todas las cuentas: oficinas de Inter (datos publicos)
 const inter = crearClienteInter(config);
-const historial = crearHistorial(config.HISTORIAL);
-// chat de cada pedido: lo manda el bot y lo lee el agente de Dropi
-const conversacion = crearConversaciones(config.CONVERSACION);
-// credenciales que pueda haber guardado el panel (sino, las del .env)
-const credenciales = crearCredenciales({ ruta: config.CREDENCIALES, config });
-// clave/proveedor/modelo de la IA guardados desde el panel (sino, los del .env)
-const llmConfig = crearConfigLLM({ ruta: config.LLM_CONFIG, config });
-// validador de direcciones propio (formato + Google Maps)
-const validadorDireccion = crearValidadorDireccion({ ruta: config.MAPAS_CONFIG, config });
-const asignacion = crearAsignacion(config.ASIGNACION, {
-  zona: config.TZ_ASIGNACION,
-  // semilla de la configuracion del reparto (luego manda el panel/JSON)
-  defecto: {
-    automatico: config.REPARTO_AUTOMATICO,
-    cadaSegundos: config.REPARTO_CADA,
-    modo: "horario",
-    tiendas: [],
-    estados: [0],
-  },
-});
-const reparto = crearRepartoAutomatico({ asignacion, cliente, config });
-// Dropi: subida de pedidos con el seguro antidevoluciones
-const dropi = crearClienteDropi(config);
-// la via que funciona: navegador real con la sesion del usuario
-const dropiNavegador = crearDropiNavegador(config);
-// mapa producto -> link de Dropi, mantenido en un Google Sheets (CSV)
-const productosDropi = crearProductosDropi({ url: config.DROPI_PRODUCTOS_CSV, ruta: config.DROPI_PRODUCTOS_CONFIG });
-const lucidBotContactos = crearLucidBotContactos({ ruta: config.LUCIDBOT_CONTACTOS_CONFIG });
-// resuelve el link navegable de Dropi de un producto de LucidSales:
-//   id de LucidSales -> idProductoDropi -> dropiLink (del sheet)
-// Si falla, el error dice en QUE eslabon (para que el aviso sea accionable).
-const resolverProductoDropi = async (idProducto) => {
-  const prod = await cliente.obtenerProducto(idProducto);
-  const nombre = prod?.Nombre ?? prod?.nombre ?? `id ${idProducto}`;
-  const idDropi = prod?.idProductoDropi ? String(prod.idProductoDropi).trim() : "";
-  if (!idDropi || idDropi === "0") {
-    throw new Error(`el producto «${nombre}» (id ${idProducto}) no tiene idProductoDropi en LucidSales: vincúlalo a Dropi en el catálogo`);
+
+// cuentas: ZuntoStore es la 1 (archivos de siempre); las demas, en su carpeta
+const semillaTiendas = (() => {
+  const t = [config.LUCID_TIENDA];
+  try {
+    const sub = JSON.parse(fs.readFileSync(config.SUBIDA_AUTO, "utf8"));
+    t.push(...(sub?.tiendas ?? []), ...Object.keys(sub?.tiendasDropi ?? {}));
+  } catch {
+    /* sin config de subida */
   }
-  if (!productosDropi.listo) throw new Error("no está configurado el Google Sheets de productos (Ajustes → Subida a Dropi → Google Sheets de productos)");
-  const filas = await productosDropi.cargar();
-  if (!filas) throw new Error("no se pudo descargar el Google Sheets de productos (¿sigue compartido como CSV?)");
-  const fila = filas.get(idDropi);
-  if (!fila) throw new Error(`el idProductoDropi ${idDropi} de «${nombre}» no está en el Google Sheets (columna idProductoDropi)`);
-  if (!fila.dropiLink) throw new Error(`en el Google Sheets la fila de ${idDropi} («${nombre}») no tiene dropiLink`);
-  return fila.dropiLink;
-};
-// subida automatica: revisa pedidos nuevos y los sube solo si todo calza
-const extraerLLM = crearExtractorLLM(config);
-// historial de intentos de subida por pedido (automaticos y manuales)
-const registroIntentos = crearRegistroIntentos({ ruta: config.INTENTOS });
-const subidaAuto = crearSubidaAutomatica({
-  cliente,
-  conversacion,
-  extraer: extraerLLM,
-  dropiNav: dropiNavegador,
-  asignacion,
-  config,
-  lucidBotContactos,
-  ruta: config.SUBIDA_AUTO,
-  // ciudad/depto de LucidSales (ids) -> nombres para el formulario de Dropi
-  resolverUbicacion: async ({ pais, idDepartamento, idCiudad }) => {
-    const ub = await inter.nombresDeIds({ pais, idDepartamento, idCiudad });
-    return { departamento: ub.departamento, ciudad: ub.municipio ?? "" };
-  },
-  // id de producto de LucidSales -> link navegable de Dropi
-  resolverProductoDropi,
-  // calificacion de la direccion en el mapa antes de subir
-  validadorDireccion,
-  // oficinas de Inter del municipio: si la direccion del cliente es una,
-  // el pedido va a esa oficina (por Coordinadora se devolveria)
-  buscarOficinasInter: ({ ciudad, departamento }) => inter.oficinasCompletas({ municipio: ciudad, departamento }),
-  intentos: registroIntentos,
-});
+  try {
+    const asig = JSON.parse(fs.readFileSync(config.ASIGNACION, "utf8"));
+    t.push(...(asig?.config?.tiendas ?? asig?.tiendas ?? []));
+  } catch {
+    /* sin reparto */
+  }
+  return t.map(String).filter(Boolean);
+})();
+const registro = crearRegistroCuentas({ ruta: config.CUENTAS, semilla: semillaTiendas });
+const turnoDropi = crearTurnoDropi();
+
 // rentabilidad de las campanas de Meta: UN espacio por usuario del panel
 // (cada quien conecta su token, sus cuentas, sus productos y sus vinculos)
 const anuncios = crearRegistroAnuncios({
   baseDir: config.ANUNCIOS_DIR,
   rutaCompartida: config.ANUNCIOS_CONFIG,
-  // solo para integraciones sin sesion (x-api-key): los usuarios del panel
-  // leen su catalogo y sus pedidos con SU propia sesion de LucidSales
-  lucid: cliente,
+  lucid: null,
 });
 // el panel (build de Vite) en el mismo servicio, si PANEL_DIR lo trae
 const panel = crearPanelEstatico({ dir: config.PANEL_DIR, lucidOrigen: new URL(config.LUCID_BASE).origin });
 if (panel) console.log(`[panel] sirviendo el panel desde ${panel.dir}`);
 
-// clave de la API generada desde el panel (ademas de la variable API_KEY)
-const apiKeys = crearApiKeys({ ruta: config.APIKEY_CONFIG, claveEnv: config.API_KEY });
-
-// cuando llega un pedido, su id se guarda en el contacto de Lucid Bot
-const pedidosLucidBot = crearPedidosLucidBot({
-  cliente,
-  lucidBot: lucidBotContactos,
-  tiendas: () => subidaAuto.tiendasARevisar(),
-  ruta: config.LUCIDBOT_PEDIDOS,
-});
-pedidosLucidBot.iniciar();
-
-const server = crearServidor({
+const multi = crearServidorCuentas({
   config,
-  cliente,
-  historial,
-  inter,
-  asignacion,
-  reparto,
-  credenciales,
-  llmConfig,
-  validadorDireccion,
-  anuncios,
-  conversacion,
-  dropiCliente: dropi,
-  dropiNavegador,
-  subidaAuto,
-  lucidBotContactos,
-  resolverProductoDropi,
-  productosDropi,
-  panel,
-  estadosEnvio: crearEstadosEnvio({ ruta: config.ENVIOS }),
-  apiKeys,
-  pedidosLucidBot,
-  registroIntentos,
+  registro,
+  crearServicios: (cuenta) =>
+    crearServiciosCuenta({ cuenta, config: configDeCuenta(config, cuenta), inter, turnoDropi }),
+  comunes: { inter, anuncios, panel },
 });
+const server = multi.server;
+const principal = multi.de(registro.get(1)).servicios;
 
 if (config.NODE_ENV === "production") {
   // API_KEY es opcional (solo integraciones); si esta, que sea fuerte
@@ -165,7 +70,9 @@ if (config.NODE_ENV === "production") {
 
 server.listen(config.PORT, config.HOST, () => {
   const faltan = faltantesDeConfig(config);
-  const c = asignacion.getConfig();
+  const lista = registro.lista();
+  console.log(`  cuentas: ${lista.map((x) => `${x.id} ${x.nombre} [${x.tiendas.join(",")}]${x.activa ? "" : " (inactiva)"}`).join(" · ")}`);
+  const c = principal.asignacion.getConfig();
   console.log(`ZuntoStore API -> http://${config.HOST}:${config.PORT} (${config.NODE_ENV})`);
   console.log(`  upstream: ${config.LUCID_BASE}`);
   console.log(`  oficinas: ${config.INTER_BASE}`);
@@ -173,7 +80,7 @@ server.listen(config.PORT, config.HOST, () => {
     `  reparto automatico: ${c.automatico ? "ACTIVO" : "apagado"}` +
       ` (cada ${c.cadaSegundos}s, modo ${c.modo}, estados [${c.estados.join(",")}])`,
   );
-  const s = subidaAuto.config();
+  const s = principal.subidaAuto.config();
   console.log(
     `  subida a Dropi: ${s.automatico ? "ACTIVA" : "apagada"}` +
       ` (cada ${s.cadaSegundos}s, dryRun=${s.dryRun}, transportadora=${s.transportadoraId})`,
@@ -193,16 +100,13 @@ server.listen(config.PORT, config.HOST, () => {
   );
 });
 
-// el intervalo arranca aunque este apagado: el propio tick lo consulta y no
-// hace nada hasta que lo enciendan desde el panel
-reparto.arrancar();
-// idem con la subida automatica a Dropi
-subidaAuto.arrancar();
+// los trabajos automaticos de cada cuenta arrancan aunque esten apagados:
+// cada tick consulta su config y no hace nada hasta que lo enciendan
+multi.arrancar();
 
 for (const senal of ["SIGINT", "SIGTERM"]) {
   process.on(senal, () => {
-    reparto.detener();
-    subidaAuto.detener();
+    multi.detener();
     server.close(() => process.exit(0));
   });
 }

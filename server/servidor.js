@@ -104,7 +104,7 @@ function leerCuerpo(req, limite = LIMITE_CUERPO) {
   });
 }
 
-export function crearServidor({
+export function crearManejador({
   config,
   cliente,
   historial,
@@ -128,6 +128,9 @@ export function crearServidor({
   apiKeys = null,
   pedidosLucidBot = null,
   registroIntentos = null,
+  // tiendas de LucidSales de ESTA cuenta (con varias cuentas): nadie entra
+  // a esta cuenta con una tienda que no es suya
+  tiendasCuenta = null,
 }) {
   // clave de integraciones: la de la variable API_KEY y/o la generada en el panel
   const claves = apiKeys ?? crearApiKeys({ claveEnv: config.API_KEY });
@@ -402,6 +405,10 @@ export function crearServidor({
       throw new ErrorApi(401, "Inicia sesión en el panel: falta la sesión de LucidSales");
     }
     const sesion = await sesiones.verificar(token, req.headers["x-tienda"]);
+    const propias = tiendasCuenta?.();
+    if (propias && !propias.map(String).includes(String(sesion.tienda))) {
+      throw new ErrorApi(403, `La tienda ${sesion.tienda} no pertenece a esta cuenta de ZuntoStore`);
+    }
     if (!tienePermiso(sesion, permiso)) {
       throw new ErrorApi(
         403,
@@ -418,7 +425,9 @@ export function crearServidor({
 
   /** Una tienda pedida por parametro tiene que ser del usuario. */
   function exigirTienda(req, tienda) {
-    if (!tieneTienda(req.__acceso, tienda)) {
+    const propias = tiendasCuenta?.();
+    const deOtraCuenta = propias && tienda && !req.__acceso?.interna && !propias.map(String).includes(String(tienda));
+    if (deOtraCuenta || !tieneTienda(req.__acceso, tienda)) {
       throw new ErrorApi(403, `No tienes acceso a la tienda ${tienda}`);
     }
   }
@@ -1900,15 +1909,16 @@ export function crearServidor({
     json(res, 404, { ok: false, msg: `Ruta no encontrada: ${req.method} ${ruta}` });
   }
 
-  return http.createServer((req, res) => {
+  /** Atiende una peticion completa (panel estatico, API y errores). */
+  function atender(req, res) {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Referrer-Policy", "no-referrer");
-    const atender = async () => {
+    const paso = async () => {
       if (panel && (await panel.manejar(req, res, new URL(req.url ?? "/", "http://localhost")))) return;
       await manejar(req, res);
     };
-    atender().catch((err) => {
+    return paso().catch((err) => {
       const e = mensajeDeError(err);
       if (res.headersSent) return res.end();
       try {
@@ -1924,5 +1934,13 @@ export function crearServidor({
         console.error("[error]", e.status, e.message);
       }
     });
-  });
+  }
+
+  return { atender, apiKeyValida, json };
+}
+
+/** Servidor de UNA cuenta (como antes): lo usan las pruebas y el modo simple. */
+export function crearServidor(opciones) {
+  const m = crearManejador(opciones);
+  return http.createServer((req, res) => void m.atender(req, res));
 }

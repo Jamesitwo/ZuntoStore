@@ -54,6 +54,15 @@ export function cargarConfig(env = process.env) {
     LUCID_BASE: String(g("LUCID_BASE", "https://panel.lucidsales.co/b")).replace(/\/+$/, ""),
     /** carpeta del build del panel (dist) para servirlo desde aqui; vacio = no */
     PANEL_DIR: String(g("PANEL_DIR", "")).trim(),
+    /** carpeta de datos: ahi van las carpetas de las cuentas (cuentas/<id>/) */
+    DATA_DIR: String(g("DATA_DIR", dir)),
+    /** registro de cuentas (negocios) y sus tiendas de LucidSales */
+    CUENTAS: String(g("CUENTAS", path.join(String(g("DATA_DIR", dir)), "cuentas.json"))),
+    /** correos que administran las cuentas (ademas de los admins de la cuenta 1) */
+    SUPERADMINS: String(g("SUPERADMINS", ""))
+      .split(",")
+      .map((x) => x.trim().toLowerCase())
+      .filter(Boolean),
     /** estados de envio que manda Lucid Bot */
     ENVIOS: String(g("ENVIOS", path.join(dir, "envios.json"))),
     /** historial de intentos de subida a Dropi (JSONL) */

@@ -8,6 +8,7 @@ import { ListaUsuarios } from "../components/ListaUsuarios";
 import { SubidaDropi } from "../components/SubidaDropi";
 import { MapasConfig } from "../components/MapasConfig";
 import { ApiKeyConfig } from "../components/ApiKeyConfig";
+import { CuentasAdmin } from "../components/CuentasAdmin";
 import { EditorMensajeInicial } from "../components/MensajeInicial";
 import { EditorTestimonios } from "../components/Testimonios";
 import {
@@ -1966,6 +1967,9 @@ function UsuariosTab() {
     <>
       {/* la lista primero: aqui se ve quien tiene acceso */}
       <ListaUsuarios tick={tick} />
+
+      {/* cuentas de ZuntoStore (solo quien lo administra) */}
+      <CuentasAdmin />
 
       {/* subida automatica a Dropi: mismo patrón que el reparto automatico */}
       <SubidaDropi />

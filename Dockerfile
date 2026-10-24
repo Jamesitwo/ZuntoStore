@@ -28,6 +28,7 @@ RUN chmod 755 /usr/local/bin/zuntostore-entrypoint
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PANEL_DIR=/app/panel \
+    DATA_DIR=/data \
     ENVIOS=/data/envios.json \
     INTENTOS=/data/intentos.jsonl \
     APIKEY_CONFIG=/data/config/apikey.json \

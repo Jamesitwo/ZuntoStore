@@ -16,6 +16,7 @@ ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     DROPI_CHROME=/usr/bin/chromium \
     DROPI_HEADLESS=1 \
+    DATA_DIR=/data \
     DROPI_PERFIL=/data/dropi-profile \
     HISTORIAL=/data/historial.jsonl \
     CONVERSACION=/data/conversacion.jsonl \

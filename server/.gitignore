@@ -25,3 +25,6 @@ config/apikey.json
 lucidbot-pedidos.json
 lucidbot-pedidos.json.tmp
 intentos.jsonl
+cuentas.json
+cuentas.json.tmp
+cuentas/
