@@ -228,3 +228,45 @@ test("oficina de Inter: si Dropi no muestra el selector, no se sube", async (t) 
     await p.close();
   }
 });
+
+test("oficina de Inter: con objetivo elige ESA entre varias", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  const p = await pagina(
+    paginaOficinas([
+      "COL/MEDELLIN/ANT/COL/OF. PRINC CL 30 A 65 B 59",
+      "PTO/MEDELLIN/ANT/COL/CALLE 96 #67-18",
+      "PTO/MEDELLIN/ANT/COL/KR 50 NO 39 67 R.O",
+    ]),
+  );
+  try {
+    const r = await nav.elegirOficinaInter(p, { objetivo: "Carrera 50 # 39-67" });
+    assert.equal(r.ok, true, r.detalle);
+    assert.equal(r.oficina, "PTO/MEDELLIN/ANT/COL/KR 50 NO 39 67 R.O");
+    assert.match(await p.locator(".elipsis").innerText(), /KR 50 NO 39 67/);
+  } finally {
+    await p.close();
+  }
+});
+
+test("oficina de Inter: objetivo que no esta en la lista -> una persona", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  const p = await pagina(paginaOficinas(["PTO/MEDELLIN/ANT/COL/CALLE 96 #67-18", "PTO/MEDELLIN/ANT/COL/KR 50 NO 39 67 R.O"]));
+  try {
+    const r = await nav.elegirOficinaInter(p, { objetivo: "Calle 10 # 5-20" });
+    assert.equal(r.ok, false);
+    assert.match(r.detalle, /no coincide con ninguna de las 2 oficinas/);
+  } finally {
+    await p.close();
+  }
+});
+
+test("oficina de Inter: objetivo sin direccion legible usa la regla de una sola", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  const p = await pagina(paginaOficinas(["PTO/SINCELEJO/SUC/COL/CRA 20 # 22-15"]));
+  try {
+    const r = await nav.elegirOficinaInter(p, { objetivo: "Oficina Interrapidisimo Sincelejo" });
+    assert.equal(r.ok, true, r.detalle);
+  } finally {
+    await p.close();
+  }
+});

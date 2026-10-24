@@ -37,6 +37,7 @@ export interface ConfigEnvio {
   envio: { maxPesos: number | null; maxPorcentaje: number | null };
   reglasProducto: Record<string, ReglaProducto>;
   oficinaInter: boolean;
+  detectarOficinaInter: boolean;
 }
 
 const numeroONull = (v: string): number | null => {
@@ -189,6 +190,24 @@ export function ReglasEnvio({ valor, onChange }: { valor: ConfigEnvio; onChange:
             Si la dirección dice «oficina Interrapidísimo» y Dropi muestra una sola oficina en esa
             ciudad, se elige y se sube. Con varias (o ninguna) lo sube una persona. Las oficinas de
             Coordinadora siempre van a mano.
+          </p>
+        </div>
+        <div className="field">
+          <label htmlFor="env-ofi-detectar">Detectar oficinas de Interrapidísimo</label>
+          <label className="switch" htmlFor="env-ofi-detectar">
+            <input
+              id="env-ofi-detectar"
+              type="checkbox"
+              checked={valor.detectarOficinaInter}
+              onChange={(e) => onChange({ ...valor, detectarOficinaInter: e.target.checked })}
+            />
+            <span className="switch-pista" aria-hidden="true" />
+            <span className="switch-texto">{valor.detectarOficinaInter ? "Activado" : "Apagado"}</span>
+          </label>
+          <p className="campo-ayuda">
+            Hay clientes que dan la dirección de una oficina de Inter sin decir «oficina». Antes de subir
+            se compara con las oficinas de Inter de esa ciudad: si coincide, va por Interrapidísimo a esa
+            oficina; si no, sigue por la transportadora normal (con seguro).
           </p>
         </div>
       </div>

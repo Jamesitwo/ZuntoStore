@@ -703,6 +703,31 @@ export function crearClienteInter(config, fetchImpl = globalThis.fetch) {
       return { ...base, pendiente: "listado" };
     },
 
+    /**
+     * TODAS las oficinas del municipio, esperando el listado (13-25 s la
+     * primera vez; luego sale de la misma cache de 1 h que /oficinas). Lo usa
+     * la subida para saber si la direccion del cliente es una oficina.
+     * -> { idCiudad, oficinas: [{id, nombre, direccion, barrio}] } o
+     *    { idCiudad: null, oficinas: [], msg }
+     */
+    async oficinasCompletas(params = {}) {
+      const r = await this.resolverMunicipio(params);
+      if (!r.idCiudad) return { idCiudad: null, oficinas: [], msg: r.msg ?? "municipio no encontrado en Inter" };
+      const clave = `inter:listado:${r.idCiudad}`;
+      let x = leer(clave);
+      if (x === undefined) {
+        x = await this.oficinasPorListado(r.idCiudad);
+        escribir(clave, x, x.oficinas?.length ? TTL_OFICINA : TTL_VACIO);
+      }
+      const oficinas = (x.oficinas ?? (x.oficina ? [x.oficina] : [])).map((o) => ({
+        id: o.id ?? null,
+        nombre: o.nombre ?? "",
+        direccion: o.direccion ?? "",
+        barrio: o.barrio ?? "",
+      }));
+      return { idCiudad: r.idCiudad, oficinas };
+    },
+
     /** El listado cacheado convertido en respuesta (mas dia y bodega). */
     async armarListado(consultado, idCiudad, guardado) {
       const [diaActual, bodega] = await Promise.all([

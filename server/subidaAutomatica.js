@@ -19,6 +19,7 @@ import { ErrorApi } from "./errores.js";
 import { ejecutarAgente, parsearPrecio, resumenDePedido } from "./agente.js";
 import { cambiarEstado } from "./estado.js";
 import { direccionConReferencias, recogeEnOficina } from "./direccionColombia.js";
+import { oficinaQueCoincide } from "./oficinasInter.js";
 
 const MAX_PROCESADOS = 3000;
 /**
@@ -110,6 +111,22 @@ export async function evaluarDireccion({ validador, minimo, direccion, referenci
 }
 
 /**
+ * ¿La direccion del cliente es la de una oficina de Interrapidisimo del
+ * municipio? Devuelve la oficina o null. Si Inter no responde, null (se sigue
+ * con el envio normal: no se frena un pedido por eso).
+ */
+export async function detectarOficinaInter({ buscar, direccion, ciudad, departamento, log = console }) {
+  if (!buscar || !direccion || !ciudad) return null;
+  try {
+    const r = await buscar({ ciudad, departamento });
+    return oficinaQueCoincide(direccion, r?.oficinas ?? []);
+  } catch (e) {
+    log.warn?.("[subida] no se pudieron revisar las oficinas de Inter:", e?.message ?? e);
+    return null;
+  }
+}
+
+/**
  * Plan de envio de un pedido: en que orden probar las transportadoras y el
  * tope de flete. El tope es el MENOR de los que apliquen:
  *   pesos del producto (o el general) y porcentaje del producto (o el
@@ -191,6 +208,8 @@ export function crearSubidaAutomatica({
   resolverUbicacion,
   resolverProductoDropi,
   validadorDireccion = null,
+  // ({ciudad, departamento}) -> {oficinas:[{nombre, direccion}]} de Inter
+  buscarOficinasInter = null,
 }) {
   let timer = null;
   let corriendo = false;
@@ -228,6 +247,9 @@ export function crearSubidaAutomatica({
     oficinaInter: false,
     // nota minima (0-100) de la direccion en el mapa para subir; 0 = no se mira
     minCalificacionDireccion: MIN_CALIFICACION_DEFECTO,
+    // si la direccion del cliente ES una oficina de Inter (aunque no lo diga),
+    // se manda a esa oficina por Inter en vez de Coordinadora a domicilio
+    detectarOficinaInter: true,
     // intentos fallidos antes de dejar el pedido para revision manual
     maxIntentos: 2,
     // tienda de LucidSales (idEmpresa) -> nombre exacto de la tienda en Dropi
@@ -661,6 +683,20 @@ export function crearSubidaAutomatica({
             }
           }
 
+          // ¿la direccion es una oficina de Inter aunque no diga "oficina"?
+          // Por Coordinadora a esa direccion se devolveria: va a esa oficina.
+          let oficinaDetectada = null;
+          if (!oficinaAuto && c.detectarOficinaInter !== false) {
+            oficinaDetectada = await detectarOficinaInter({
+              buscar: buscarOficinasInter,
+              direccion: direccionEnvio,
+              ciudad,
+              departamento: depto,
+              log,
+            });
+          }
+          const aOficina = oficinaAuto || Boolean(oficinaDetectada);
+
           // el link navegable del producto en Dropi (sale del Google Sheets):
           //   id de LucidSales -> idProductoDropi -> dropiLink
           const idProductoLucid = resumen?.productos?.[0]?.id;
@@ -689,7 +725,7 @@ export function crearSubidaAutomatica({
             Movil: resumen?.telefono,
             chatUrl: conv?.meta?.chatUrl ?? conv?.meta?.chat_url ?? conv?.meta?.inboxUrl ?? "",
           };
-          const plan = planEnvio(c, resumen, { oficina: oficinaAuto ? oficina : null });
+          const plan = planEnvio(c, resumen, { oficina: aOficina ? "Inter Rapidísimo" : null });
           let rNav;
           try {
             rNav = await dropiNav.subirPedido({
@@ -699,12 +735,15 @@ export function crearSubidaAutomatica({
               telefono: resumen?.telefono,
               // la direccion validada (normalizada o corregida por formato),
               // coma y las referencias del pedido (barrio, puntos de referencia)
-              direccion: oficinaAuto ? direccionEnvio : direccionConReferencias(direccionEnvio, resumen?.referencias),
+              direccion: aOficina ? direccionEnvio : direccionConReferencias(direccionEnvio, resumen?.referencias),
               departamento: depto,
               ciudad,
               transportadoras: plan.transportadoras,
               maxEnvio: plan.maxEnvio,
               oficinaInter: plan.oficinaInter,
+              // la oficina a elegir: la detectada, o la direccion que escribio
+              // junto a "oficina inter" (sin direccion: regla de una sola)
+              oficinaObjetivo: oficinaDetectada ? oficinaDetectada.direccion || oficinaDetectada.nombre : oficinaAuto ? resumen?.direccion : null,
               tienda: tiendaDropi,
               seguro: true,
               tipoPago: resumen?.tipoPago,
@@ -780,9 +819,10 @@ export function crearSubidaAutomatica({
             detalle.push({ id, accion: "error", detalle: rNav?.detalle ?? "Dropi no confirmó la creación" });
             continue;
           }
-          const textoEnvio = rNav.envio
-            ? `; ${rNav.envio.transportadora} $${Math.round(rNav.envio.precio ?? 0).toLocaleString("es-CO")}${rNav.envio.oficina ? ` (oficina ${rNav.envio.oficina})` : ""}`
-            : "";
+          const textoEnvio =
+            (rNav.envio
+              ? `; ${rNav.envio.transportadora} $${Math.round(rNav.envio.precio ?? 0).toLocaleString("es-CO")}${rNav.envio.oficina ? ` (oficina ${rNav.envio.oficina})` : ""}`
+              : "") + (oficinaDetectada ? "; la dirección del cliente es una oficina de Interrapidísimo" : "");
           let detalleFinal = c.dryRun
             ? `formulario preparado${textoEnvio}; seguro=${rNav.seguro}`
             : `Dropi #${rNav.idDropi ?? "confirmado"}${textoEnvio}; seguro=${rNav.seguro}`;
@@ -910,6 +950,7 @@ export function crearSubidaAutomatica({
         c.envio = { maxPesos: topePesos(patch.envio.maxPesos), maxPorcentaje: topePct(patch.envio.maxPorcentaje) };
       }
       if ("oficinaInter" in patch) c.oficinaInter = Boolean(patch.oficinaInter);
+      if ("detectarOficinaInter" in patch) c.detectarOficinaInter = Boolean(patch.detectarOficinaInter);
       if ("minCalificacionDireccion" in patch) {
         const n = Number(patch.minCalificacionDireccion);
         c.minCalificacionDireccion = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : MIN_CALIFICACION_DEFECTO;
@@ -979,6 +1020,12 @@ export function crearSubidaAutomatica({
     /** Plan de envio (transportadoras y tope) para la subida manual. */
     planEnvio(resumen, opciones) {
       return planEnvio(leer(), resumen, opciones);
+    },
+
+    /** ¿La direccion es una oficina de Inter? (subida manual; respeta el ajuste) */
+    async oficinaInterDeDireccion({ direccion, ciudad, departamento }) {
+      if (leer().detectarOficinaInter === false) return null;
+      return detectarOficinaInter({ buscar: buscarOficinasInter, direccion, ciudad, departamento, log });
     },
 
     /** Calificacion de la direccion con el minimo configurado (subida manual). */

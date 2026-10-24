@@ -69,6 +69,7 @@ function armar(overrides = {}) {
     resolverProductoDropi:
       overrides.resolverProductoDropi ?? (async (id) => `https://dropi.test/${id}`),
     validadorDireccion: overrides.validadorDireccion,
+    buscarOficinasInter: overrides.buscarOficinasInter,
   });
   // tienda de Dropi configurada por defecto (salvo que la prueba la quite)
   if (overrides.tiendasDropi !== null) {
@@ -991,5 +992,75 @@ test("a Dropi va la direccion, coma y las referencias del pedido", async () => {
   await s.tick({ forzar: true });
   assert.equal(subidos.length, 1);
   assert.equal(subidos[0].direccion, "Cra 92 # 78B-02, Barrio Robledo, casa de rejas blancas");
+  fs.rmSync(ruta, { force: true });
+});
+
+// ---------------------------------------------------------------------------
+// Direccion que en realidad es una oficina de Interrapidisimo
+
+test("la direccion es una oficina de Inter: va por Inter a ESA oficina", async () => {
+  const consultas = [];
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: { ...COMPLETO, Direccion: "Calle 30A # 65B-59" } }],
+    extraido: {
+      producto: "Taladro Inalambrico 68V", cantidad: 1, precioAcordado: 105690,
+      direccion: "Calle 30A # 65B-59", clienteConfirmo: true, entregaFutura: false, incertidumbre: [],
+    },
+    buscarOficinasInter: async (x) => {
+      consultas.push(x);
+      return { oficinas: [{ nombre: "COL/MEDELLIN/ANT/COL/OF. PRINC CL 30 A 65 B 59", direccion: "OF. PRINC CL 30 A 65 B 59" }] };
+    },
+  });
+  s.configurar({ automatico: true, dryRun: true, transportadoras: [5] });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1, s.ultimos(5)[0]?.detalle);
+  assert.deepEqual(subidos[0].transportadoras, [3]);
+  assert.equal(subidos[0].oficinaInter, true);
+  assert.equal(subidos[0].oficinaObjetivo, "OF. PRINC CL 30 A 65 B 59");
+  assert.equal(consultas[0].ciudad, "Medellin");
+  assert.match(s.ultimos(5)[0].detalle, /es una oficina de Interrapidísimo/);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("direccion normal (no es oficina): Coordinadora con seguro", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    buscarOficinasInter: async () => ({ oficinas: [{ nombre: "X", direccion: "OF. PRINC CL 30 A 65 B 59" }] }),
+  });
+  s.configurar({ automatico: true, dryRun: true, transportadoras: [5] });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.deepEqual(subidos[0].transportadoras, [5]);
+  assert.equal(subidos[0].oficinaInter, false);
+  assert.equal(subidos[0].seguro, true);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("si Inter no responde, se sigue con el envio normal (no se frena)", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    buscarOficinasInter: async () => {
+      throw new Error("Inter tardó demasiado");
+    },
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  assert.deepEqual(subidos[0].transportadoras, [5]);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("con la deteccion apagada no se consultan las oficinas", async () => {
+  let consultas = 0;
+  const { s, ruta } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    buscarOficinasInter: async () => (consultas++, { oficinas: [] }),
+  });
+  s.configurar({ automatico: true, dryRun: true, detectarOficinaInter: false });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.equal(consultas, 0);
   fs.rmSync(ruta, { force: true });
 });

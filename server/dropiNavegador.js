@@ -23,6 +23,7 @@
 // { requiereCaptcha: true }. No se resuelve, no se evade, no se falsea la
 // huella del dispositivo: eso lo tiene que hacer una persona.
 import { ErrorApi } from "./errores.js";
+import { claveCliente, oficinaQueCoincide } from "./oficinasInter.js";
 
 const DEFECTO_CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 
@@ -616,7 +617,7 @@ export function crearDropiNavegador(config = {}) {
    * la lista trae exactamente UNA oficina; con varias (o ninguna) lo hace una
    * persona.
    */
-  async function elegirOficinaInter(p) {
+  async function elegirOficinaInter(p, { objetivo = null } = {}) {
     const boton = p.locator('[data-cy="centro-servicio-interrapidisimo-field"]').first();
     const sinCentros = p.locator('[data-cy="order-create-client-no-centers-alert-dialog"]').first();
     let aparecio = false;
@@ -688,7 +689,25 @@ export function crearDropiNavegador(config = {}) {
       await p.waitForTimeout(500);
     }
     const oficinas = lista.opciones ?? [];
-    if (oficinas.length !== 1) {
+    // 1) con objetivo (la direccion del cliente ES una oficina, o la escribio
+    //    junto a "oficina inter"): la opcion con esa misma direccion
+    // 2) sin objetivo: solo si la lista trae UNA oficina
+    let elegida = null;
+    // un objetivo sin direccion legible ("Oficina Inter Sincelejo") no sirve
+    // para comparar: ahi manda la regla de una sola oficina
+    if (objetivo && claveCliente(objetivo)) {
+      elegida = oficinaQueCoincide(objetivo, oficinas);
+      if (!elegida) {
+        await p.keyboard.press("Escape").catch(() => {});
+        return {
+          ok: false,
+          oficinas,
+          detalle: `La dirección «${objetivo}» no coincide con ninguna de las ${oficinas.length} oficinas de Interrapidísimo que muestra Dropi: la elige una persona.`,
+        };
+      }
+    } else if (oficinas.length === 1) {
+      elegida = oficinas[0];
+    } else {
       await p.keyboard.press("Escape").catch(() => {});
       return {
         ok: false,
@@ -699,16 +718,29 @@ export function crearDropiNavegador(config = {}) {
           : `No se pudo leer la lista de oficinas de Interrapidísimo${lista.error ? ` (${lista.error})` : ""}.`,
       };
     }
+    // marca la opcion elegida (por su texto) y la pulsa
+    await p
+      .evaluate((texto) => {
+        const t = (el) => (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
+        document.querySelectorAll("[data-zs-oficina]").forEach((e) => e.removeAttribute("data-zs-oficina"));
+        const nodos = [
+          ...document.querySelectorAll('[data-cy^="centro-servicio-interrapidisimo-option-"]'),
+          ...document.querySelectorAll('dropi-select[data-cy="centro-servicio-interrapidisimo"] li, dropi-select[data-cy="centro-servicio-interrapidisimo"] [role="option"]'),
+        ];
+        const el = nodos.find((n) => t(n) === texto);
+        if (el) el.setAttribute("data-zs-oficina", "1");
+      }, elegida)
+      .catch(() => {});
     const opcion = p.locator('[data-zs-oficina="1"]').first();
     await opcion.click({ timeout: 5000 }).catch(() => {});
     await p.evaluate(() => document.querySelectorAll("[data-zs-oficina]").forEach((e) => e.removeAttribute("data-zs-oficina"))).catch(() => {});
     await p.waitForTimeout(700);
     const elegido = await textoBoton();
     const norm = (t) => String(t).replace(/\s+/g, " ").trim().toLowerCase();
-    if (!elegido || /selecciona/i.test(elegido) || !norm(oficinas[0]).includes(norm(elegido).slice(0, 20))) {
-      return { ok: false, oficinas, detalle: `Se intentó elegir la oficina «${oficinas[0]}» pero el campo muestra «${elegido || "vacío"}»; no se creó el pedido.` };
+    if (!elegido || /selecciona/i.test(elegido) || !norm(elegida).includes(norm(elegido).slice(0, 20))) {
+      return { ok: false, oficinas, detalle: `Se intentó elegir la oficina «${elegida}» pero el campo muestra «${elegido || "vacío"}»; no se creó el pedido.` };
     }
-    return { ok: true, oficina: oficinas[0], oficinas };
+    return { ok: true, oficina: elegida, oficinas };
   }
 
   /**
@@ -906,8 +938,8 @@ export function crearDropiNavegador(config = {}) {
     },
 
     /** Elige la oficina de Inter si hay una sola (se usa en pruebas). */
-    elegirOficinaInter(p) {
-      return elegirOficinaInter(p);
+    elegirOficinaInter(p, opciones) {
+      return elegirOficinaInter(p, opciones);
     },
 
     /** Elige la tienda en un formulario Crear Orden ya abierto (se usa en pruebas). */
@@ -956,6 +988,8 @@ export function crearDropiNavegador(config = {}) {
         .filter((x, i, a) => Number.isInteger(x) && x > 0 && a.indexOf(x) === i);
       const maxEnvio = Number(datos.maxEnvio) > 0 ? Number(datos.maxEnvio) : null;
       const oficinaInter = datos.oficinaInter === true;
+      // direccion de la oficina a elegir (si se sabe cual es)
+      const oficinaObjetivo = String(datos.oficinaObjetivo ?? "").trim() || null;
       const faltantes = [];
       if (!nombreCompleto) faltantes.push("nombre");
       if (!/^\d{10}$/.test(telefono)) faltantes.push("teléfono colombiano de 10 dígitos");
@@ -1105,7 +1139,7 @@ export function crearDropiNavegador(config = {}) {
       // 6.5) oficina de Interrapidisimo: solo si Dropi ofrece UNA
       let oficina = null;
       if (oficinaInter) {
-        const rOf = await elegirOficinaInter(p);
+        const rOf = await elegirOficinaInter(p, { objetivo: oficinaObjetivo });
         if (!rOf.ok) {
           return { ok: false, creado: false, oficinaHumano: true, oficinas: rOf.oficinas, envio, detalle: rOf.detalle };
         }

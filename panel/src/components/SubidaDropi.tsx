@@ -85,6 +85,7 @@ function normalizaConfig(c: any): {
     envio: { maxPesos: num(c?.envio?.maxPesos), maxPorcentaje: num(c?.envio?.maxPorcentaje) },
     reglasProducto: reglas,
     oficinaInter: c?.oficinaInter === true,
+    detectarOficinaInter: c?.detectarOficinaInter !== false,
     minCalificacionDireccion: Number.isFinite(Number(c?.minCalificacionDireccion))
       ? Math.max(0, Math.min(100, Number(c.minCalificacionDireccion)))
       : 70,
@@ -938,6 +939,7 @@ export function SubidaDropi() {
                 envio: v.envio,
                 reglasProducto: v.reglasProducto,
                 oficinaInter: v.oficinaInter,
+                detectarOficinaInter: v.detectarOficinaInter,
               }))
             }
           />

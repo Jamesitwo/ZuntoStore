@@ -152,6 +152,8 @@ export function crearServidor({
       lucidBotContactos,
       ruta: config.SUBIDA_AUTO,
       validadorDireccion: validador,
+      buscarOficinasInter: ({ ciudad, departamento }) =>
+        interCliente.oficinasCompletas?.({ municipio: ciudad, departamento }) ?? { oficinas: [] },
     });
   const CORS = {
     "Access-Control-Allow-Origin": config.CORS_ORIGIN,
@@ -850,9 +852,14 @@ export function crearServidor({
         const partes = String(resumen?.cliente ?? "").trim().split(/\s+/);
         // la linea del pedido: cantidad y precio de venta (lo que pago el cliente)
         const linea = resumen?.productos?.[0] ?? {};
+        // ¿la direccion es una oficina de Inter aunque no diga "oficina"?
+        const oficinaDetectada = oficinaAuto
+          ? null
+          : await subida.oficinaInterDeDireccion?.({ direccion: resumen?.direccion, ciudad, departamento: depto }).catch(() => null);
+        const aOficina = oficinaAuto || Boolean(oficinaDetectada);
         // transportadoras en orden y tope de flete (reglas del producto o
         // generales); si el cuerpo trae una transportadora fija, manda esa
-        const plan = subida.planEnvio?.(resumen, { oficina: oficinaAuto ? oficina : null }) ?? {
+        const plan = subida.planEnvio?.(resumen, { oficina: aOficina ? "Inter Rapidísimo" : null }) ?? {
           transportadoras: [5],
           maxEnvio: null,
           oficinaInter: false,
@@ -866,12 +873,13 @@ export function crearServidor({
           telefono: resumen?.telefono,
           email: cuerpo?.email,
           // direccion, coma y las referencias del pedido (barrio, puntos de referencia)
-          direccion: oficinaAuto ? resumen?.direccion : direccionConReferencias(resumen?.direccion, resumen?.referencias),
+          direccion: aOficina ? resumen?.direccion : direccionConReferencias(resumen?.direccion, resumen?.referencias),
           departamento: depto,
           ciudad,
           transportadoras,
           maxEnvio: plan.maxEnvio,
           oficinaInter: plan.oficinaInter,
+          oficinaObjetivo: oficinaDetectada ? oficinaDetectada.direccion || oficinaDetectada.nombre : oficinaAuto ? resumen?.direccion : null,
           tienda: tiendaDropi,
           conRecaudo: cuerpo?.conRecaudo,
           seguro: cuerpo?.insurance ?? config.DROPI_SEGURO,

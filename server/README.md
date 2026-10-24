@@ -381,6 +381,15 @@ automatica y la manual:
   tiene que decir oficina) y se sube con Inter **solo si Dropi muestra UNA
   oficina** en `centro-servicio-interrapidisimo`; con varias o ninguna queda
   `requiere-humano`. Las de Coordinadora siempre van a mano.
+- `detectarOficinaInter` (por defecto `true`): hay clientes que dan la
+  direccion de una oficina de Inter **sin decir "oficina"**. Antes de subir se
+  compara la direccion (tipo de via + numeros, sin importar como este escrita:
+  "Calle 30A # 65B-59" = "CL 30 A 65 B 59 R.O") con las oficinas de Inter del
+  municipio (`oficinasCompletas`, cache 1 h; la primera consulta por ciudad
+  tarda 13-25 s). Si coincide -> Interrapidisimo eligiendo **esa** oficina en
+  Dropi (si no aparece en la lista de Dropi, `requiere-humano`). Si no
+  coincide -> transportadora normal (Coordinadora con seguro). Si Inter no
+  responde, se sube normal.
 
 El flete se lee de la tarjeta de cada transportadora en Crear Orden. Si todas
 pasan el tope -> `envio-caro`; si ninguna esta disponible ->

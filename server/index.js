@@ -90,6 +90,9 @@ const subidaAuto = crearSubidaAutomatica({
   resolverProductoDropi,
   // calificacion de la direccion en el mapa antes de subir
   validadorDireccion,
+  // oficinas de Inter del municipio: si la direccion del cliente es una,
+  // el pedido va a esa oficina (por Coordinadora se devolveria)
+  buscarOficinasInter: ({ ciudad, departamento }) => inter.oficinasCompletas({ municipio: ciudad, departamento }),
 });
 // rentabilidad de las campanas de Meta: UN espacio por usuario del panel
 // (cada quien conecta su token, sus cuentas, sus productos y sus vinculos)
