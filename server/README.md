@@ -233,6 +233,10 @@ curl -X POST https://TU-DOMINIO/api/envios/estado \
 - `POST /api/envios/consultar {pedidos:[{id,idPedido,telefono,fecha}]}` (panel)
   y `GET /api/envios/ultimos` (admin) para revisar que esten llegando.
 - Se guarda en `ENVIOS` (`/data/envios.json` en Railway).
+- `GET /api/envios/pedidos?estado=EN%20TRANSITO|_con|_sin&page=&porPagina=`
+  (filtro «Envío (Lucid Bot)» del panel): revisa los ultimos 1.000 pedidos de
+  la tienda activa con la sesion del usuario (cache 3 min; `actualizar=1` la
+  vuelve a pedir) y devuelve solo los de ese estado, paginados.
 
 ### Historial
 

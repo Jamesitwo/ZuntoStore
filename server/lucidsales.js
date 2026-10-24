@@ -351,6 +351,15 @@ export function crearLucidDeSesion(config, token, fetchImpl = globalThis.fetch) 
     return datos ?? {};
   }
   return {
+    /** Lista de pedidos con la sesion del usuario (misma ruta que el panel). */
+    async listarPedidos({ idEmpresa, page = 1, itemsPerPage = 100, search = "", filtros = [] }) {
+      const q =
+        `?idEmpresa=${encodeURIComponent(String(idEmpresa ?? ""))}` +
+        `&page=${page}&itemsPerPage=${itemsPerPage}` +
+        `&search=${encodeURIComponent(search)}` +
+        `&filters=${encodeURIComponent(JSON.stringify(filtros))}`;
+      return llamar(`/pedidos/get-pedidos-light-data${q}`, { method: "GET" });
+    },
     async productosTienda(idEmpresa) {
       const id = Number(idEmpresa);
       const datos = await llamar("/productos/getproductos", {

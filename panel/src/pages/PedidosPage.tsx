@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { errMsg, pickArray } from "../api/client";
@@ -164,6 +164,15 @@ export function PedidosPage() {
   const [filtroAsign, setFiltroAsign] = useState("");
   // estado del envio que manda Lucid Bot (filtro local, como el de etiqueta)
   const [filtroEnvio, setFiltroEnvio] = useState("");
+  const [recargaEnvio, setRecargaEnvio] = useState(0);
+  // "Actualizar" vale para UNA carga (no para cada cambio de pagina)
+  const forzarEnvio = useRef(false);
+  const [infoEnvio, setInfoEnvio] = useState<null | {
+    revisados: number;
+    totalTienda: number;
+    total: number;
+    actualizado: string;
+  }>(null);
   const [estadosBot, setEstadosBot] = useState<Array<{ estado: string; avisos: number }>>([]);
   useEffect(() => {
     void backendSuave<{ ok: boolean; estados?: Array<{ estado: string; avisos: number }> }>("/api/envios/estados").then(
@@ -230,8 +239,22 @@ export function PedidosPage() {
     // `&tel=` (viene del recuento de Clientes) solo recorta mientras el filtro
     // de cliente sigue siendo el que trajo ese telefono; si el usuario lo cambia
     // o lo limpia, la lista vuelve a ser la del filtro Cliente tal cual.
-    pedidos
-      .list({ idEmpresa, page, itemsPerPage, search, filters: filtersJson })
+    // Con el filtro de envio (Lucid Bot) la lista la arma NUESTRO servidor:
+    // revisa todos los pedidos recientes de la tienda, no solo esta pagina.
+    const actualizar = forzarEnvio.current;
+    forzarEnvio.current = false;
+    const carga: Promise<any> = filtroEnvio
+      ? backend<any>(
+          `/api/envios/pedidos?estado=${encodeURIComponent(filtroEnvio)}&page=${page}&porPagina=${itemsPerPage}${
+            actualizar ? "&actualizar=1" : ""
+          }`,
+        ).then((r) => {
+          if (!cancel) setInfoEnvio(r);
+          return { pedidos: r?.pedidos ?? [], totalRecords: r?.total ?? 0, numPages: r?.numPages ?? 1 };
+        })
+      : pedidos.list({ idEmpresa, page, itemsPerPage, search, filters: filtersJson });
+    if (!filtroEnvio) setInfoEnvio(null);
+    carga
       .then((res: any) => {
         if (cancel) return;
         let filas = Array.isArray(res?.pedidos) ? res.pedidos : [];
@@ -259,7 +282,7 @@ export function PedidosPage() {
     return () => {
       cancel = true;
     };
-  }, [idEmpresa, page, itemsPerPage, search, filtersJson]);
+  }, [idEmpresa, page, itemsPerPage, search, filtersJson, filtroEnvio, recargaEnvio]);
 
   // Asignaciones de esta tienda (backend propio; si no responde, la lista
   // funciona igual y solo no se muestra la columna Asignado).
@@ -342,16 +365,8 @@ export function PedidosPage() {
         return Boolean(a) && quien === filtroAsign;
       });
     }
-    if (filtroEnvio) {
-      out = out.filter((p) => {
-        const e = enviosBot[String(p.id ?? p.idPedido)];
-        if (filtroEnvio === "_sin") return !e;
-        if (filtroEnvio === "_con") return Boolean(e);
-        return Boolean(e) && normalizarEstado(e.estado) === filtroEnvio;
-      });
-    }
     return out;
-  }, [rows, filtroEtiqueta, et, filtroAsign, asig, miCorreo, filtroEnvio, enviosBot]);
+  }, [rows, filtroEtiqueta, et, filtroAsign, asig, miCorreo]);
 
   /** Texto del filtro de asignacion para avisos ("asignados a Ana", ...). */
   const etiquetaFiltroAsign =
@@ -840,11 +855,21 @@ export function PedidosPage() {
                 de esta pagina.
               </p>
             )}
-            {filtroEnvio && (
+            {filtroEnvio && infoEnvio && (
               <p className="muted small" style={{ marginTop: 0 }}>
-                Envío (Lucid Bot) aplicado: {rowsVisibles.length} de {rows.length} pedidos de esta página. Es un
-                filtro local: LucidSales no conoce estos estados, así que se filtra lo que trajo esta página (sube
-                «Por página» para ver más).
+                Envío (Lucid Bot): {infoEnvio.total} pedido(s) con ese estado entre los últimos{" "}
+                {infoEnvio.revisados.toLocaleString("es-CO")} pedidos de la tienda
+                {infoEnvio.totalTienda > infoEnvio.revisados
+                  ? ` (de ${infoEnvio.totalTienda.toLocaleString("es-CO")} en total)`
+                  : ""}
+                . Con este filtro no se aplican la búsqueda ni los filtros de LucidSales. Lista de pedidos de{" "}
+                {haceCuanto(infoEnvio.actualizado) || "hace un momento"} ·{" "}
+                <button type="button" className="btn-link" onClick={() => {
+                    forzarEnvio.current = true;
+                    setRecargaEnvio((n) => n + 1);
+                  }}>
+                  Actualizar
+                </button>
               </p>
             )}
             {filtroAsign && (

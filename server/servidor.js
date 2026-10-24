@@ -62,6 +62,7 @@ import { crearDropiNavegador } from "./dropiNavegador.js";
 import { crearSubidaAutomatica } from "./subidaAutomatica.js";
 import { faltantesDeConfig } from "./config.js";
 import { crearEstadosEnvio } from "./estadosEnvio.js";
+import { crearPedidosPorEnvio } from "./pedidosPorEnvio.js";
 import { crearApiKeys } from "./apiKeys.js";
 import { crearVerificadorSesion, tienePermiso, tieneTienda } from "./sesionPanel.js";
 import { direccionConReferencias, recogeEnOficina } from "./direccionColombia.js";
@@ -131,6 +132,7 @@ export function crearServidor({
   const claves = apiKeys ?? crearApiKeys({ claveEnv: config.API_KEY });
   // estado del envio que manda Lucid Bot (sin instancia: solo memoria)
   const envios = estadosEnvio ?? crearEstadosEnvio({ ruta: null });
+  const buscadorEnvios = crearPedidosPorEnvio({ envios });
   // acceso del panel: sesion real de LucidSales (x-token + x-tienda)
   const sesiones = verificarSesion ?? crearVerificadorSesion({ base: config.LUCID_BASE });
   const interCliente = inter ?? crearClienteInter(config);
@@ -624,6 +626,29 @@ export function crearServidor({
       autorizar(req);
       const cuerpo = await leerCuerpo(req);
       json(res, 200, { ok: true, eventos: envios.historial(cuerpo ?? {}) });
+      return;
+    }
+
+    // ---- GET /api/envios/pedidos?estado=&page=&porPagina=&actualizar=1 ----
+    // Filtro del panel sobre TODOS los pedidos recientes de la tienda activa
+    // (con la sesion de LucidSales del usuario, nunca la del servidor).
+    if (req.method === "GET" && ruta === "/api/envios/pedidos") {
+      autorizar(req);
+      const acceso = req.__acceso;
+      const tienda = tiendaDe(req) ?? config.LUCID_TIENDA;
+      if (!tienda) throw new ErrorApi(400, "Falta la tienda (x-tienda)");
+      const lucid = acceso?.interna ? cliente : crearLucidDeSesion(config, req.headers["x-token"]);
+      const estado = String(url.searchParams.get("estado") ?? "").trim();
+      if (!estado) throw new ErrorApi(400, "Falta el estado a filtrar");
+      const r = await buscadorEnvios.buscar({
+        lucid,
+        tienda,
+        filtro: estado,
+        page: url.searchParams.get("page"),
+        porPagina: url.searchParams.get("porPagina"),
+        forzar: url.searchParams.get("actualizar") === "1",
+      });
+      json(res, 200, { ok: true, ...r });
       return;
     }
 
