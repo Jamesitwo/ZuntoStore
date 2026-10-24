@@ -21,6 +21,7 @@ import { crearPanelEstatico } from "./panelEstatico.js";
 import { crearEstadosEnvio } from "./estadosEnvio.js";
 import { crearApiKeys } from "./apiKeys.js";
 import { crearPedidosLucidBot } from "./pedidosLucidBot.js";
+import { crearRegistroIntentos } from "./registroIntentos.js";
 import { crearProductosDropi } from "./productosDropi.js";
 import { crearLucidBotContactos } from "./lucidbotContactos.js";
 import { crearServidor } from "./servidor.js";
@@ -76,6 +77,8 @@ const resolverProductoDropi = async (idProducto) => {
 };
 // subida automatica: revisa pedidos nuevos y los sube solo si todo calza
 const extraerLLM = crearExtractorLLM(config);
+// historial de intentos de subida por pedido (automaticos y manuales)
+const registroIntentos = crearRegistroIntentos({ ruta: config.INTENTOS });
 const subidaAuto = crearSubidaAutomatica({
   cliente,
   conversacion,
@@ -97,6 +100,7 @@ const subidaAuto = crearSubidaAutomatica({
   // oficinas de Inter del municipio: si la direccion del cliente es una,
   // el pedido va a esa oficina (por Coordinadora se devolveria)
   buscarOficinasInter: ({ ciudad, departamento }) => inter.oficinasCompletas({ municipio: ciudad, departamento }),
+  intentos: registroIntentos,
 });
 // rentabilidad de las campanas de Meta: UN espacio por usuario del panel
 // (cada quien conecta su token, sus cuentas, sus productos y sus vinculos)
@@ -145,6 +149,7 @@ const server = crearServidor({
   estadosEnvio: crearEstadosEnvio({ ruta: config.ENVIOS }),
   apiKeys,
   pedidosLucidBot,
+  registroIntentos,
 });
 
 if (config.NODE_ENV === "production") {

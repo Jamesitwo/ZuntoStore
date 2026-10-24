@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { errMsg } from "../api/client";
 import { backend, backendSuave, cabecerasBackend } from "../api/backend";
 import { AnalisisPedido } from "./AnalisisPedido";
+import { IntentosSubida } from "./IntentosSubida";
 import { useToast } from "./Toast";
 import { ErrorBanner, Spinner } from "./ui";
 
@@ -269,6 +270,8 @@ export function SubirPedidoDropi({
       </p>
 
       <VeredictoAutomatico id={id} recarga={recargaVeredicto} />
+
+      <IntentosSubida id={id} recarga={recargaVeredicto} />
 
       {conv === null ? (
         <p className="muted small">

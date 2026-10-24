@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { crearRegistroIntentos } from "../registroIntentos.js";
 import { crearSubidaAutomatica } from "../subidaAutomatica.js";
 
 /** Cliente de LucidSales falso. */
@@ -70,6 +71,7 @@ function armar(overrides = {}) {
       overrides.resolverProductoDropi ?? (async (id) => `https://dropi.test/${id}`),
     validadorDireccion: overrides.validadorDireccion,
     buscarOficinasInter: overrides.buscarOficinasInter,
+    intentos: overrides.intentos,
   });
   // tienda de Dropi configurada por defecto (salvo que la prueba la quite)
   if (overrides.tiendasDropi !== null) {
@@ -1074,5 +1076,60 @@ test("cada pedido tratado queda marcado con su tienda de LucidSales", async () =
   await s.tick({ forzar: true });
   const reg = JSON.parse(fs.readFileSync(ruta, "utf8")).procesados["1"];
   assert.ok(Number.isFinite(reg.tienda) && reg.tienda > 0, JSON.stringify(reg).slice(0, 200));
+  fs.rmSync(ruta, { force: true });
+});
+
+
+// ---------------------------------------------------------------------------
+// Historial de intentos (transparencia)
+
+test("cada intento queda con el razonamiento de la IA y la validacion de la direccion", async () => {
+  const intentos = crearRegistroIntentos();
+  const { s, ruta } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    extraido: {
+      producto: "Taladro Inalambrico 68V", cantidad: 1, precioAcordado: 105690, direccion: "Carrera 92 #78b-02",
+      clienteConfirmo: true, entregaFutura: false, incertidumbre: [],
+      razonamiento: "El cliente pidió un taladro a 105.690 y confirmó con un sí.",
+    },
+    validadorDireccion: validadorFalso({
+      veredicto: "valida", resumen: "Existe en el mapa.", avisos: [], original: "Carrera 92 #78b-02",
+      calificacion: { puntos: 100, verificada: true, partes: [{ concepto: "Formato", puntos: 40, max: 40 }] },
+      formato: { ok: true, detalle: "Carrera 92 # 78B-02" },
+      mapa: { veredicto: "exacta", detalle: "Google la ubica", mapa: "https://maps.google.com/?q=1", formateada: "Cra. 92 #78b-02" },
+    }),
+    intentos,
+  });
+  s.configurar({ automatico: true, dryRun: true, minCalificacionDireccion: 70 });
+  s.detener();
+  await s.tick({ forzar: true });
+  const [it] = intentos.dePedido("1");
+  assert.equal(it.origen, "automatica");
+  assert.equal(it.accion, "preparado");
+  assert.equal(it.dryRun, true);
+  assert.match(it.analisis.extraido.razonamiento, /taladro/);
+  assert.equal(it.analisis.accion, "subir");
+  assert.ok(it.analisis.checks.some((c) => c.campo === "direccionMapa"));
+  assert.equal(it.direccion.puntos, 100);
+  assert.equal(it.direccion.minimo, 70);
+  assert.equal(it.direccion.mapa.enlace, "https://maps.google.com/?q=1");
+  assert.deepEqual(it.envio.transportadoras, [5]);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("un pedido frenado que se revisa cada vuelta no llena el historial", async () => {
+  const intentos = crearRegistroIntentos();
+  const { s, ruta } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    extraido: { producto: "Taladro Inalambrico 68V", cantidad: 1, precioAcordado: 105690, direccion: "Carrera 92 #78b-02", clienteConfirmo: false, entregaFutura: false, incertidumbre: [] },
+    intentos,
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  s.detener();
+  for (let i = 0; i < 5; i++) await s.tick({ forzar: true });
+  // intento 1 frenado, intento 2 agota -> revision; despues ya no se mira
+  const lista = intentos.dePedido("1");
+  assert.deepEqual(lista.map((x) => x.accion), ["requiere-revision", "frenado"]);
+  assert.match(lista[1].detalle, /intento 1 de 2/);
   fs.rmSync(ruta, { force: true });
 });

@@ -59,7 +59,7 @@ import { crearConfigLLM } from "./llmConfig.js";
 import { ejecutarAgente, resumenDePedido } from "./agente.js";
 import { crearClienteDropi, armarPedidoDropi } from "./dropi.js";
 import { crearDropiNavegador, DIRECCION_OFICINA_INTER } from "./dropiNavegador.js";
-import { crearSubidaAutomatica } from "./subidaAutomatica.js";
+import { crearSubidaAutomatica, resumirAnalisis } from "./subidaAutomatica.js";
 import { faltantesDeConfig } from "./config.js";
 import { crearEstadosEnvio } from "./estadosEnvio.js";
 import { crearPedidosPorEnvio } from "./pedidosPorEnvio.js";
@@ -127,6 +127,7 @@ export function crearServidor({
   estadosEnvio = null,
   apiKeys = null,
   pedidosLucidBot = null,
+  registroIntentos = null,
 }) {
   // clave de integraciones: la de la variable API_KEY y/o la generada en el panel
   const claves = apiKeys ?? crearApiKeys({ claveEnv: config.API_KEY });
@@ -183,6 +184,38 @@ export function crearServidor({
   };
 
   function json(res, status, datos) {
+    // subida manual: el resultado queda en el historial de intentos del pedido
+    const intento = res.__intento;
+    if (intento && registroIntentos) {
+      delete res.__intento;
+      try {
+        const motivos = Array.isArray(datos?.motivos)
+          ? datos.motivos.map((m) => (m?.campo ? `${m.campo}: ${m.detalle ?? ""}` : String(m?.detalle ?? m))).join("; ")
+          : "";
+        const accion = datos?.subido
+          ? "subido"
+          : status === 202
+            ? "resultado-incierto"
+            : datos?.requiereLogin
+              ? "requiere-login"
+              : datos?.requiereCaptcha
+                ? "requiere-captcha"
+                : datos?.ok && intento.dryRun
+                  ? "preparado"
+                  : status === 409
+                    ? "frenado"
+                    : "error";
+        if (!datos?.ocupado) {
+          registroIntentos.registrar({
+            ...intento,
+            accion,
+            detalle: String(datos?.detalle || motivos || datos?.msg || datos?.motivo || "").slice(0, 1600),
+          });
+        }
+      } catch (e) {
+        console.warn("[intentos] no se pudo guardar el intento manual:", e?.message ?? e);
+      }
+    }
     const contexto = res.__notificacionLucidBot;
     if (contexto && lucidBotContactos?.notificar) {
       delete res.__notificacionLucidBot;
@@ -333,7 +366,7 @@ export function crearServidor({
     [/^\/api\/interrapidisimo\//, null],
     [/^\/api\/pedidos\/[^/]+\/(estado|conversacion|validar|subir)$/, "2"],
     [/^\/api\/pedidos\/[^/]+\/direccion(\/validar)?$/, "2"],
-    [/^\/api\/subida\/pedido\/[^/]+$/, "2"],
+    [/^\/api\/subida\/pedido\/[^/]+(\/intentos)?$/, "2"],
     [/^\/api\/historial$/, "2"],
     [/^\/api\/envios\/ultimos$/, "8"],
     [/^\/api\/envios\//, "2"],
@@ -594,6 +627,15 @@ export function crearServidor({
       return;
     }
 
+    // ---- GET /api/subida/pedido/:id/intentos (historial de intentos) ----
+    const verIntentos = ruta.match(/^\/api\/subida\/pedido\/([^/]+)\/intentos$/);
+    if (req.method === "GET" && verIntentos) {
+      autorizar(req);
+      const id = decodeURIComponent(verIntentos[1]);
+      json(res, 200, { ok: true, id, intentos: registroIntentos?.dePedido(id) ?? [] });
+      return;
+    }
+
     // ---- POST /api/envios/estado  (Lucid Bot -> aqui) ----
     // Solo integraciones con x-api-key: un usuario del panel no inventa estados.
     if (req.method === "POST" && ruta === "/api/envios/estado") {
@@ -800,8 +842,18 @@ export function crearServidor({
         return;
       }
 
+      // desde aqui es un intento nuevo: su resultado va al historial del pedido
+      res.__intento = {
+        pedido: id,
+        clave: `${new Date().toISOString()}:${id}`,
+        origen: "manual",
+        usuario: usuarioDe(req),
+        dryRun: cuerpo?.dryRun === true,
+      };
       const pedidoLucid = await cliente.obtenerPedido(id, tiendaDe(req));
       res.__notificacionLucidBot.pedido = pedidoLucid;
+      res.__intento.numero = pedidoLucid?.idPedido ?? null;
+      res.__intento.tienda = Number(pedidoLucid?.idEmpresa) || null;
       const resumen = resumenDePedido(pedidoLucid);
       // recoge en oficina: Coordinadora siempre a mano; Inter solo si esta
       // encendida la opcion (y Dropi ofrece UNA oficina)
@@ -840,6 +892,7 @@ export function crearServidor({
 
       // 1) el agente decide
       const r = await ejecutarAgente({ resumen, mensajes, extraer, oficina: oficinaAuto ? oficina : null });
+      if (res.__intento) res.__intento.analisis = resumirAnalisis(r);
 
       // 2) si frena, NO se sube nada
       if (r.accion !== "subir") {
@@ -967,6 +1020,12 @@ export function crearServidor({
           } catch (e) {
             console.warn("[direccion] no se pudo calificar:", e?.message ?? e);
           }
+          if (ev && res.__intento) {
+            res.__intento.direccion = ev.validacion ?? null;
+            if (res.__intento.analisis) {
+              res.__intento.analisis.checks = [...(res.__intento.analisis.checks ?? []), ev.check];
+            }
+          }
           if (ev && !ev.ok) {
             if (cuerpo?.dryRun !== true) subida.registrarResultado?.(id, "direccion-invalida", ev.check.detalle);
             json(res, 409, {
@@ -1003,6 +1062,14 @@ export function crearServidor({
         };
         const transportadoras =
           cuerpo?.transportadoraId && !plan.oficinaInter ? [Number(cuerpo.transportadoraId)] : plan.transportadoras;
+        if (res.__intento) {
+          if (oficinaDetectada) {
+            res.__intento.oficina = { como: "detectada", nombre: oficinaDetectada.nombre ?? null, direccion: oficinaDetectada.direccion ?? null };
+          } else if (oficinaAuto) {
+            res.__intento.oficina = { como: "cliente", direccion: resumen?.direccion ?? null };
+          }
+          res.__intento.envio = { transportadoras, tope: plan.maxEnvio ?? null, motivoTope: plan.motivoTope ?? null };
+        }
         const rNav = await dropiNav.subirPedido({
           productoUrl,
           nombre: partes[0] ?? "",
@@ -1031,6 +1098,10 @@ export function crearServidor({
             : [{ id: linea.id, cantidad: linea.cantidad, precio: linea.precio }],
           soloPreparar: cuerpo?.dryRun === true,
         });
+        if (res.__intento) {
+          if (rNav?.envio) res.__intento.envio = { ...res.__intento.envio, elegida: rNav.envio };
+          if (rNav?.idDropi) res.__intento.dropi = { id: rNav.idDropi };
+        }
 
         // el navegador esta ocupado con otra subida: no es un fallo del pedido,
         // asi que no se avisa a Lucid Bot ni se registra nada

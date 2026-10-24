@@ -22,3 +22,4 @@ package-lock.json
 !server/package-lock.json
 server/envios.json*
 server/lucidbot-pedidos.json*
+server/intentos.jsonl

@@ -21,6 +21,7 @@ ENV NODE_ENV=production \
     CONVERSACION=/data/conversacion.jsonl \
     SUBIDA_AUTO=/data/subidaAutomatica.json \
     ENVIOS=/data/envios.json \
+    INTENTOS=/data/intentos.jsonl \
     APIKEY_CONFIG=/data/config/apikey.json \
     LUCIDBOT_PEDIDOS=/data/lucidbot-pedidos.json \
     LUCIDBOT_CONTACTOS_CONFIG=/data/config/lucidbot-contactos.json \

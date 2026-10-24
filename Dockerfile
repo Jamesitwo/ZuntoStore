@@ -29,6 +29,7 @@ ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PANEL_DIR=/app/panel \
     ENVIOS=/data/envios.json \
+    INTENTOS=/data/intentos.jsonl \
     APIKEY_CONFIG=/data/config/apikey.json \
     LUCIDBOT_PEDIDOS=/data/lucidbot-pedidos.json \
     DROPI_CHROME=/usr/bin/chromium \

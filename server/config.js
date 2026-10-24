@@ -56,6 +56,8 @@ export function cargarConfig(env = process.env) {
     PANEL_DIR: String(g("PANEL_DIR", "")).trim(),
     /** estados de envio que manda Lucid Bot */
     ENVIOS: String(g("ENVIOS", path.join(dir, "envios.json"))),
+    /** historial de intentos de subida a Dropi (JSONL) */
+    INTENTOS: String(g("INTENTOS", path.join(dir, "intentos.jsonl"))),
     /** clave de la API generada desde el panel (solo su huella) */
     APIKEY_CONFIG: String(g("APIKEY_CONFIG", path.join(dir, "config", "apikey.json"))),
     /** pedidos cuyo id ya se mando a Lucid Bot */

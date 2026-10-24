@@ -22,6 +22,7 @@ Campos exactos:
 - "entregaFutura": true si el cliente pidió que se entregue/reciba en una fecha posterior a hoy o pidió aplazarla; false si no pidió una fecha futura; null si no se puede determinar.
 - "fechaEntregaSolicitada": fecha o expresión de fecha solicitada por el cliente (string; "" si no existe).
 - "incertidumbre": arreglo de strings con lo que no quedo claro.
+- "razonamiento": 2 o 3 frases en español que expliquen lo que entendiste del chat (que pidio el cliente, a que precio, si confirmo y por que lo crees). Solo lo que dice el chat.
 - "direccionEnvio": analisis de la DIRECCION DEL PEDIDO (la que te paso aparte, no la del chat). Es un objeto:
   {"esNomenclatura": true|false, "formato": "via"|"manzana", "tipoVia": "", "via": "", "cruce": "", "placa": "", "supermanzana": "", "manzana": "", "casa": "", "lote": "", "complemento": "", "barrio": "", "motivo": ""}
   Hay DOS formatos validos en Colombia:
@@ -86,6 +87,7 @@ function normalizarSalida(v) {
     entregaFutura: typeof o.entregaFutura === "boolean" ? o.entregaFutura : null,
     fechaEntregaSolicitada: typeof o.fechaEntregaSolicitada === "string" ? o.fechaEntregaSolicitada.trim() : "",
     incertidumbre: Array.isArray(o.incertidumbre) ? o.incertidumbre.map(String) : [],
+    razonamiento: typeof o.razonamiento === "string" ? o.razonamiento.trim().slice(0, 800) : "",
     // la IA solo descompone la direccion: la valida el codigo (direccionColombia.js)
     direccionEnvio:
       o.direccionEnvio && typeof o.direccionEnvio === "object"

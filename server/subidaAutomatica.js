@@ -82,12 +82,14 @@ export async function evaluarDireccion({ validador, minimo, direccion, referenci
   const r = await validador.validar({ direccion, referencias, ciudad, departamento });
   const nota = r?.calificacion;
   if (!nota) return null; // oficina: no aplica
+  const validacion = resumirValidacion(r, min);
   const enlace = r.mapa?.mapa ? ` · ${r.mapa.mapa}` : "";
   if (!nota.verificada) {
     return {
       ok: true,
       calificacion: nota.puntos,
       direccion,
+      validacion,
       check: {
         campo: "direccionMapa",
         ok: true,
@@ -102,6 +104,7 @@ export async function evaluarDireccion({ validador, minimo, direccion, referenci
     ok,
     calificacion: nota.puntos,
     direccion: final,
+    validacion,
     check: {
       campo: "direccionMapa",
       ok,
@@ -191,7 +194,37 @@ export function resumirAnalisis(r) {
       entregaFutura: e.entregaFutura ?? null,
       fechaEntregaSolicitada: corto(e.fechaEntregaSolicitada, 60),
       incertidumbre: (e.incertidumbre ?? []).slice(0, 5).map((x) => corto(x, 160)),
+      razonamiento: corto(e.razonamiento, 800),
     },
+    // lo que el codigo decidio con lo que leyo la IA
+    accion: r.accion ?? null,
+  };
+}
+
+/** Todo lo que el validador dijo de la direccion (para el historial de intentos). */
+export function resumirValidacion(r, minimo) {
+  if (!r) return null;
+  const n = r.calificacion ?? null;
+  return {
+    original: r.original ?? null,
+    veredicto: r.veredicto ?? null,
+    resumen: r.resumen ?? "",
+    puntos: n?.puntos ?? null,
+    minimo: Number(minimo) || null,
+    verificada: n?.verificada ?? null,
+    partes: (n?.partes ?? []).map((x) => ({ concepto: x.concepto, puntos: x.puntos, max: x.max })),
+    formato: r.formato ? { ok: Boolean(r.formato.ok), detalle: String(r.formato.detalle ?? "").slice(0, 300) } : null,
+    mapa: r.mapa
+      ? {
+          veredicto: r.mapa.veredicto ?? null,
+          detalle: String(r.mapa.detalle ?? "").slice(0, 300),
+          formateada: r.mapa.formateada ?? null,
+          enlace: r.mapa.mapa ?? null,
+          sinCobertura: Boolean(r.mapa.sinCobertura),
+        }
+      : null,
+    sugerida: r.sugerida ?? null,
+    avisos: (r.avisos ?? []).slice(0, 5),
   };
 }
 
@@ -211,6 +244,8 @@ export function crearSubidaAutomatica({
   validadorDireccion = null,
   // ({ciudad, departamento}) -> {oficinas:[{nombre, direccion}]} de Inter
   buscarOficinasInter = null,
+  // historial de intentos por pedido (transparencia en el panel)
+  intentos = null,
 }) {
   let timer = null;
   let corriendo = false;
@@ -476,6 +511,7 @@ export function crearSubidaAutomatica({
       let detenido = null;
       const agotados = [];
       const invalidas = [];
+      const claveVuelta = new Date().toISOString();
       vueltaTiendas: for (const idEmpresa of tiendas) {
         const r = await cliente.listarPedidos({
           idEmpresa,
@@ -500,8 +536,24 @@ export function crearSubidaAutomatica({
             nombre: [p?.Nombre, p?.Apellido].filter(Boolean).join(" ").trim(),
           };
           let analisisActual = null;
+          // lo que se va sabiendo de este intento (para el historial)
+          const intento = { origen: "automatica", dryRun: c.dryRun === true };
           const marcarP = (accion, det) => {
             const e = marcar(c, id, accion, det, { tienda: Number(idEmpresa) || null, cliente: { ...contacto }, ...(analisisActual ? { analisis: analisisActual } : {}) });
+            try {
+              intentos?.registrar({
+                pedido: id,
+                numero: p?.idPedido ?? null,
+                tienda: Number(idEmpresa) || null,
+                clave: `${claveVuelta}:${id}`,
+                ...intento,
+                accion: e?.accion ?? accion,
+                detalle: e?.detalle ?? String(det ?? ""),
+                analisis: analisisActual,
+              });
+            } catch (err) {
+              log.warn?.("[subida] no se pudo guardar el intento:", err?.message ?? err);
+            }
             if (e?.accion === "requiere-revision" && accion !== "requiere-revision") {
               agotados.push({ id, detalle: e.detalle, contacto: { ...contacto } });
             }
@@ -677,6 +729,7 @@ export function crearSubidaAutomatica({
               log.warn?.("[subida] no se pudo calificar la dirección:", e?.message ?? e);
             }
             if (ev) {
+              intento.direccion = ev.validacion ?? null;
               if (analisisActual) analisisActual.checks = [...(analisisActual.checks ?? []), ev.check];
               if (!ev.ok) {
                 marcarP("direccion-invalida", ev.check.detalle);
@@ -702,6 +755,15 @@ export function crearSubidaAutomatica({
             });
           }
           const aOficina = oficinaAuto || Boolean(oficinaDetectada);
+          if (oficinaDetectada) {
+            intento.oficina = {
+              como: "detectada",
+              nombre: oficinaDetectada.nombre ?? null,
+              direccion: oficinaDetectada.direccion ?? null,
+            };
+          } else if (oficinaAuto) {
+            intento.oficina = { como: "cliente", direccion: resumen?.direccion ?? null };
+          }
 
           // el link navegable del producto en Dropi (sale del Google Sheets):
           //   id de LucidSales -> idProductoDropi -> dropiLink
@@ -732,6 +794,11 @@ export function crearSubidaAutomatica({
             chatUrl: conv?.meta?.chatUrl ?? conv?.meta?.chat_url ?? conv?.meta?.inboxUrl ?? "",
           };
           const plan = planEnvio(c, resumen, { oficina: aOficina ? "Inter Rapidísimo" : null });
+          intento.envio = {
+            transportadoras: plan.transportadoras,
+            tope: plan.maxEnvio ?? null,
+            motivoTope: plan.motivoTope ?? null,
+          };
           let rNav;
           try {
             rNav = await dropiNav.subirPedido({
@@ -797,6 +864,8 @@ export function crearSubidaAutomatica({
             );
             break vueltaTiendas;
           }
+          if (rNav?.envio) intento.envio = { ...intento.envio, elegida: rNav.envio };
+          if (rNav?.idDropi) intento.dropi = { id: rNav.idDropi };
           // llego al formulario: la sesion sirve
           if (c.sesionDropi?.estado && c.sesionDropi.estado !== "ok" && (rNav?.ok || rNav?.creado || rNav?.preparado)) {
             sesionOk(c, "subida");
