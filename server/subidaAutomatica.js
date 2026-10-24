@@ -409,6 +409,8 @@ export function crearSubidaAutomatica({
       ...(notificado ? { notificado } : {}),
       ...(clienteDatos ? { cliente: clienteDatos } : {}),
       ...(extra.analisis ? { analisis: extra.analisis } : {}),
+      // tienda de LucidSales del pedido (para separar por tienda despues)
+      ...(extra.tienda ?? previo.tienda ? { tienda: extra.tienda ?? previo.tienda } : {}),
     };
     guardar(c);
     return c.procesados[String(id)];
@@ -495,7 +497,7 @@ export function crearSubidaAutomatica({
           };
           let analisisActual = null;
           const marcarP = (accion, det) => {
-            const e = marcar(c, id, accion, det, { cliente: { ...contacto }, ...(analisisActual ? { analisis: analisisActual } : {}) });
+            const e = marcar(c, id, accion, det, { tienda: Number(idEmpresa) || null, cliente: { ...contacto }, ...(analisisActual ? { analisis: analisisActual } : {}) });
             if (e?.accion === "requiere-revision" && accion !== "requiere-revision") {
               agotados.push({ id, detalle: e.detalle, contacto: { ...contacto } });
             }

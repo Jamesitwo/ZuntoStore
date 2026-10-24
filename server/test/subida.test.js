@@ -1064,3 +1064,13 @@ test("con la deteccion apagada no se consultan las oficinas", async () => {
   assert.equal(consultas, 0);
   fs.rmSync(ruta, { force: true });
 });
+
+test("cada pedido tratado queda marcado con su tienda de LucidSales", async () => {
+  const { s, ruta } = armar({ pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }] });
+  s.configurar({ automatico: true, dryRun: true });
+  s.detener();
+  await s.tick({ forzar: true });
+  const reg = JSON.parse(fs.readFileSync(ruta, "utf8")).procesados["1"];
+  assert.ok(Number.isFinite(reg.tienda) && reg.tienda > 0, JSON.stringify(reg).slice(0, 200));
+  fs.rmSync(ruta, { force: true });
+});
