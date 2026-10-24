@@ -1,20 +1,34 @@
 import type { ReactNode } from "react";
 import { ESTADOS_PEDIDO } from "../api/endpoints";
 
+/**
+ * Color de cada estado del pedido (0..9). Las clases `estado-c-N` definen
+ * --estado-color y --estado-fondo en styles.css; las usan las filas y las
+ * tarjetas de la lista, el selector de estado y el badge.
+ */
+export const claseEstado = (v: unknown) => {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n <= 9 ? `estado-c-${n}` : "";
+};
+
 export function EstadoBadge({ value }: { value: number | undefined | null }) {
   if (value === undefined || value === null) return <span className="badge">—</span>;
   const label = ESTADOS_PEDIDO[value] ?? `Estado ${value}`;
-  const cls =
-    value === 1
-      ? "badge danger" // Cancelado / Devuelto
-      : value === 7
-        ? "badge danger"
-        : value === 0 || value === 3 || value === 8
-          ? "badge warn" // Por confirmar / Modificado / En Novedad
-          : value === 2 || value === 6 || value === 9
-            ? "badge ok" // Confirmado / Entregado / Novedad Solucionada
-            : "badge"; // 4,5 logistica en curso
-  return <span className={cls}>{label}</span>;
+  return <span className={`badge badge-estado ${claseEstado(value)}`}>{label}</span>;
+}
+
+/** Leyenda de colores de los estados (encima de la lista de pedidos). */
+export function LeyendaEstados() {
+  return (
+    <div className="leyenda-estados" aria-label="Colores de los estados del pedido">
+      {Object.entries(ESTADOS_PEDIDO).map(([code, label]) => (
+        <span key={code} className={`leyenda-estado ${claseEstado(code)}`}>
+          <span className="leyenda-punto" aria-hidden="true" />
+          {label}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 /**

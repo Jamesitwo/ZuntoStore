@@ -11,7 +11,7 @@ import {
   usuarios,
   type Filtro,
 } from "../api/endpoints";
-import { ErrorBanner, JsonTable, PageHeader, Spinner, money } from "../components/ui";
+import { claseEstado, LeyendaEstados, ErrorBanner, JsonTable, PageHeader, Spinner, money } from "../components/ui";
 import { ConfirmDialog, Modal } from "../components/Modal";
 import { useToast } from "../components/Toast";
 import { claveTelefono, fmtFecha, haceCuanto, telefono } from "../lib/format";
@@ -536,7 +536,7 @@ export function PedidosPage() {
   function selectorEstado(p: (typeof rowsVisibles)[number]) {
     return (
       <select
-        className="estado-select"
+        className={`estado-select ${claseEstado(p.EstadoPedido ?? 0)}`}
         value={p.EstadoPedido ?? 0}
         disabled={guardandoId === p.id}
         onChange={(e) => {
@@ -809,6 +809,7 @@ export function PedidosPage() {
                 este numero (los demas suelen ser homónimos).
               </p>
             )}
+            <LeyendaEstados />
             <div className="table-wrap pedidos-tabla">
               <table className="table">
                 <thead>
@@ -832,7 +833,7 @@ export function PedidosPage() {
                     const mias = et.etiquetasDe(p.id ?? p.idPedido);
                     const asignado = asig[String(p.id ?? p.idPedido)];
                     return (
-                      <tr key={p.id ?? p.idPedido}>
+                      <tr key={p.id ?? p.idPedido} className={`fila-estado ${claseEstado(p.EstadoPedido ?? 0)}`}>
                         <td>
                           <Link to={`/pedidos/${p.id ?? p.idPedido}`}>
                             <strong>#{p.idPedido ?? p.id}</strong>
@@ -972,7 +973,7 @@ export function PedidosPage() {
                 const asignado = asig[String(id)];
                 const nombre = [p.Nombre, p.Apellido].filter(Boolean).join(" ") || "Sin nombre";
                 return (
-                  <li key={id} className="pedido-movil">
+                  <li key={id} className={`pedido-movil fila-estado ${claseEstado(p.EstadoPedido ?? 0)}`}>
                     <div className="pedido-movil-top">
                       <Link to={`/pedidos/${id}`} className="link-plain pedido-movil-cliente">
                         <strong>{nombre}</strong>
