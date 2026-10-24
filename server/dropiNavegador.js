@@ -681,7 +681,36 @@ export function crearDropiNavegador(config = {}) {
       await p.waitForTimeout(500);
     }
     if (!aparecio) {
-      return { ok: false, oficinas: [], detalle: "Dropi no mostró el selector de oficinas de Interrapidísimo (la dirección debe decir «Oficina Interrapidísimo»)." };
+      // que habia en el formulario: para saber por que Dropi no lo mostro
+      const visto = await p
+        .evaluate(() => {
+          const dir = document.querySelector('[data-cy="client-address"]');
+          const marcada = [...document.querySelectorAll('[data-cy^="order-create-carrier-option-"]')]
+            .filter((el) => /selected|active|checked/.test(el.className || "") || el.querySelector("input:checked"))
+            .map((el) => el.getAttribute("data-cy").replace("order-create-carrier-option-", ""));
+          const relacionados = [...document.querySelectorAll("[data-cy]")]
+            .map((el) => el.getAttribute("data-cy"))
+            .filter((c) => /centro|oficina|office|center/i.test(c))
+            .slice(0, 8);
+          const avisos = [...document.querySelectorAll('[role="dialog"], .p-toast-message, .alert, [class*="alert"]')]
+            .map((el) => (el.innerText || "").replace(/\s+/g, " ").trim())
+            .filter(Boolean)
+            .slice(0, 3);
+          return { direccion: dir ? dir.value : null, marcada, relacionados, avisos };
+        })
+        .catch(() => null);
+      const extra = visto
+        ? ` En el formulario: dirección «${String(visto.direccion ?? "").slice(0, 120)}»` +
+          `, transportadora marcada: ${visto.marcada.length ? visto.marcada.join(", ") : "ninguna"}` +
+          `, campos de oficina: ${visto.relacionados.length ? visto.relacionados.join(", ") : "ninguno"}` +
+          (visto.avisos.length ? `, avisos: ${visto.avisos.join(" | ").slice(0, 200)}` : "") +
+          "."
+        : "";
+      return {
+        ok: false,
+        oficinas: [],
+        detalle: `Dropi no mostró el selector de oficinas de Interrapidísimo (la dirección debe decir «Oficina Interrapidísimo»).${extra}`,
+      };
     }
     const textoBoton = async () =>
       (await boton.locator(".elipsis").first().innerText({ timeout: 2000 }).catch(() => "")).trim();
