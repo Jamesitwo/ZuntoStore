@@ -627,6 +627,13 @@ export function crearServidor({
       return;
     }
 
+    // ---- GET /api/envios/estados (opciones del filtro del panel) ----
+    if (req.method === "GET" && ruta === "/api/envios/estados") {
+      autorizar(req);
+      json(res, 200, { ok: true, estados: envios.estadosConocidos() });
+      return;
+    }
+
     // ---- GET /api/envios/ultimos ----
     if (req.method === "GET" && ruta === "/api/envios/ultimos") {
       autorizar(req);

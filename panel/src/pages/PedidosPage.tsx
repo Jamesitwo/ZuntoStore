@@ -15,7 +15,7 @@ import { claseEstado, LeyendaEstados, ErrorBanner, JsonTable, PageHeader, Spinne
 import { ConfirmDialog, Modal } from "../components/Modal";
 import { useToast } from "../components/Toast";
 import { claveTelefono, fmtFecha, haceCuanto, telefono } from "../lib/format";
-import { EnvioConBot, useEstadosEnvioBot } from "../components/EnvioLucidBot";
+import { EnvioConBot, normalizarEstado, useEstadosEnvioBot } from "../components/EnvioLucidBot";
 import { useEtiquetaTienda } from "../lib/tiendas";
 import { useInboxBot } from "../lib/botInbox";
 import { useEtiquetas } from "../lib/etiquetas";
@@ -162,6 +162,16 @@ export function PedidosPage() {
    *   o el correo de un usuario concreto.
    */
   const [filtroAsign, setFiltroAsign] = useState("");
+  // estado del envio que manda Lucid Bot (filtro local, como el de etiqueta)
+  const [filtroEnvio, setFiltroEnvio] = useState("");
+  const [estadosBot, setEstadosBot] = useState<Array<{ estado: string; avisos: number }>>([]);
+  useEffect(() => {
+    void backendSuave<{ ok: boolean; estados?: Array<{ estado: string; avisos: number }> }>("/api/envios/estados").then(
+      (r) => {
+        if (r?.ok) setEstadosBot(r.estados ?? []);
+      },
+    );
+  }, []);
 
   // Busqueda instantanea (sin pulsar Boton)
   useEffect(() => {
@@ -305,12 +315,13 @@ export function PedidosPage() {
     setPage(1);
     setFiltros(FILTROS_VACIOS);
     setFiltroAsign("");
+    setFiltroEnvio("");
     setSearchInput("");
     setSearch("");
   };
 
   const hayFiltros =
-    Object.values(filtros).some(Boolean) || search || Boolean(filtroAsign);
+    Object.values(filtros).some(Boolean) || search || Boolean(filtroAsign) || Boolean(filtroEnvio);
   /** El recorte por telefono solo vale mientras el filtro de cliente esta intacto. */
   const telActivo = Boolean(telDeUrl) && filtros.cliente.trim() === clienteDeUrl.trim();
 
@@ -331,8 +342,16 @@ export function PedidosPage() {
         return Boolean(a) && quien === filtroAsign;
       });
     }
+    if (filtroEnvio) {
+      out = out.filter((p) => {
+        const e = enviosBot[String(p.id ?? p.idPedido)];
+        if (filtroEnvio === "_sin") return !e;
+        if (filtroEnvio === "_con") return Boolean(e);
+        return Boolean(e) && normalizarEstado(e.estado) === filtroEnvio;
+      });
+    }
     return out;
-  }, [rows, filtroEtiqueta, et, filtroAsign, asig, miCorreo]);
+  }, [rows, filtroEtiqueta, et, filtroAsign, asig, miCorreo, filtroEnvio, enviosBot]);
 
   /** Texto del filtro de asignacion para avisos ("asignados a Ana", ...). */
   const etiquetaFiltroAsign =
@@ -356,7 +375,9 @@ export function PedidosPage() {
           ? `Ningún pedido de esta página está asignado a ${
               usuariosAsig.find((u) => claveUsuario(u) === filtroAsign)?.Nombre || filtroAsign
             }.`
-          : "Ningun pedido de esta pagina tiene la etiqueta seleccionada.";
+          : filtroEnvio
+            ? "Ningún pedido de esta página tiene ese estado de envío en Lucid Bot."
+            : "Ningun pedido de esta pagina tiene la etiqueta seleccionada.";
 
   /**
    * Cambio de estado desde la tabla: la API exige el cuerpo completo,
@@ -677,6 +698,31 @@ export function PedidosPage() {
             })}
           </select>
         </div>
+        <div className="field">
+          <label
+            htmlFor="f-envio-bot"
+            title="Filtro local: los estados de envío que manda Lucid Bot los guarda nuestro backend"
+          >
+            Envío (Lucid Bot)
+          </label>
+          <select
+            id="f-envio-bot"
+            value={filtroEnvio}
+            onChange={(e) => {
+              setPage(1);
+              setFiltroEnvio(e.target.value);
+            }}
+          >
+            <option value="">Todos</option>
+            <option value="_con">Con estado de Lucid Bot</option>
+            <option value="_sin">Sin estado de Lucid Bot</option>
+            {estadosBot.map((x) => (
+              <option key={normalizarEstado(x.estado)} value={normalizarEstado(x.estado)}>
+                {x.estado}
+              </option>
+            ))}
+          </select>
+        </div>
         {hayFiltros && (
           <button className="btn ghost" type="button" onClick={limpiarFiltros}>
             Limpiar
@@ -792,6 +838,13 @@ export function PedidosPage() {
               <p className="muted small" style={{ marginTop: 0 }}>
                 Etiqueta aplicada: {rowsVisibles.length} de {rows.length} pedidos
                 de esta pagina.
+              </p>
+            )}
+            {filtroEnvio && (
+              <p className="muted small" style={{ marginTop: 0 }}>
+                Envío (Lucid Bot) aplicado: {rowsVisibles.length} de {rows.length} pedidos de esta página. Es un
+                filtro local: LucidSales no conoce estos estados, así que se filtra lo que trajo esta página (sube
+                «Por página» para ver más).
               </p>
             )}
             {filtroAsign && (

@@ -14,6 +14,15 @@ export interface EstadoEnvioBot {
   por: "pedido" | "guia" | "telefono";
 }
 
+/** Para comparar estados: sin tildes, mayusculas y espacios de mas (igual que el servidor). */
+export const normalizarEstado = (v: unknown) =>
+  String(v ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+
 /** LucidSales no sabe nada del envio todavia. */
 export const sinEnvioEnLucid = (v: unknown) => {
   const t = String(v ?? "").trim().toLowerCase();

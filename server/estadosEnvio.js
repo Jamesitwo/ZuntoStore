@@ -69,6 +69,16 @@ export function normalizarEvento(cuerpo, ahora = new Date()) {
   };
 }
 
+/** Para comparar estados: sin tildes, mayusculas y espacios de mas. */
+export function normalizarEstado(v) {
+  return String(v ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+}
+
 export function crearEstadosEnvio({ ruta = null, log = console } = {}) {
   /** { porTelefono: {clave: [eventos]}, sinTelefono: [eventos] } */
   let datos = { porTelefono: {}, sinTelefono: [] };
@@ -201,6 +211,19 @@ export function crearEstadosEnvio({ ruta = null, log = console } = {}) {
         salida.push({ ts: e.ts, estado: e.estado, transportadora: e.transportadora, guia: e.guia, novedad: e.novedad });
       }
       return salida;
+    },
+
+    /** Los estados distintos que ha mandado Lucid Bot, con cuantos avisos (para el filtro). */
+    estadosConocidos() {
+      const mapa = new Map();
+      for (const e of todos()) {
+        const k = normalizarEstado(e.estado);
+        if (!k) continue;
+        const x = mapa.get(k) ?? { estado: e.estado, avisos: 0 };
+        x.avisos++;
+        mapa.set(k, x);
+      }
+      return [...mapa.values()].sort((a, b) => a.estado.localeCompare(b.estado, "es"));
     },
 
     /** Los ultimos avisos recibidos (para revisar que Lucid Bot si manda). */

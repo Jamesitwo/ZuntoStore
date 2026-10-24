@@ -82,3 +82,13 @@ test("historial por telefono cuando Lucid Bot no manda el pedido", () => {
   const h = e.historial({ id: 1, telefono: "+573001112222", fecha: "2026-10-09" });
   assert.deepEqual(h.map((x) => x.estado), ["Creado", "ENTREGADO"]);
 });
+
+test("estadosConocidos agrupa sin importar tildes ni mayusculas", () => {
+  const e = crearEstadosEnvio();
+  e.registrar({ estado: "En Tránsito", telefono: "3001112222" });
+  e.registrar({ estado: "EN TRANSITO", telefono: "3001112223" });
+  e.registrar({ estado: "ENTREGADO", telefono: "3001112224" });
+  const r = e.estadosConocidos();
+  assert.equal(r.length, 2);
+  assert.equal(r.find((x) => /tr/i.test(x.estado)).avisos, 2);
+});
