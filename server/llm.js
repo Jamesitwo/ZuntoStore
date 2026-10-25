@@ -7,6 +7,8 @@
 // DeepSeek, Together, OpenRouter o el endpoint compatible de Gemini: solo
 // cambia LLM_BASE y LLM_MODELO en server/.env.
 
+import { hoyColombia } from "./fechaEntrega.js";
+
 const DEFECTO_BASE = "https://api.openai.com/v1";
 
 /** Prompt de extraccion: corto y explicito para forzar JSON limpio. */
@@ -21,6 +23,7 @@ Campos exactos:
 - "clienteConfirmo": true solo si el cliente acepto/claramente confirmo el pedido. false si solo pregunto o quedo a medias.
 - "entregaFutura": true si el cliente pidió que se entregue/reciba en una fecha posterior a hoy o pidió aplazarla; false si no pidió una fecha futura; null si no se puede determinar.
 - "fechaEntregaSolicitada": fecha o expresión de fecha solicitada por el cliente (string; "" si no existe).
+- "fechaEntregaISO": si entregaFutura es true, la fecha concreta pedida como "AAAA-MM-DD", calculada con la fecha de hoy que se te da y los timestamps del chat ("" si no se puede saber el dia exacto).
 - "incertidumbre": arreglo de strings con lo que no quedo claro.
 - "razonamiento": 2 o 3 frases en español que expliquen lo que entendiste del chat (que pidio el cliente, a que precio, si confirmo y por que lo crees). Solo lo que dice el chat.
 - "direccionEnvio": analisis de la DIRECCION DEL PEDIDO (la que te paso aparte, no la del chat). Es un objeto:
@@ -86,6 +89,7 @@ function normalizarSalida(v) {
     clienteConfirmo: o.clienteConfirmo === true,
     entregaFutura: typeof o.entregaFutura === "boolean" ? o.entregaFutura : null,
     fechaEntregaSolicitada: typeof o.fechaEntregaSolicitada === "string" ? o.fechaEntregaSolicitada.trim() : "",
+    fechaEntregaISO: typeof o.fechaEntregaISO === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.fechaEntregaISO.trim()) ? o.fechaEntregaISO.trim() : "",
     incertidumbre: Array.isArray(o.incertidumbre) ? o.incertidumbre.map(String) : [],
     razonamiento: typeof o.razonamiento === "string" ? o.razonamiento.trim().slice(0, 800) : "",
     // solo cuando se le mostraron otros pedidos del mismo cliente
@@ -166,6 +170,8 @@ export function crearExtractorLLM(config = {}) {
                     "(otra unidad, otro producto, volvio a pedir despues de confirmar el primero); false si el chat solo muestra " +
                     "una compra; y en evidencia.segundaCompra la frase del cliente que lo muestra.\n\n"
                   : "") +
+                `Hoy es ${hoyColombia()} (hora de Colombia). Si el cliente pidió la entrega para una fecha futura, agrega al JSON ` +
+                '"fechaEntregaISO" con esa fecha como "AAAA-MM-DD" ("" si no se puede saber el día exacto).\n\n' +
                 "Devuelve el JSON.",
             },
           ],

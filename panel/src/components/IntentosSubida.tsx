@@ -48,6 +48,7 @@ const RESULTADO: Record<string, { texto: string; tono: "ok" | "warn" | "mal" }> 
   error: { texto: "Error", tono: "mal" },
   "posible-duplicado": { texto: "Posible pedido repetido", tono: "mal" },
   "resuelto-a-mano": { texto: "Resuelto por una persona", tono: "ok" },
+  "entrega-programada": { texto: "Entrega programada", tono: "warn" },
 };
 
 const peso = (n: unknown) =>

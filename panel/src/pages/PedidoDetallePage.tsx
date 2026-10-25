@@ -12,6 +12,7 @@ import { ConfirmDialog } from "../components/Modal";
 import { CotizadorPedido } from "../components/CotizadorPedido";
 import { BloqueOficinaInter } from "../components/OficinaInter";
 import { SubirPedidoDropi } from "../components/SubirPedidoDropi";
+import { EntregaProgramadaCard } from "../components/EntregaProgramada";
 import { ValidarDireccion } from "../components/ValidarDireccion";
 import { BloqueEtiquetas } from "../components/Etiquetas";
 import { useToast } from "../components/Toast";
@@ -957,6 +958,14 @@ export function PedidoDetallePage() {
           </p>
         )}
       </section>
+
+      <EntregaProgramadaCard
+        key={`prog-${form.id ?? id}`}
+        id={String(form.id ?? id)}
+        numero={original?.idPedido ?? null}
+        tienda={original?.idEmpresa ?? null}
+        cliente={{ nombre: [original?.Nombre, original?.Apellido].filter(Boolean).join(" "), telefono: String(original?.Movil ?? "") }}
+      />
 
       <SubirPedidoDropi
         id={form.id ?? id}

@@ -31,6 +31,7 @@ ENV NODE_ENV=production \
     DATA_DIR=/data \
     ENVIOS=/data/envios.json \
     INTENTOS=/data/intentos.jsonl \
+    PROGRAMADOS=/data/programados.json \
     APIKEY_CONFIG=/data/config/apikey.json \
     LUCIDBOT_PEDIDOS=/data/lucidbot-pedidos.json \
     DROPI_CHROME=/usr/bin/chromium \

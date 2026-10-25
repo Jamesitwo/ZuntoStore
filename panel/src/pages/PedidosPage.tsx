@@ -16,6 +16,7 @@ import { ConfirmDialog, Modal } from "../components/Modal";
 import { useToast } from "../components/Toast";
 import { claveTelefono, fmtFecha, haceCuanto, telefono } from "../lib/format";
 import { EnvioConBot, normalizarEstado, useEstadosEnvioBot } from "../components/EnvioLucidBot";
+import { AvisoEntregas, ChipEntrega, claseProgramado, useProgramados } from "../components/EntregaProgramada";
 import { useEtiquetaTienda } from "../lib/tiendas";
 import { useInboxBot } from "../lib/botInbox";
 import { useEtiquetas } from "../lib/etiquetas";
@@ -86,6 +87,8 @@ export function PedidosPage() {
   const [rows, setRows] = useState<PedidoLight[]>([]);
   // estado del envio que manda Lucid Bot (pedidos que en LucidSales siguen "Sin Envio")
   const enviosBot = useEstadosEnvioBot(rows);
+  // entregas programadas (pedidos para otra fecha): se resaltan al acercarse
+  const programados = useProgramados();
   const [total, setTotal] = useState(0);
   const [numPages, setNumPages] = useState(0);
   const [page, setPage] = useState(1);
@@ -622,6 +625,7 @@ export function PedidosPage() {
           </>
         }
       />
+      <AvisoEntregas lista={programados.lista} />
 
       <form className="toolbar" onSubmit={(e) => e.preventDefault()}>
         <div className="field" style={{ minWidth: 240 }}>
@@ -911,7 +915,7 @@ export function PedidosPage() {
                     const mias = et.etiquetasDe(p.id ?? p.idPedido);
                     const asignado = asig[String(p.id ?? p.idPedido)];
                     return (
-                      <tr key={p.id ?? p.idPedido} className={`fila-estado ${claseEstado(p.EstadoPedido ?? 0)}`}>
+                      <tr key={p.id ?? p.idPedido} className={`fila-estado ${claseEstado(p.EstadoPedido ?? 0)}${claseProgramado(programados.porId[String(p.id ?? p.idPedido)])}`}>
                         <td>
                           <Link to={`/pedidos/${p.id ?? p.idPedido}`}>
                             <strong>#{p.idPedido ?? p.id}</strong>
@@ -926,6 +930,11 @@ export function PedidosPage() {
                               <ChipsDeEtiquetas etiquetas={mias} />
                             </div>
                           )}
+                          {programados.porId[String(p.id ?? p.idPedido)] ? (
+                            <div style={{ marginTop: 3 }}>
+                              <ChipEntrega p={programados.porId[String(p.id ?? p.idPedido)]} />
+                            </div>
+                          ) : null}
                         </td>
                         <td className="wrap prod-celda" title={p.producto || ""}>
                           {p.producto || "—"}
@@ -1051,7 +1060,7 @@ export function PedidosPage() {
                 const asignado = asig[String(id)];
                 const nombre = [p.Nombre, p.Apellido].filter(Boolean).join(" ") || "Sin nombre";
                 return (
-                  <li key={id} className={`pedido-movil fila-estado ${claseEstado(p.EstadoPedido ?? 0)}`}>
+                  <li key={id} className={`pedido-movil fila-estado ${claseEstado(p.EstadoPedido ?? 0)}${claseProgramado(programados.porId[String(id)])}`}>
                     <div className="pedido-movil-top">
                       <Link to={`/pedidos/${id}`} className="link-plain pedido-movil-cliente">
                         <strong>{nombre}</strong>
@@ -1062,6 +1071,7 @@ export function PedidosPage() {
                       </Link>
                     </div>
                     {p.producto && <div className="pedido-movil-producto">{p.producto}</div>}
+                    {programados.porId[String(id)] ? <ChipEntrega p={programados.porId[String(id)]} /> : null}
                     {mias.length > 0 && (
                       <div className="etiqueta-fila">
                         <ChipsDeEtiquetas etiquetas={mias} />

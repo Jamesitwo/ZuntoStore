@@ -71,6 +71,8 @@ export function cargarConfig(env = process.env) {
     AUDITORIA: String(g("AUDITORIA", path.join(String(g("DATA_DIR", dir)), "auditoria.jsonl"))),
     /** historial de intentos de subida a Dropi (JSONL) */
     INTENTOS: String(g("INTENTOS", path.join(dir, "intentos.jsonl"))),
+    /** entregas programadas (pedidos para una fecha futura) */
+    PROGRAMADOS: String(g("PROGRAMADOS", path.join(dir, "programados.json"))),
     /** clave de la API generada desde el panel (solo su huella) */
     APIKEY_CONFIG: String(g("APIKEY_CONFIG", path.join(dir, "config", "apikey.json"))),
     /** pedidos cuyo id ya se mando a Lucid Bot */

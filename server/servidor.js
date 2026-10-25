@@ -133,6 +133,8 @@ export function crearManejador({
   // a esta cuenta con una tienda que no es suya
   tiendasCuenta = null,
   auditoria = null,
+  // entregas programadas (pedidos para una fecha futura)
+  programados = null,
 }) {
   // clave de integraciones: la de la variable API_KEY y/o la generada en el panel
   const claves = apiKeys ?? crearApiKeys({ claveEnv: config.API_KEY });
@@ -383,6 +385,8 @@ export function crearManejador({
     [/^\/api\/pedidos\/[^/]+\/direccion(\/validar)?$/, "2"],
     [/^\/api\/subida\/pedido\/[^/]+(\/intentos|\/aprobar-duplicado|\/resuelto)?$/, "2"],
     [/^\/api\/historial$/, "2"],
+    [/^\/api\/programados\/config$/, "8"],
+    [/^\/api\/programados(\/|$)/, "2"],
     [/^\/api\/envios\/ultimos$/, "8"],
     [/^\/api\/envios\//, "2"],
     [/^\/api\/asignacion\/horario$/, "7"],
@@ -765,6 +769,67 @@ export function crearManejador({
       return;
     }
 
+    // ---- entregas programadas ----
+    // GET    /api/programados             -> lista (las mas proximas primero) + config
+    // GET    /api/programados/:id         -> la de un pedido
+    // PUT    /api/programados/:id         -> {fecha:"AAAA-MM-DD", nota} la marca una persona
+    // DELETE /api/programados/:id         -> quitar la marca (se envia ya)
+    // PUT    /api/programados/config      -> {diasAntes, subirSolo}
+    if (ruta === "/api/programados/config" && req.method === "PUT") {
+      autorizar(req);
+      const cuerpo = await leerCuerpo(req);
+      const c = subida.configurar({ programados: { diasAntes: cuerpo?.diasAntes, subirSolo: cuerpo?.subirSolo } });
+      json(res, 200, { ok: true, config: subida.programacion?.() });
+      return;
+    }
+    if (ruta === "/api/programados" && req.method === "GET") {
+      autorizar(req);
+      const conf = subida.programacion?.() ?? { diasAntes: 1, subirSolo: true };
+      json(res, 200, { ok: true, config: conf, programados: programados?.lista({ diasAntes: conf.diasAntes }) ?? [] });
+      return;
+    }
+    const progId = ruta.match(/^\/api\/programados\/([^/]+)$/);
+    if (progId) {
+      autorizar(req);
+      if (!programados) throw new ErrorApi(503, "Las entregas programadas no están disponibles");
+      const id = decodeURIComponent(progId[1]);
+      const conf = subida.programacion?.() ?? { diasAntes: 1, subirSolo: true };
+      if (req.method === "GET") {
+        json(res, 200, { ok: true, programado: programados.get(id, { diasAntes: conf.diasAntes }), config: conf });
+        return;
+      }
+      if (req.method === "PUT") {
+        const cuerpo = await leerCuerpo(req);
+        let p;
+        try {
+          p = programados.poner(id, {
+            fecha: cuerpo?.fecha,
+            nota: cuerpo?.nota,
+            origen: "manual",
+            por: usuarioDe(req) ?? "",
+            numero: cuerpo?.numero ?? null,
+            tienda: Number(cuerpo?.tienda) || null,
+            cliente: cuerpo?.cliente && typeof cuerpo.cliente === "object"
+              ? { nombre: String(cuerpo.cliente.nombre ?? "").slice(0, 120), telefono: String(cuerpo.cliente.telefono ?? "").slice(0, 30) }
+              : null,
+          });
+        } catch (e) {
+          throw new ErrorApi(400, e.message);
+        }
+        subida.programacionCambiada?.(id);
+        console.log(`[programados] pedido ${id}: entrega el ${p.fecha} (por ${usuarioDe(req) ?? "?"})`);
+        json(res, 200, { ok: true, programado: programados.get(id, { diasAntes: conf.diasAntes }) });
+        return;
+      }
+      if (req.method === "DELETE") {
+        const ok = programados.quitar(id, usuarioDe(req) ?? "");
+        if (ok) subida.programacionCambiada?.(id);
+        console.log(`[programados] pedido ${id}: se quitó la fecha (por ${usuarioDe(req) ?? "?"})`);
+        json(res, 200, { ok: true, quitado: ok });
+        return;
+      }
+    }
+
     // ---- POST /api/subida/pedido/:id/resuelto ----
     // una persona ya lo subió a mano: sale de revisión y no se reintenta
     const resuelto = ruta.match(/^\/api\/subida\/pedido\/([^/]+)\/resuelto$/);
@@ -1062,7 +1127,17 @@ export function crearManejador({
           console.warn("[dropi] no se pudieron revisar otros pedidos del cliente:", e?.message ?? e);
         }
       }
-      const r = await ejecutarAgente({ resumen, mensajes, extraer, oficina: oficinaAuto ? oficina : null, otrosPedidos });
+      // una persona sube un pedido con entrega programada: ella decide que ya
+      // toca, la fecha pedida por el cliente no frena
+      const progManual = programados?.get?.(id) ?? null;
+      const r = await ejecutarAgente({
+        resumen,
+        mensajes,
+        extraer,
+        oficina: oficinaAuto ? oficina : null,
+        otrosPedidos,
+        entregaProgramada: progManual && !progManual.enviado ? { fecha: progManual.fecha, toca: true } : null,
+      });
       if (res.__intento) res.__intento.analisis = resumirAnalisis(r);
 
       // 2) si frena, NO se sube nada
@@ -1080,6 +1155,8 @@ export function crearManejador({
           ok: false,
           id,
           accion: r.accion,
+          // el cliente pidio otra fecha: el panel ofrece programarlo
+          ...(r.entrega ? { entrega: r.entrega } : {}),
           motivos: r.problemas,
           extraido: r.extraido,
           validacion: r.validacion,

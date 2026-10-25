@@ -48,7 +48,7 @@ const FINALES = new Set([
   "resuelto-a-mano",
 ]);
 /** Resultados en revision que se dan por resueltos si una persona mueve el pedido. */
-const RESOLUBLES = new Set(["requiere-revision", "direccion-invalida", "envio-caro", "sin-transportadora", "posible-duplicado"]);
+const RESOLUBLES = new Set(["requiere-revision", "direccion-invalida", "envio-caro", "sin-transportadora", "posible-duplicado", "entrega-programada"]);
 /** Dias hacia atras en que otro pedido del mismo telefono cuenta como posible repetido. */
 const DIAS_DUPLICADO = 7;
 
@@ -236,6 +236,7 @@ export function resumirAnalisis(r) {
       clienteConfirmo: e.clienteConfirmo ?? null,
       entregaFutura: e.entregaFutura ?? null,
       fechaEntregaSolicitada: corto(e.fechaEntregaSolicitada, 60),
+      fechaEntregaISO: e.fechaEntregaISO || null,
       incertidumbre: (e.incertidumbre ?? []).slice(0, 5).map((x) => corto(x, 160)),
       razonamiento: corto(e.razonamiento, 800),
     },
@@ -289,6 +290,8 @@ export function crearSubidaAutomatica({
   buscarOficinasInter = null,
   // historial de intentos por pedido (transparencia en el panel)
   intentos = null,
+  // entregas programadas (crearProgramados): pedidos para una fecha futura
+  programados = null,
 }) {
   let numeroVuelta = 0;
   let timer = null;
@@ -309,6 +312,12 @@ export function crearSubidaAutomatica({
       return { ok: false, detalle: e?.message ?? String(e) };
     }
   }
+
+  /** Configuracion de entregas programadas, siempre completa. */
+  const confProg = (c) => ({
+    diasAntes: Math.max(0, Math.min(Number.isFinite(Number(c?.programados?.diasAntes)) ? Number(c.programados.diasAntes) : 1, 30)),
+    subirSolo: c?.programados?.subirSolo !== false,
+  });
 
   const archivo = ruta ?? path.join(process.cwd(), "subidaAutomatica.json");
 
@@ -333,6 +342,9 @@ export function crearSubidaAutomatica({
     // si la direccion del cliente ES una oficina de Inter (aunque no lo diga),
     // se manda a esa oficina por Inter en vez de Coordinadora a domicilio
     detectarOficinaInter: true,
+    // entregas programadas: con cuantos dias de anticipacion se envian y si
+    // la subida automatica los sube sola cuando llega la fecha
+    programados: { diasAntes: 1, subirSolo: true },
     // intentos fallidos antes de dejar el pedido para revision manual
     maxIntentos: 2,
     // tienda de LucidSales (idEmpresa) -> nombre exacto de la tienda en Dropi
@@ -515,6 +527,14 @@ export function crearSubidaAutomatica({
         : {}),
     };
     guardar(c);
+    // la entrega programada ya salio (subida por Zunto o a mano)
+    if (["subido", "subido-pendiente-confirmacion", "resuelto-a-mano"].includes(accionFinal)) {
+      try {
+        programados?.marcarEnviado?.(id);
+      } catch {
+        /* sin registro */
+      }
+    }
     return c.procesados[String(id)];
   }
 
@@ -666,6 +686,32 @@ export function crearSubidaAutomatica({
               continue;
             }
           }
+          // Entrega programada (la IA vio que el cliente la pidió para otra
+          // fecha, o una persona la marcó): espera hasta que se acerque.
+          let entregaProgramada = null;
+          const prog = FINALES.has(anterior?.accion) ? null : (programados?.get?.(id) ?? null);
+          if (prog && !prog.enviado) {
+            const { diasAntes, subirSolo } = confProg(c);
+            const toca = Boolean(prog.anulado) || prog.faltan <= diasAntes;
+            if (toca && subirSolo) {
+              // ya toca: se analiza como cualquier pedido, sin frenar por la fecha
+              entregaProgramada = { fecha: prog.fecha, toca: true };
+              if (anterior?.accion === "entrega-programada") delete c.procesados[id];
+            } else {
+              const det = toca
+                ? `entrega programada para el ${prog.fecha}: ya toca enviarlo (súbelo desde el pedido; la subida automática no sube los programados sola)`
+                : `entrega programada para el ${prog.fecha}${prog.nota ? ` (${prog.nota})` : ""}: ${
+                    subirSolo ? `se sube sola ${diasAntes ? `${diasAntes} día(s) antes` : "ese día"}` : "se resalta cuando se acerque"
+                  }`;
+              if ((!estados.length || estados.includes(Number(p?.EstadoPedido))) && (anterior?.accion !== "entrega-programada" || !String(anterior?.detalle ?? "").includes(prog.fecha) || (toca && !String(anterior?.detalle ?? "").includes("ya toca")))) {
+                marcarP("entrega-programada", det);
+              }
+              continue;
+            }
+          } else if (anterior?.accion === "entrega-programada") {
+            // ya no tiene marca: se vuelve a mirar como cualquier pedido
+            delete c.procesados[id];
+          }
           if (FINALES.has(anterior?.accion)) continue;
           if (estados.length && !estados.includes(Number(p?.EstadoPedido))) continue;
           omitidos++;
@@ -742,7 +788,7 @@ export function crearSubidaAutomatica({
           const otrosPedidos = c.duplicadosAprobados?.[id]
             ? []
             : otrosPedidosDelCliente(p, pedidos, { procesados: c.procesados });
-          const r2 = await ejecutarAgente({ resumen, mensajes, extraer, oficina: oficinaAuto ? oficina : null, otrosPedidos });
+          const r2 = await ejecutarAgente({ resumen, mensajes, extraer, oficina: oficinaAuto ? oficina : null, otrosPedidos, entregaProgramada });
           analisisActual = resumirAnalisis(r2);
           // la IA no respondio (timeout, saldo, clave): error tecnico, no un
           // pedido frenado por su contenido
@@ -771,6 +817,29 @@ export function crearSubidaAutomatica({
             frenados++;
             detalle.push({ id, accion: "posible-duplicado", detalle: det });
             continue;
+          }
+          // lo unico que frena es que el cliente pidio otra fecha y se sabe
+          // cual: queda programado (sin gastar intentos) y espera su dia
+          if (r2.accion !== "subir" && r2.entrega?.fecha && programados && r2.problemas.every((x) => x.campo === "entregaFutura")) {
+            let prog2 = null;
+            try {
+              prog2 = programados.poner(id, {
+                fecha: r2.entrega.fecha,
+                origen: "ia",
+                texto: r2.entrega.texto,
+                numero: resumen?.idPedido ?? p?.idPedido ?? null,
+                tienda: Number(idEmpresa) || null,
+                cliente: { ...contacto },
+              });
+            } catch (e) {
+              log.warn?.(`[subida] pedido ${id}: no se pudo programar la entrega:`, e?.message ?? e);
+            }
+            if (prog2) {
+              marcarP("entrega-programada", `la IA vio que el cliente pidió la entrega para el ${prog2.fecha}${r2.entrega.texto ? ` («${r2.entrega.texto}»)` : ""}: queda programado`);
+              frenados++;
+              detalle.push({ id, accion: "entrega-programada", detalle: prog2.fecha });
+              continue;
+            }
           }
           if (r2.accion !== "subir") {
             marcarP("frenado", r2.problemas.map((x) => `${x.campo}: ${x.detalle}`).join("; "));
@@ -1176,7 +1245,10 @@ export function crearSubidaAutomatica({
       if ("transportadoraId" in patch && !("transportadoras" in patch)) {
         c.transportadoraId = Number(patch.transportadoraId) || 5;
       }
-      if ("maxIntentos" in patch) c.maxIntentos = Math.max(1, Math.min(Number(patch.maxIntentos) || 2, 10));
+      if ("programados" in patch && patch.programados && typeof patch.programados === "object") {
+        c.programados = confProg({ programados: { ...confProg(c), ...patch.programados } });
+      }
+            if ("maxIntentos" in patch) c.maxIntentos = Math.max(1, Math.min(Number(patch.maxIntentos) || 2, 10));
       if ("tiendasDropi" in patch && patch.tiendasDropi && typeof patch.tiendasDropi === "object") {
         const limpio = {};
         for (const [k, v] of Object.entries(patch.tiendasDropi)) {
@@ -1299,6 +1371,26 @@ export function crearSubidaAutomatica({
       delete c.procesados[k];
       if (!guardar(c)) throw new ErrorApi(500, "No se pudo guardar la aprobación");
       return { ok: true };
+    },
+
+    /**
+     * Una persona marcó (o cambió) la entrega programada de un pedido: si
+     * estaba frenado o en revisión, pasa a esperar su fecha. Si le quitó la
+     * marca, se vuelve a mirar en la próxima vuelta.
+     */
+    programacionCambiada(id) {
+      const c = leer();
+      const clave = String(id ?? "").trim();
+      const accion = c.procesados?.[clave]?.accion;
+      if (!accion || ["subido", "subido-pendiente-confirmacion", "resultado-incierto", "resuelto-a-mano"].includes(accion)) return false;
+      delete c.procesados[clave];
+      guardar(c);
+      return true;
+    },
+
+    /** Configuracion de entregas programadas (para el panel). */
+    programacion() {
+      return confProg(leer());
     },
 
     /** Una persona dice que ya subio el pedido a mano: sale de revision y no se reintenta. */

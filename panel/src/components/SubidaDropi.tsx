@@ -64,6 +64,7 @@ function normalizaConfig(c: any): {
   estados: number[];
   tiendasDropi: Record<string, string>;
   minCalificacionDireccion: number;
+  programados: { diasAntes: number; subirSolo: boolean };
 } & ConfigEnvio {
   const lista = (v: any) => (Array.isArray(v) ? v.map(Number).filter((x: number) => x > 0) : []) as number[];
   const num = (v: any) => (Number(v) > 0 ? Number(v) : null);
@@ -87,6 +88,10 @@ function normalizaConfig(c: any): {
     reglasProducto: reglas,
     oficinaInter: c?.oficinaInter === true,
     detectarOficinaInter: c?.detectarOficinaInter !== false,
+    programados: {
+      diasAntes: Number.isFinite(Number(c?.programados?.diasAntes)) ? Math.max(0, Math.min(30, Number(c.programados.diasAntes))) : 1,
+      subirSolo: c?.programados?.subirSolo !== false,
+    },
     minCalificacionDireccion: Number.isFinite(Number(c?.minCalificacionDireccion))
       ? Math.max(0, Math.min(100, Number(c.minCalificacionDireccion)))
       : 70,
@@ -1031,6 +1036,39 @@ export function SubidaDropi() {
                   <span>{label}</span>
                 </label>
               ))}
+            </div>
+          </Campo>
+
+          <Campo label="Entregas programadas" id="sub-prog-dias">
+            <p className="campo-ayuda" style={{ marginTop: 0 }}>
+              Pedidos que el cliente pidió para otra fecha («lo quiero para el 30»). Los detecta la IA en el chat o se
+              marcan a mano en el pedido; no se suben antes de tiempo y la lista de pedidos los resalta cuando se acerca la
+              fecha.
+            </p>
+            <div className="row gap" style={{ flexWrap: "wrap", marginBottom: 0 }}>
+              <label className="small">
+                Enviar con
+                <input
+                  id="sub-prog-dias"
+                  type="number"
+                  min={0}
+                  max={30}
+                  value={form.programados.diasAntes}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, programados: { ...f.programados, diasAntes: Math.max(0, Math.min(30, Number(e.target.value) || 0)) } }))
+                  }
+                  style={{ width: 64, margin: "0 6px" }}
+                />
+                día(s) de anticipación
+              </label>
+              <label className="check-linea">
+                <input
+                  type="checkbox"
+                  checked={form.programados.subirSolo}
+                  onChange={(e) => setForm((f) => ({ ...f, programados: { ...f.programados, subirSolo: e.target.checked } }))}
+                />
+                <span>Cuando llegue la fecha, la subida automática lo sube sola</span>
+              </label>
             </div>
           </Campo>
 

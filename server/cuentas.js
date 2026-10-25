@@ -20,6 +20,7 @@ const RUTAS = {
   CREDENCIALES: "credenciales.json",
   ENVIOS: "envios.json",
   INTENTOS: "intentos.jsonl",
+  PROGRAMADOS: "programados.json",
   AUDITORIA: "auditoria.jsonl",
   LUCIDBOT_PEDIDOS: "lucidbot-pedidos.json",
   LUCIDBOT_CONTACTOS_CONFIG: "config/lucidbot-contactos.json",

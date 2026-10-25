@@ -72,6 +72,7 @@ function armar(overrides = {}) {
     validadorDireccion: overrides.validadorDireccion,
     buscarOficinasInter: overrides.buscarOficinasInter,
     intentos: overrides.intentos,
+    programados: overrides.programados,
   });
   // tienda de Dropi configurada por defecto (salvo que la prueba la quite)
   if (overrides.tiendasDropi !== null) {
@@ -1273,6 +1274,77 @@ test("el reloj dice cuando es la proxima revision", async () => {
   assert.equal(s.config().reloj.proxima, null);
   s.configurar({ automatico: false });
   assert.equal(s.config().reloj.proxima, null); // apagada: sin reloj
+  s.detener();
+  fs.rmSync(ruta, { force: true });
+});
+
+test("entrega futura con fecha: queda programada sin gastar intentos y se sube cuando toca", async () => {
+  const { crearProgramados } = await import("../programados.js");
+  const { hoyColombia, sumarDias } = await import("../fechaEntrega.js");
+  const programados = crearProgramados({ ruta: null });
+  const fecha = sumarDias(hoyColombia(), 5);
+  const extraido = {
+    producto: "Taladro Inalambrico 68V", cantidad: 1, precioAcordado: 105690, direccion: "Carrera 92 #78b-02",
+    clienteConfirmo: true, entregaFutura: true, fechaEntregaSolicitada: "para el sábado", fechaEntregaISO: fecha, incertidumbre: [],
+  };
+  const { s, ruta, subidos } = armar({ pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }], extraido, programados });
+  s.configurar({ automatico: true, dryRun: false });
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 0);
+  const e = s.estadoPedido(1);
+  assert.equal(e.accion, "entrega-programada");
+  assert.equal(e.intentos, undefined); // no gasta intentos
+  assert.equal(programados.get(1).fecha, fecha);
+  assert.equal(programados.get(1).origen, "ia");
+  // con 5 dias de anticipacion ya toca: se sube aunque el chat pida otra fecha
+  s.configurar({ programados: { diasAntes: 5 } });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  assert.match(s.estadoPedido(1).accion, /^subido/);
+  assert.ok(programados.get(1).enviado);
+  s.detener();
+  fs.rmSync(ruta, { force: true });
+});
+
+test("entrega programada sin subida sola: espera y avisa que ya toca", async () => {
+  const { crearProgramados } = await import("../programados.js");
+  const { hoyColombia, sumarDias } = await import("../fechaEntrega.js");
+  const programados = crearProgramados({ ruta: null });
+  programados.poner(1, { fecha: sumarDias(hoyColombia(), 1), origen: "manual", nota: "quincena" });
+  const { s, ruta, subidos } = armar({ pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }], programados });
+  s.configurar({ automatico: true, dryRun: false, programados: { diasAntes: 1, subirSolo: false } });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 0);
+  assert.match(s.estadoPedido(1).detalle, /ya toca enviarlo/);
+  // una persona le quita la marca: se envia ya
+  programados.quitar(1);
+  s.programacionCambiada(1);
+  s.configurar({ programados: { subirSolo: true } });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  s.detener();
+  fs.rmSync(ruta, { force: true });
+});
+
+test("marca manual en un pedido frenado: pasa a esperar su fecha", async () => {
+  const { crearProgramados } = await import("../programados.js");
+  const { hoyColombia, sumarDias } = await import("../fechaEntrega.js");
+  const programados = crearProgramados({ ruta: null });
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    programados,
+    extraido: { producto: "Taladro Inalambrico 68V", cantidad: 1, precioAcordado: 105690, direccion: "Carrera 92 #78b-02", clienteConfirmo: true, entregaFutura: null, incertidumbre: [] },
+  });
+  s.configurar({ automatico: true, dryRun: false });
+  await s.tick({ forzar: true });
+  assert.equal(s.estadoPedido(1).accion, "frenado");
+  programados.poner(1, { fecha: sumarDias(hoyColombia(), 10), origen: "manual" });
+  s.programacionCambiada(1);
+  await s.tick({ forzar: true });
+  assert.equal(s.estadoPedido(1).accion, "entrega-programada");
+  assert.equal(subidos.length, 0);
   s.detener();
   fs.rmSync(ruta, { force: true });
 });

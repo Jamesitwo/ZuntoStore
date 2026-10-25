@@ -23,6 +23,10 @@ export const CAMBIOS = [
   [/^PUT \/api\/asignacion\/config$/, "Cambió el reparto automático"],
   [/^POST \/api\/pedidos\/[^/]+\/subir$/, "Subió un pedido a Dropi a mano"],
   [/^POST \/api\/pedidos\/[^/]+\/direccion$/, "Corrigió la dirección de un pedido"],
+  [/^POST \/api\/subida\/pedido\/[^/]+\/resuelto$/, "Marcó un pedido como subido a mano"],
+  [/^PUT \/api\/programados\/config$/, "Cambió cómo se envían las entregas programadas"],
+  [/^PUT \/api\/programados\/[^/]+$/, "Programó la fecha de entrega de un pedido"],
+  [/^DELETE \/api\/programados\/[^/]+$/, "Quitó la fecha de entrega programada de un pedido"],
 ];
 
 export function queCambio(metodo, ruta) {

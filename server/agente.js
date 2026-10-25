@@ -9,6 +9,7 @@
 //
 // Todo lo de comparacion es puro y sin red: se puede probar sin LLM ni APIs.
 
+import { fechaDeExtraccion } from "./fechaEntrega.js";
 import { claveCalle, recogeEnOficina, validarDireccion } from "./direccionColombia.js";
 
 /** Separa los acentos y baja a minusculas: "Medellin" == "medellín". */
@@ -313,7 +314,12 @@ export function textoOtrosPedidos(otros = []) {
     .join("\n");
 }
 
-export async function ejecutarAgente({ resumen, mensajes, extraer, oficina = null, otrosPedidos = [] }) {
+/**
+ * entregaProgramada: { fecha: "AAAA-MM-DD", toca: boolean } si el pedido tiene
+ * una entrega programada (por la IA o a mano). Cuando ya toca enviarlo, que
+ * el cliente haya pedido una fecha futura deja de frenar la subida.
+ */
+export async function ejecutarAgente({ resumen, mensajes, extraer, oficina = null, otrosPedidos = [], entregaProgramada = null }) {
   // la IA tambien descompone la direccion del pedido (la que se envia) y, si
   // el cliente tiene otro pedido reciente, dice si el chat muestra una
   // segunda compra (el codigo decide)
@@ -336,7 +342,18 @@ export async function ejecutarAgente({ resumen, mensajes, extraer, oficina = nul
       ? { evidencia: { ...(extraido?.evidencia ?? {}), entregaFutura: `regla del sistema: el cliente escribió "${fechaSolicitadaEnChat}"` } }
       : {}),
   };
+  // fecha concreta de la entrega (la de la IA si es valida; si no, la del texto)
+  const fechaEntrega = extraidoSeguro.entregaFutura === true ? fechaDeExtraccion(extraidoSeguro) : null;
+  extraidoSeguro.fechaEntregaISO = fechaEntrega ?? "";
   const validacion = validarPedido(resumen, extraidoSeguro, { oficina });
+  if (entregaProgramada?.toca) {
+    const ch = validacion.checks.find((c) => c.campo === "entregaFutura");
+    if (ch && !ch.ok) {
+      ch.ok = true;
+      ch.detalle = `entrega programada para el ${entregaProgramada.fecha}: ya toca enviarlo`;
+      validacion.ok = validacion.checks.every((c) => c.ok);
+    }
+  }
   // ¿pedido repetido? Solo pasa si la IA vio en el chat una compra nueva
   if (hayOtros && !extraido?.falloTecnico) {
     const nuevo = extraidoSeguro.segundaCompra === true;
@@ -364,6 +381,11 @@ export async function ejecutarAgente({ resumen, mensajes, extraer, oficina = nul
     direccionInvalida: decision.problemas.some((p) => p.campo === "direccionValida"),
     // la IA no respondio: no es que el chat este mal
     falloIA: extraido?.falloTecnico || null,
+    // el cliente pidio otra fecha: { fecha: "AAAA-MM-DD" | null, texto }
+    entrega:
+      extraidoSeguro.entregaFutura === true
+        ? { fecha: fechaEntrega, texto: String(extraidoSeguro.fechaEntregaSolicitada ?? "").slice(0, 120) }
+        : null,
   };
 }
 

@@ -5307,3 +5307,16 @@ li.pedido-movil.fila-estado {
 .reloj-barra > div { height: 100%; background: var(--primary, #7c3aed); transition: width 1s linear; }
 .reloj-punto { width: 8px; height: 8px; border-radius: 50%; background: var(--primary, #7c3aed); animation: reloj-pulso 1s ease-in-out infinite; }
 @keyframes reloj-pulso { 50% { opacity: .3; } }
+
+/* entregas programadas (pedidos para otra fecha) */
+.check-linea { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.chip-entrega { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface, transparent); white-space: nowrap; }
+.chip-entrega.toca { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--text); }
+tr.fila-programada-toca > td:first-child, li.fila-programada-toca { box-shadow: inset 4px 0 0 var(--warn); }
+tr.fila-programada-toca > td { background: color-mix(in srgb, var(--warn) 9%, transparent); }
+li.fila-programada-toca { background: color-mix(in srgb, var(--warn) 9%, transparent); }
+.aviso-entregas { margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; font-size: 13.5px; }
+.aviso-entregas.toca { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.aviso-entregas ul { margin: 6px 0 0; padding-left: 18px; }
+.aviso-entregas li { margin: 2px 0; }
+.entrega-programada-card.toca { border-color: var(--warn); box-shadow: inset 4px 0 0 var(--warn); }

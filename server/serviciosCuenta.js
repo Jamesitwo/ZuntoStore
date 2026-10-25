@@ -22,6 +22,7 @@ import { crearProductosDropi } from "./productosDropi.js";
 import { crearLucidBotContactos } from "./lucidbotContactos.js";
 import { cifrarArchivosEnClaro } from "./secretos.js";
 import { crearAuditoria } from "./auditoria.js";
+import { crearProgramados } from "./programados.js";
 
 /**
  * Turno del navegador de Dropi, compartido por TODAS las cuentas: un solo
@@ -108,6 +109,8 @@ export function crearServiciosCuenta({ cuenta, config, inter, turnoDropi = null 
   const extraerLLM = crearExtractorLLM(config);
   // historial de intentos de subida por pedido (automaticos y manuales)
   const registroIntentos = crearRegistroIntentos({ ruta: config.INTENTOS });
+  // pedidos con entrega para una fecha futura (los marca la IA o una persona)
+  const programados = crearProgramados({ ruta: config.PROGRAMADOS });
   const subidaAuto = crearSubidaAutomatica({
     cliente,
     conversacion,
@@ -128,6 +131,7 @@ export function crearServiciosCuenta({ cuenta, config, inter, turnoDropi = null 
     // el pedido va a esa oficina (por Coordinadora se devolveria)
     buscarOficinasInter: ({ ciudad, departamento }) => inter.oficinasCompletas({ municipio: ciudad, departamento }),
     intentos: registroIntentos,
+    programados,
   });
   // clave de la API de ESTA cuenta (la variable API_KEY solo vale para la 1)
   const apiKeys = crearApiKeys({ ruta: config.APIKEY_CONFIG, claveEnv: config.API_KEY });
@@ -159,6 +163,7 @@ export function crearServiciosCuenta({ cuenta, config, inter, turnoDropi = null 
     lucidBotContactos,
     resolverProductoDropi,
     registroIntentos,
+    programados,
     subidaAuto,
     apiKeys,
     pedidosLucidBot,

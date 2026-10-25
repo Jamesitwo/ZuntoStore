@@ -57,6 +57,7 @@ const VEREDICTOS: Record<string, { texto: string; tono: "ok" | "warn" | "alerta"
   "posible-duplicado": { texto: "POSIBLE REPETIDO — el cliente ya tiene otro pedido reciente; revísalo", tono: "alerta" },
   "envio-caro": { texto: "Envío muy caro — no se subió", tono: "warn" },
   "sin-transportadora": { texto: "Sin transportadora disponible", tono: "warn" },
+  "entrega-programada": { texto: "PROGRAMADO — el cliente lo pidió para otra fecha; se envía cuando se acerque", tono: "warn" },
   "resuelto-a-mano": { texto: "RESUELTO — una persona lo subió a mano o lo movió en LucidSales; no se reintenta", tono: "ok" },
 };
 
@@ -258,7 +259,7 @@ export function SubirPedidoDropi({
       }
       if (status === 409) {
         // el agente frenó: no se subió nada
-        setSubida({ tipo: "frenado", motivos: datos?.motivos ?? [], validacion: datos?.validacion, msg: datos?.msg, notificacionLucidBot: datos?.notificacionLucidBot });
+        setSubida({ tipo: "frenado", motivos: datos?.motivos ?? [], validacion: datos?.validacion, msg: datos?.msg, notificacionLucidBot: datos?.notificacionLucidBot, entrega: datos?.entrega ?? null });
         toast.error(datos?.msg || "El agente frenó el pedido: no se subió a Dropi");
         return;
       }
@@ -447,6 +448,31 @@ export function SubirPedidoDropi({
               >
                 Subir de todas formas
               </button>
+            </div>
+          ) : null}
+          {subida.entrega && subida.motivos?.some((m: any) => m?.campo === "entregaFutura") ? (
+            <div style={{ marginTop: 8 }}>
+              {subida.entrega.fecha ? (
+                <button
+                  className="btn sm"
+                  disabled={subiendo}
+                  onClick={() => {
+                    void backend(`/api/programados/${encodeURIComponent(String(id))}`, {
+                      method: "PUT",
+                      body: { fecha: subida.entrega.fecha, nota: subida.entrega.texto ? `el cliente dijo: ${subida.entrega.texto}` : "" },
+                    })
+                      .then(() => {
+                        toast.success("Entrega programada");
+                        window.dispatchEvent(new CustomEvent("zunto:programado", { detail: String(id) }));
+                      })
+                      .catch((e) => toast.error(errMsg(e)));
+                  }}
+                >
+                  📅 Programar para el {subida.entrega.fecha}
+                </button>
+              ) : (
+                <span className="small">El cliente pidió otra fecha ({subida.entrega.texto || "sin día exacto"}): ponla en «Entrega programada».</span>
+              )}
             </div>
           ) : null}
         </div>
