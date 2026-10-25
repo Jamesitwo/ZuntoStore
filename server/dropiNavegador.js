@@ -72,6 +72,35 @@ const pesos = (v) => `$${Math.round(Number(v) || 0).toLocaleString("es-CO")}`;
  * Texto de la direccion para un pedido que recoge en oficina de Inter: Dropi
  * solo muestra el selector de oficinas si la direccion lo dice.
  */
+const normalizarUbicacion = (t) =>
+  String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/**
+ * Nombres con los que Dropi (u otras fuentes) llaman al mismo departamento o
+ * ciudad. Cada grupo son equivalentes; el primero de la lista es el que mas
+ * usa Dropi y se prueba a escribir si el nombre completo no aparece.
+ */
+const EQUIVALENTES_UBICACION = [
+  ["valle", "valle del cauca"],
+  ["guajira", "la guajira"],
+  ["san andres", "san andres y providencia", "archipielago de san andres", "san andres providencia y santa catalina", "archipielago de san andres providencia y santa catalina"],
+  ["norte de santander", "n santander", "nte de santander"],
+  ["bogota", "bogota d c", "bogota dc", "distrito capital", "bogota distrito capital", "santafe de bogota", "cundinamarca bogota"],
+  ["cartagena", "cartagena de indias"],
+  ["cucuta", "san jose de cucuta"],
+  ["santa fe de antioquia", "santafe de antioquia"],
+  ["el carmen de viboral", "carmen de viboral"],
+  ["san andres de tumaco", "tumaco"],
+  ["guadalajara de buga", "buga"],
+];
+
+/** Todas las formas aceptadas para un nombre (normalizadas), la propia primero. */
+export function variantesUbicacion(texto) {
+  const n = normalizarUbicacion(texto);
+  const grupo = EQUIVALENTES_UBICACION.find((g) => g.includes(n));
+  return [...new Set([n, ...(grupo ?? [])])].filter(Boolean);
+}
+
 /** Direccion que se escribe en Dropi cuando la oficina la detecto el sistema. */
 export const DIRECCION_OFICINA_INTER = "Oficina Interrapidisimo";
 
@@ -247,6 +276,19 @@ export function crearDropiNavegador(config = {}) {
    * quedara deshabilitado y eso ya se avisa mas abajo).
    */
   async function autocompletar(p, cy, texto) {
+    // se prueba con el nombre tal cual y luego con sus equivalentes ("Valle
+    // del Cauca" -> "Valle"): Dropi acorta algunos nombres
+    const aceptadas = variantesUbicacion(texto);
+    let ultimo = null;
+    for (const escrito of [String(texto ?? ""), ...aceptadas.slice(1)]) {
+      const r = await autocompletarUna(p, cy, escrito, aceptadas);
+      if (r.ok || r.paso === "sin campo") return { ...r, solicitado: String(texto ?? "") };
+      ultimo = r;
+    }
+    return { ...ultimo, solicitado: String(texto ?? "") };
+  }
+
+  async function autocompletarUna(p, cy, texto, aceptadas) {
     const caja = p.locator(`[data-cy="${cy}"] input`).first();
     if (!(await caja.count().catch(() => 0))) {
       return { ok: false, paso: "sin campo", campo: cy };
@@ -267,14 +309,12 @@ export function crearDropiNavegador(config = {}) {
     }
     if (!hay) return { ok: false, paso: "sin opcion", campo: cy, solicitado: String(texto ?? "") };
 
-    const objetivo = String(texto ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
     const candidatas = await opciones.all().catch(() => []);
     let opcionExacta = null;
     let elegido = "";
     for (const opcion of candidatas) {
       const textoOpcion = (await opcion.innerText().catch(() => "")).trim();
-      const normalizada = textoOpcion.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-      if (normalizada === objetivo) {
+      if (aceptadas.includes(normalizarUbicacion(textoOpcion))) {
         opcionExacta = opcion;
         elegido = textoOpcion;
         break;
@@ -1021,6 +1061,11 @@ export function crearDropiNavegador(config = {}) {
     /** Elige la oficina de Inter si hay una sola (se usa en pruebas). */
     elegirOficinaInter(p, opciones) {
       return elegirOficinaInter(p, opciones);
+    },
+
+    /** Departamento / ciudad en un formulario ya abierto (se usa en pruebas). */
+    autocompletar(p, cy, texto) {
+      return autocompletar(p, cy, texto);
     },
 
     /** Elige la tienda en un formulario Crear Orden ya abierto (se usa en pruebas). */

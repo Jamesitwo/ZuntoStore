@@ -322,3 +322,53 @@ test("ficha: si Dropi redirige a otra pagina lo dice (no que el producto no exis
     await p.close();
   }
 });
+
+/** Autocomplete de departamento como el de Dropi: filtra por lo que se escribe. */
+function paginaDepartamentos(opciones) {
+  return `<!doctype html><html><body>
+  <div data-cy="client-state"><input type="text"></div>
+  <ul class="p-autocomplete-panel"></ul>
+  <script>
+    const ops = ${JSON.stringify(opciones)};
+    const caja = document.querySelector('[data-cy="client-state"] input');
+    const panel = document.querySelector("ul");
+    const norm = (t) => t.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
+    caja.addEventListener("input", () => {
+      panel.innerHTML = "";
+      setTimeout(() => {
+        for (const o of ops.filter((x) => norm(x).includes(norm(caja.value)))) {
+          const li = document.createElement("li");
+          li.textContent = o;
+          li.addEventListener("click", () => { caja.value = o; panel.innerHTML = ""; });
+          panel.appendChild(li);
+        }
+      }, 150);
+    });
+  </script></body></html>`;
+}
+
+test("departamento: «Valle del Cauca» se encuentra como «VALLE» en Dropi", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  const p = await pagina(paginaDepartamentos(["VALLE", "VAUPES", "CAUCA"]));
+  try {
+    const r = await nav.autocompletar(p, "client-state", "Valle del Cauca");
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.equal(r.elegido, "VALLE");
+    assert.equal(await p.locator('[data-cy="client-state"] input').inputValue(), "VALLE");
+  } finally {
+    await p.close();
+  }
+});
+
+test("departamento: un nombre que no esta no elige uno parecido", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  const p = await pagina(paginaDepartamentos(["SANTANDER", "NORTE DE SANTANDER"]));
+  try {
+    const r = await nav.autocompletar(p, "client-state", "Santander");
+    assert.equal(r.elegido, "SANTANDER");
+    const r2 = await nav.autocompletar(p, "client-state", "Antioquia");
+    assert.equal(r2.ok, false);
+  } finally {
+    await p.close();
+  }
+});
