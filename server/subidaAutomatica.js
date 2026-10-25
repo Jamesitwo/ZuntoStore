@@ -997,6 +997,8 @@ export function crearSubidaAutomatica({
                   : direccionConReferencias(direccionEnvio, resumen?.referencias),
               departamento: depto,
               ciudad,
+              // si vive en un corregimiento, en Dropi se busca ese municipio
+              corregimiento: r2.extraido?.corregimiento || "",
               transportadoras: plan.transportadoras,
               maxEnvio: plan.maxEnvio,
               oficinaInter: plan.oficinaInter,
@@ -1066,7 +1068,7 @@ export function crearSubidaAutomatica({
           }
           // envio caro, sin transportadora o varias oficinas: es un resultado
           // del PEDIDO (reintentar no lo cambia). Queda final y se avisa.
-          if (rNav?.envioCaro || rNav?.sinTransportadora || rNav?.oficinaHumano) {
+          if (rNav?.envioCaro || rNav?.sinTransportadora || rNav?.oficinaHumano || rNav?.corregimientoHumano) {
             const accion = rNav.envioCaro ? "envio-caro" : rNav.sinTransportadora ? "sin-transportadora" : "requiere-humano";
             const det = `${rNav.detalle}${plan.motivoTope && rNav.envioCaro ? ` (tope: ${plan.motivoTope})` : ""}`;
             if (!c.dryRun) await notificarUnaVez(c, id, contactoPedido, "fallido", det);

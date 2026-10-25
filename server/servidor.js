@@ -1333,6 +1333,8 @@ export function crearManejador({
               : direccionConReferencias(resumen?.direccion, resumen?.referencias),
           departamento: depto,
           ciudad,
+          // si vive en un corregimiento, en Dropi se busca ese municipio
+          corregimiento: r.extraido?.corregimiento || "",
           transportadoras,
           maxEnvio: plan.maxEnvio,
           oficinaInter: plan.oficinaInter,
@@ -1410,7 +1412,7 @@ export function crearManejador({
 
         // envio caro / sin transportadora / varias oficinas: el pedido no se
         // sube; queda marcado igual que en la subida automatica
-        if (rNav?.envioCaro || rNav?.sinTransportadora || rNav?.oficinaHumano) {
+        if (rNav?.envioCaro || rNav?.sinTransportadora || rNav?.oficinaHumano || rNav?.corregimientoHumano) {
           const accion = rNav.envioCaro ? "envio-caro" : rNav.sinTransportadora ? "sin-transportadora" : "requiere-humano";
           const det = `${rNav.detalle}${rNav.envioCaro && plan.motivoTope ? ` (tope: ${plan.motivoTope})` : ""}`;
           if (cuerpo?.dryRun !== true) subida.registrarResultado?.(id, accion, det);
@@ -1418,7 +1420,7 @@ export function crearManejador({
             ok: false,
             id,
             accion: "frenar",
-            motivos: [{ campo: rNav.oficinaHumano ? "oficina" : "envio", detalle: det }],
+            motivos: [{ campo: rNav.oficinaHumano ? "oficina" : rNav.corregimientoHumano ? "corregimiento" : "envio", detalle: det }],
             intentos: rNav.intentos,
             oficinas: rNav.oficinas,
             subido: false,

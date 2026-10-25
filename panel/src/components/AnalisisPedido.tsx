@@ -12,6 +12,7 @@ export const NOMBRES_CHEQUEO: Record<string, string> = {
   direccionMapa: "Dirección en el mapa",
   confirmacion: "Confirmó",
   entregaFutura: "Entrega futura",
+  corregimiento: "Corregimiento",
   duplicado: "Pedido repetido",
 };
 

@@ -24,6 +24,7 @@ Campos exactos:
 - "entregaFutura": true si el cliente pidió que se entregue/reciba en una fecha posterior a hoy o pidió aplazarla; false si no pidió una fecha futura; null si no se puede determinar.
 - "fechaEntregaSolicitada": fecha o expresión de fecha solicitada por el cliente (string; "" si no existe).
 - "fechaEntregaISO": si entregaFutura es true, la fecha concreta pedida como "AAAA-MM-DD", calculada con la fecha de hoy que se te da y los timestamps del chat ("" si no se puede saber el dia exacto).
+- "corregimiento": si el cliente dice que vive en un corregimiento, inspección o centro poblado (un pueblo que pertenece a otro municipio, p. ej. "Rozo" de Palmira o "San Antonio de Prado" de Medellín), su nombre solo, sin la palabra "corregimiento" (string). "" si vive en la ciudad o municipio (un barrio NO es un corregimiento).
 - "incertidumbre": arreglo de strings con lo que no quedo claro.
 - "razonamiento": 2 o 3 frases en español que expliquen lo que entendiste del chat (que pidio el cliente, a que precio, si confirmo y por que lo crees). Solo lo que dice el chat.
 - "direccionEnvio": analisis de la DIRECCION DEL PEDIDO (la que te paso aparte, no la del chat). Es un objeto:
@@ -41,7 +42,7 @@ Campos exactos:
   Ej.: "mz b cs 12 los almendros" -> formato "manzana", manzana "B", casa "12", barrio "Los Almendros". En este formato deja tipoVia/via/cruce/placa vacios.
   El barrio es obligatorio en el formato manzana: si no lo hay, esNomenclatura=false y motivo "falta el barrio".
   esNomenclatura=false si la direccion es solo descriptiva ("casa verde al lado de la panaderia", "frente al parque"), rural (vereda, finca, km) o le faltan partes que no se pueden deducir sin inventar; en ese caso explica en "motivo".
-- "evidencia": objeto con las claves "producto", "cantidad", "precioAcordado", "direccion", "clienteConfirmo" y "entregaFutura". En cada una, copia TEXTUALMENTE la frase corta del chat (maximo 120 caracteres) de la que sacaste ese dato, empezando por quien la dijo, por ejemplo "CLIENTE: confirmo, a la Carrera 92 #78b-02". Usa "" si no hay frase que lo respalde.
+- "evidencia": objeto con las claves "producto", "cantidad", "precioAcordado", "direccion", "clienteConfirmo", "entregaFutura" y "corregimiento". En cada una, copia TEXTUALMENTE la frase corta del chat (maximo 120 caracteres) de la que sacaste ese dato, empezando por quien la dijo, por ejemplo "CLIENTE: confirmo, a la Carrera 92 #78b-02". Usa "" si no hay frase que lo respalde.
 
 Reglas:
 - No inventes. Si algo no esta en el chat, usa "" o null.
@@ -51,7 +52,7 @@ Reglas:
 - La evidencia debe ser una cita real del chat, no un resumen ni una deduccion.
 - Responde SOLO el JSON, sin marcas de codigo ni explicacion.`;
 
-const CLAVES_EVIDENCIA = ["producto", "cantidad", "precioAcordado", "direccion", "clienteConfirmo", "entregaFutura", "segundaCompra"];
+const CLAVES_EVIDENCIA = ["producto", "cantidad", "precioAcordado", "direccion", "clienteConfirmo", "entregaFutura", "segundaCompra", "corregimiento"];
 
 /** gpt-5*, o1/o3/o4 en OpenAI (u OpenRouter con prefijo openai/) aceptan reasoning_effort. */
 export function esModeloRazonamiento(modelo, base = "") {
@@ -90,6 +91,7 @@ function normalizarSalida(v) {
     entregaFutura: typeof o.entregaFutura === "boolean" ? o.entregaFutura : null,
     fechaEntregaSolicitada: typeof o.fechaEntregaSolicitada === "string" ? o.fechaEntregaSolicitada.trim() : "",
     fechaEntregaISO: typeof o.fechaEntregaISO === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.fechaEntregaISO.trim()) ? o.fechaEntregaISO.trim() : "",
+    corregimiento: typeof o.corregimiento === "string" ? o.corregimiento.replace(/^\s*(corregimiento|vereda|inspecci[oó]n|centro poblado)\s+(de\s+)?/i, "").trim().slice(0, 80) : "",
     incertidumbre: Array.isArray(o.incertidumbre) ? o.incertidumbre.map(String) : [],
     razonamiento: typeof o.razonamiento === "string" ? o.razonamiento.trim().slice(0, 800) : "",
     // solo cuando se le mostraron otros pedidos del mismo cliente
@@ -170,6 +172,7 @@ export function crearExtractorLLM(config = {}) {
                     "(otra unidad, otro producto, volvio a pedir despues de confirmar el primero); false si el chat solo muestra " +
                     "una compra; y en evidencia.segundaCompra la frase del cliente que lo muestra.\n\n"
                   : "") +
+                'Si el cliente dice que vive en un corregimiento o centro poblado (no un barrio), agrega "corregimiento" con su nombre solo ("" si no).\n' +
                 `Hoy es ${hoyColombia()} (hora de Colombia). Si el cliente pidió la entrega para una fecha futura, agrega al JSON ` +
                 '"fechaEntregaISO" con esa fecha como "AAAA-MM-DD" ("" si no se puede saber el día exacto).\n\n' +
                 "Devuelve el JSON.",

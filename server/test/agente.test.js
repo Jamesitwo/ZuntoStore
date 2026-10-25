@@ -251,3 +251,42 @@ test("pedido repetido: sin segunda compra en el chat se frena por duplicado", as
   const r2 = await ejecutarAgente({ resumen, mensajes: [], extraer: async () => base });
   assert.equal(r2.validacion.checks.some((c) => c.campo === "duplicado"), false);
 });
+
+// ---------- corregimientos ----------
+const EXTRAIDO_BIEN = {
+  producto: "Taladro Inalambrico 68V",
+  cantidad: 1,
+  precioAcordado: 84900,
+  direccion: "Carrera 92 #78b-02",
+  clienteConfirmo: true,
+  entregaFutura: false,
+  incertidumbre: [],
+};
+
+test("corregimiento con nombre: sube y deja el corregimiento para buscarlo en Dropi", async () => {
+  const r = await ejecutarAgente({
+    resumen: RESUMEN,
+    mensajes: [{ de: "cliente", texto: "vivo en el corregimiento de Rozo" }],
+    extraer: async () => ({ ...EXTRAIDO_BIEN, corregimiento: "Rozo" }),
+  });
+  assert.equal(r.accion, "subir");
+  assert.equal(r.extraido.corregimiento, "Rozo");
+  const ch = r.validacion.checks.find((c) => c.campo === "corregimiento");
+  assert.equal(ch.ok, true);
+  assert.match(ch.detalle, /Rozo/);
+});
+
+test("dijo que vive en un corregimiento pero no se sabe cual: frena", async () => {
+  const r = await ejecutarAgente({
+    resumen: RESUMEN,
+    mensajes: [{ de: "cliente", texto: "es en un corregimiento cerca" }],
+    extraer: async () => ({ ...EXTRAIDO_BIEN, corregimiento: "" }),
+  });
+  assert.equal(r.accion, "frenar");
+  assert.deepEqual(r.problemas.map((p) => p.campo), ["corregimiento"]);
+});
+
+test("sin corregimiento no aparece la verificacion", async () => {
+  const r = await ejecutarAgente({ resumen: RESUMEN, mensajes: [], extraer: async () => EXTRAIDO_BIEN });
+  assert.equal(r.validacion.checks.some((c) => c.campo === "corregimiento"), false);
+});

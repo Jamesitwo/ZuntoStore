@@ -1368,3 +1368,23 @@ test("cada vuelta mira hasta 200 pedidos por tienda (2 paginas de 100)", async (
   s.detener();
   fs.rmSync(ruta, { force: true });
 });
+
+test("corregimiento que Dropi no tiene como municipio: no se sube y lo revisa una persona", async () => {
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    extraido: {
+      producto: "Taladro Inalambrico 68V", cantidad: 1, precioAcordado: 105690, direccion: "Carrera 92 #78b-02",
+      clienteConfirmo: true, entregaFutura: false, incertidumbre: [], corregimiento: "Rozo",
+    },
+    respuestaDropi: () => ({ ok: false, creado: false, corregimientoHumano: true, detalle: "No se envió a Dropi: el cliente vive en el corregimiento Rozo y en Dropi no aparece como municipio aparte" }),
+  });
+  s.configurar({ automatico: true, dryRun: false });
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1); // no se reintenta
+  assert.equal(subidos[0].corregimiento, "Rozo");
+  assert.equal(s.estadoPedido(1).accion, "requiere-humano");
+  assert.match(s.estadoPedido(1).detalle, /corregimiento Rozo/);
+  s.detener();
+  fs.rmSync(ruta, { force: true });
+});

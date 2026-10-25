@@ -342,10 +342,30 @@ export async function ejecutarAgente({ resumen, mensajes, extraer, oficina = nul
       ? { evidencia: { ...(extraido?.evidencia ?? {}), entregaFutura: `regla del sistema: el cliente escribió "${fechaSolicitadaEnChat}"` } }
       : {}),
   };
+  // ¿vive en un corregimiento? En Dropi algunos son municipio aparte; si no
+  // lo es, no se sube (lo decide el formulario de Dropi). Si el cliente lo
+  // dijo pero la IA no supo cual, frena.
+  const dijoCorregimiento = (Array.isArray(mensajes) ? mensajes : [])
+    .filter((m) => m?.de === "cliente")
+    .map((m) => normalizarTexto(m?.texto))
+    .find((t) => /\bcorregimiento\b/.test(t));
+  extraidoSeguro.corregimiento = String(extraidoSeguro.corregimiento ?? "").trim();
   // fecha concreta de la entrega (la de la IA si es valida; si no, la del texto)
   const fechaEntrega = extraidoSeguro.entregaFutura === true ? fechaDeExtraccion(extraidoSeguro) : null;
   extraidoSeguro.fechaEntregaISO = fechaEntrega ?? "";
   const validacion = validarPedido(resumen, extraidoSeguro, { oficina });
+  if (extraidoSeguro.corregimiento || dijoCorregimiento) {
+    const nombre = extraidoSeguro.corregimiento;
+    validacion.checks.push({
+      campo: "corregimiento",
+      ok: Boolean(nombre),
+      detalle: nombre
+        ? `el cliente vive en el corregimiento ${nombre}: en Dropi se busca como municipio y si no existe no se sube`
+        : "el cliente dijo que vive en un corregimiento pero no se pudo saber cuál",
+      ...(extraidoSeguro.evidencia?.corregimiento ? { evidencia: extraidoSeguro.evidencia.corregimiento } : dijoCorregimiento ? { evidencia: `CLIENTE: …${dijoCorregimiento.slice(0, 100)}` } : {}),
+    });
+    validacion.ok = validacion.checks.every((c) => c.ok);
+  }
   if (entregaProgramada?.toca) {
     const ch = validacion.checks.find((c) => c.campo === "entregaFutura");
     if (ch && !ch.ok) {

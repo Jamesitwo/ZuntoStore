@@ -1386,18 +1386,35 @@ export function crearDropiNavegador(config = {}) {
       // 5.6) ciudad por NOMBRE (se habilita tras el departamento; se elige
       //      despues del tipo de recaudo para que no la borre)
       // la ciudad con su departamento: Dropi marca las repetidas ("Armenia (Q)")
-      ubicacion.ciudad = datos.ciudad
-        ? await autocompletar(p, "client-city", datos.ciudad, { departamento: datos.departamento })
+      // Corregimiento: en Dropi algunos son un municipio aparte de la ciudad
+      // ("Rozo" de Palmira). Si el cliente vive en uno, se busca ESE; si Dropi
+      // no lo tiene, no se sube (a la ciudad principal llegaria mal).
+      const corregimiento = String(datos.corregimiento ?? "").trim();
+      const ciudadDropi =
+        corregimiento && normalizarTexto(corregimiento) !== normalizarTexto(datos.ciudad) ? corregimiento : String(datos.ciudad ?? "");
+      ubicacion.ciudad = ciudadDropi
+        ? await autocompletar(p, "client-city", ciudadDropi, { departamento: datos.departamento })
         : null;
-      if (!ubicacion.ciudad?.ok) {
-        return { ok: false, creado: false, detalle: `No se envió a Dropi: no se confirmó la ciudad exacta (${ubicacion.ciudad?.solicitado ?? datos.ciudad}).` };
+      if (!ubicacion.ciudad?.ok && ciudadDropi !== String(datos.ciudad ?? "") && ubicacion.ciudad?.paso !== "sin campo") {
+        return {
+          ok: false,
+          creado: false,
+          corregimientoHumano: true,
+          detalle:
+            `No se envió a Dropi: el cliente vive en el corregimiento ${corregimiento} (${datos.ciudad}) y en Dropi no aparece como municipio aparte` +
+            `${ubicacion.ciudad?.opciones?.length ? ` (Dropi ofreció: ${ubicacion.ciudad.opciones.join(", ")})` : ""}. Lo revisa una persona.`,
+        };
       }
+      if (!ubicacion.ciudad?.ok) {
+        return { ok: false, creado: false, detalle: `No se envió a Dropi: no se confirmó la ciudad exacta (${ubicacion.ciudad?.solicitado ?? ciudadDropi}).` };
+      }
+      if (ciudadDropi !== String(datos.ciudad ?? "")) ubicacion.corregimiento = { nombre: corregimiento, elegido: ubicacion.ciudad.elegido };
       // dejar que la ciudad quede registrada antes de tocar la transportadora
       await p.waitForTimeout(1000);
 
       // 6) transportadora: la primera de la lista que este disponible y cuyo
       //    envio no pase el tope (hay que esperar a que Dropi cotice)
-      const selCarrier = await elegirTransportadora(p, candidatas, { maxEnvio, ciudad: datos.ciudad });
+      const selCarrier = await elegirTransportadora(p, candidatas, { maxEnvio, ciudad: ciudadDropi });
       if (!selCarrier.ok) {
         return {
           ok: false,
