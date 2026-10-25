@@ -381,7 +381,7 @@ export function crearManejador({
     [/^\/api\/interrapidisimo\//, null],
     [/^\/api\/pedidos\/[^/]+\/(estado|conversacion|validar|subir)$/, "2"],
     [/^\/api\/pedidos\/[^/]+\/direccion(\/validar)?$/, "2"],
-    [/^\/api\/subida\/pedido\/[^/]+(\/intentos|\/aprobar-duplicado)?$/, "2"],
+    [/^\/api\/subida\/pedido\/[^/]+(\/intentos|\/aprobar-duplicado|\/resuelto)?$/, "2"],
     [/^\/api\/historial$/, "2"],
     [/^\/api\/envios\/ultimos$/, "8"],
     [/^\/api\/envios\//, "2"],
@@ -762,6 +762,19 @@ export function crearManejador({
       const r = subida.aprobarDuplicado(id);
       console.log(`[subida] pedido ${id}: ${usuarioDe(req) ?? "?"} confirmó que NO es un duplicado`);
       json(res, 200, { ...r, msg: "Se subirá en la próxima vuelta de la subida automática" });
+      return;
+    }
+
+    // ---- POST /api/subida/pedido/:id/resuelto ----
+    // una persona ya lo subió a mano: sale de revisión y no se reintenta
+    const resuelto = ruta.match(/^\/api\/subida\/pedido\/([^/]+)\/resuelto$/);
+    if (req.method === "POST" && resuelto) {
+      autorizar(req);
+      const id = decodeURIComponent(resuelto[1]);
+      const quien = usuarioDe(req) ?? "";
+      const r = subida.resueltoAMano(id, quien);
+      console.log(`[subida] pedido ${id}: ${quien || "?"} lo marcó como subido a mano`);
+      json(res, 200, { ...r, msg: "Listo: ya no se reintenta" });
       return;
     }
 

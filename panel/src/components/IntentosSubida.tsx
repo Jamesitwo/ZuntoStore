@@ -47,6 +47,7 @@ const RESULTADO: Record<string, { texto: string; tono: "ok" | "warn" | "mal" }> 
   "estado-incompatible": { texto: "Estado que no se sube", tono: "warn" },
   error: { texto: "Error", tono: "mal" },
   "posible-duplicado": { texto: "Posible pedido repetido", tono: "mal" },
+  "resuelto-a-mano": { texto: "Resuelto por una persona", tono: "ok" },
 };
 
 const peso = (n: unknown) =>

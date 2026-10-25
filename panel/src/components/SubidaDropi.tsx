@@ -395,6 +395,19 @@ export function SubidaDropi() {
     }
   };
 
+  const yaSubido = async (id: string) => {
+    if (!window.confirm(`¿Ya subiste el pedido ${id} a Dropi a mano? Sale de revisión y Zunto no lo vuelve a intentar.`)) return;
+    try {
+      await backend(`/api/subida/pedido/${encodeURIComponent(id)}/resuelto`, { method: "POST", body: {} });
+      toast.success(`Pedido ${id} marcado como subido a mano`);
+      refrescar();
+    } catch (e) {
+      const m = errMsg(e);
+      setErr(m);
+      toast.error(m);
+    }
+  };
+
   const reintentarIncierto = async (id: string) => {
     if (!window.confirm(`Confirma que buscaste el pedido ${id} en Dropi y verificaste que NO existe. Solo entonces se volverá a intentar.`)) return;
     try {
@@ -1056,6 +1069,7 @@ export function SubidaDropi() {
                         {u.analisis ? <AnalisisPedido analisis={u.analisis} /> : null}
                       </td>
                       <td>
+                        <div className="row gap" style={{ marginBottom: 0, flexWrap: "wrap" }}>
                         {u.accion === "resultado-incierto" ? (
                           <button className="btn sm" onClick={() => void reintentarIncierto(String(u.id))}>
                             Verifiqué que no existe
@@ -1068,7 +1082,13 @@ export function SubidaDropi() {
                           <button className="btn sm" onClick={() => void reintentarRevision(String(u.id))}>
                             Reintentar
                           </button>
-                        ) : "—"}
+                        ) : null}
+                        {EN_ALERTA.includes(u.accion) ? (
+                          <button className="btn sm" title="Ya lo subiste a Dropi tú: sale de revisión y no se reintenta" onClick={() => void yaSubido(String(u.id))}>
+                            Ya lo subí a mano
+                          </button>
+                        ) : u.accion === "resuelto-a-mano" ? null : !["resultado-incierto", "posible-duplicado"].includes(u.accion) && !REINTENTABLES.includes(u.accion) ? "—" : null}
+                        </div>
                       </td>
                     </tr>
                   ))}

@@ -57,6 +57,7 @@ const VEREDICTOS: Record<string, { texto: string; tono: "ok" | "warn" | "alerta"
   "posible-duplicado": { texto: "POSIBLE REPETIDO — el cliente ya tiene otro pedido reciente; revísalo", tono: "alerta" },
   "envio-caro": { texto: "Envío muy caro — no se subió", tono: "warn" },
   "sin-transportadora": { texto: "Sin transportadora disponible", tono: "warn" },
+  "resuelto-a-mano": { texto: "RESUELTO — una persona lo subió a mano o lo movió en LucidSales; no se reintenta", tono: "ok" },
 };
 
 /**

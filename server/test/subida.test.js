@@ -1217,3 +1217,47 @@ test("la ganancia y el envio que muestra Dropi quedan con el pedido", async () =
   assert.equal(intentos.dePedido("1")[0].dropi.ganancia, 14806);
   fs.rmSync(ruta, { force: true });
 });
+
+test("en revision y una persona lo confirma en LucidSales: queda resuelto y no se reintenta", async () => {
+  const pedidos = [{ id: 1, EstadoPedido: 0, completo: COMPLETO }];
+  const { s, ruta, subidos } = armar({
+    pedidos,
+    respuestaDropi: () => ({ ok: false, creado: false, detalle: "error" }),
+  });
+  s.configurar({ automatico: true, dryRun: false, maxIntentos: 1, estados: [0, 2] });
+  await s.tick({ forzar: true });
+  assert.equal(s.estadoPedido(1).accion, "requiere-revision");
+  pedidos[0].EstadoPedido = 2; // lo subio a mano y lo confirmo
+  await s.tick({ forzar: true });
+  assert.equal(s.estadoPedido(1).accion, "resuelto-a-mano");
+  assert.equal(s.rearmarRevision().rearmados, 0);
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("en revision sin cambios de estado: sigue en revision", async () => {
+  const { s, ruta } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 2, completo: COMPLETO }],
+    respuestaDropi: () => ({ ok: false, creado: false, detalle: "error" }),
+  });
+  s.configurar({ automatico: true, dryRun: false, maxIntentos: 1, estados: [0, 2] });
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  assert.equal(s.estadoPedido(1).accion, "requiere-revision");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("marcar a mano como ya subido lo saca de revision", async () => {
+  const { s, ruta } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    respuestaDropi: () => ({ ok: false, creado: false, detalle: "error" }),
+  });
+  s.configurar({ automatico: true, dryRun: false, maxIntentos: 1 });
+  await s.tick({ forzar: true });
+  assert.deepEqual(s.resueltoAMano(1, "ana@x.co"), { ok: true, id: "1" });
+  assert.equal(s.estadoPedido(1).accion, "resuelto-a-mano");
+  assert.match(s.estadoPedido(1).detalle, /ana@x.co/);
+  assert.equal(s.rearmarRevision().rearmados, 0);
+  fs.rmSync(ruta, { force: true });
+});

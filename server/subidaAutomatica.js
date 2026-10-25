@@ -44,7 +44,11 @@ const FINALES = new Set([
   "sin-transportadora",
   // otro pedido reciente del mismo cliente y el chat no muestra otra compra
   "posible-duplicado",
+  // una persona ya lo resolvio (lo subio a mano o lo confirmo en LucidSales)
+  "resuelto-a-mano",
 ]);
+/** Resultados en revision que se dan por resueltos si una persona mueve el pedido. */
+const RESOLUBLES = new Set(["requiere-revision", "direccion-invalida", "envio-caro", "sin-transportadora", "posible-duplicado"]);
 /** Dias hacia atras en que otro pedido del mismo telefono cuenta como posible repetido. */
 const DIAS_DUPLICADO = 7;
 
@@ -501,6 +505,11 @@ export function crearSubidaAutomatica({
       ...(extra.dropi ?? previo.dropi ? { dropi: extra.dropi ?? previo.dropi } : {}),
       // tienda de LucidSales del pedido (para separar por tienda despues)
       ...(extra.tienda ?? previo.tienda ? { tienda: extra.tienda ?? previo.tienda } : {}),
+      // estado del pedido en LucidSales cuando se marco (para notar si una
+      // persona lo movio despues)
+      ...(Number.isInteger(extra.estadoPedido ?? previo.estadoPedido)
+        ? { estadoPedido: extra.estadoPedido ?? previo.estadoPedido }
+        : {}),
     };
     guardar(c);
     return c.procesados[String(id)];
@@ -585,6 +594,7 @@ export function crearSubidaAutomatica({
           const marcarP = (accion, det) => {
             const e = marcar(c, id, accion, det, {
               tienda: Number(idEmpresa) || null,
+              estadoPedido: Number.isInteger(Number(p?.EstadoPedido)) && p?.EstadoPedido !== undefined && p?.EstadoPedido !== null ? Number(p.EstadoPedido) : undefined,
               cliente: { ...contacto },
               ...(analisisActual ? { analisis: analisisActual } : {}),
               ...(dropiActual ? { dropi: dropiActual } : {}),
@@ -636,6 +646,22 @@ export function crearSubidaAutomatica({
           // Solo una creación confirmada (o un resultado incierto que requiere
           // conciliación humana) bloquea nuevos intentos. Errores, frenados,
           // chats que aún no llegaron y preparaciones dryRun se vuelven a mirar.
+          // En revision y una persona ya movio el pedido en LucidSales (lo
+          // subio a mano y lo confirmo, o lo cancelo): queda resuelto y sale
+          // de las alertas; «Reintentar todos» ya no lo vuelve a subir.
+          if (RESOLUBLES.has(anterior?.accion)) {
+            const ahora = Number(p?.EstadoPedido);
+            const antes = anterior.estadoPedido;
+            const movido = Number.isInteger(antes)
+              ? Number.isInteger(ahora) && ahora !== antes
+              : Number.isInteger(ahora) && ![0, 3].includes(ahora) && (!estados.length || !estados.includes(ahora));
+            if (movido) {
+              marcar(c, id, "resuelto-a-mano", `una persona lo resolvió: en LucidSales pasó a estado ${ahora} (antes: ${anterior.detalle ?? anterior.accion})`, {
+                estadoPedido: ahora,
+              });
+              continue;
+            }
+          }
           if (FINALES.has(anterior?.accion)) continue;
           if (estados.length && !estados.includes(Number(p?.EstadoPedido))) continue;
           omitidos++;
@@ -1254,6 +1280,18 @@ export function crearSubidaAutomatica({
       delete c.procesados[k];
       if (!guardar(c)) throw new ErrorApi(500, "No se pudo guardar la aprobación");
       return { ok: true };
+    },
+
+    /** Una persona dice que ya subio el pedido a mano: sale de revision y no se reintenta. */
+    resueltoAMano(id, quien = "") {
+      const c = leer();
+      const clave = String(id ?? "").trim();
+      const accion = c.procesados?.[clave]?.accion;
+      if (!clave || !accion) throw new ErrorApi(404, "Ese pedido no tiene intentos de subida");
+      if (accion === "subido") throw new ErrorApi(409, "Ese pedido ya lo subió Zunto");
+      marcar(c, clave, "resuelto-a-mano", `marcado como subido a mano${quien ? ` por ${quien}` : ""} (antes: ${c.procesados[clave].detalle ?? accion})`);
+      resultadosTerminales.delete(clave);
+      return { ok: true, id: clave };
     },
 
     /** Vuelve a habilitar TODOS los pedidos en revisión (p. ej. tras arreglar la configuración). */
