@@ -49,6 +49,9 @@ const FINALES = new Set([
 ]);
 /** Resultados en revision que se dan por resueltos si una persona mueve el pedido. */
 const RESOLUBLES = new Set(["requiere-revision", "direccion-invalida", "envio-caro", "sin-transportadora", "posible-duplicado", "entrega-programada"]);
+/** Pedidos mas recientes que mira cada vuelta, por tienda (en paginas de 100). */
+const MAX_PEDIDOS_VUELTA = 200;
+const POR_PAGINA = 100;
 /** Dias hacia atras en que otro pedido del mismo telefono cuenta como posible repetido. */
 const DIAS_DUPLICADO = 7;
 
@@ -589,13 +592,25 @@ export function crearSubidaAutomatica({
       // unica por vuelta (dos vueltas en el mismo milisegundo no se juntan)
       const claveVuelta = `${new Date().toISOString()}#${++numeroVuelta}`;
       vueltaTiendas: for (const idEmpresa of tiendas) {
-        const r = await cliente.listarPedidos({
-          idEmpresa,
-          page: 1,
-          itemsPerPage: 100,
-          filtros: [{ name: "date", searchValues: [], sortOrder: "desc" }],
-        });
-        const pedidos = Array.isArray(r?.pedidos) ? r.pedidos : [];
+        // los mas recientes de la tienda, en paginas de 100 (hasta 200)
+        const pedidos = [];
+        const vistos = new Set();
+        for (let pagina = 1; pagina * POR_PAGINA <= MAX_PEDIDOS_VUELTA; pagina++) {
+          const r = await cliente.listarPedidos({
+            idEmpresa,
+            page: pagina,
+            itemsPerPage: POR_PAGINA,
+            filtros: [{ name: "date", searchValues: [], sortOrder: "desc" }],
+          });
+          const lote = Array.isArray(r?.pedidos) ? r.pedidos : [];
+          for (const x of lote) {
+            const k = String(x?.id ?? x?.idPedido ?? "");
+            if (k && vistos.has(k)) continue;
+            if (k) vistos.add(k);
+            pedidos.push(x);
+          }
+          if (lote.length < POR_PAGINA) break; // no hay mas
+        }
         // cuantos de esta tienda siguen esperando (para el aviso de sesion)
         const esperando = pedidos.filter((x) => {
           const acc = c.procesados?.[String(x?.id ?? x?.idPedido ?? "")]?.accion;

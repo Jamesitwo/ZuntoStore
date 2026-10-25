@@ -1348,3 +1348,23 @@ test("marca manual en un pedido frenado: pasa a esperar su fecha", async () => {
   s.detener();
   fs.rmSync(ruta, { force: true });
 });
+
+test("cada vuelta mira hasta 200 pedidos por tienda (2 paginas de 100)", async () => {
+  const todos = Array.from({ length: 250 }, (_, i) => ({ id: i + 1, EstadoPedido: 5, completo: { ...COMPLETO, id: i + 1 } }));
+  const paginas = [];
+  const cliente = {
+    async listarPedidos({ page, itemsPerPage }) {
+      paginas.push(page);
+      return { pedidos: todos.slice((page - 1) * itemsPerPage, page * itemsPerPage) };
+    },
+    async obtenerPedido(id) {
+      return todos.find((x) => String(x.id) === String(id)).completo;
+    },
+  };
+  const { s, ruta } = armar({ cliente });
+  s.configurar({ automatico: true, dryRun: true, estados: [0] });
+  await s.tick({ forzar: true });
+  assert.deepEqual(paginas, [1, 2]);
+  s.detener();
+  fs.rmSync(ruta, { force: true });
+});
