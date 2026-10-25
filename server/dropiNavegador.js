@@ -22,6 +22,9 @@
 // LIMITE: si aparece un captcha el flujo SE DETIENE y devuelve
 // { requiereCaptcha: true }. No se resuelve, no se evade, no se falsea la
 // huella del dispositivo: eso lo tiene que hacer una persona.
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { ErrorApi } from "./errores.js";
 import { claveCliente, oficinaQueCoincide } from "./oficinasInter.js";
 
@@ -173,6 +176,49 @@ async function diagnosticoTransportadoras(p) {
   return d ? `Formulario: ${JSON.stringify(d)}`.slice(0, 1500) : "";
 }
 
+const CANDADOS = ["SingletonLock", "SingletonSocket", "SingletonCookie"];
+
+/**
+ * Chromium deja un candado en el perfil ("SingletonLock" -> "maquina-pid").
+ * Si el servidor se reinicia (cada despliegue en Railway es otra maquina), el
+ * candado viejo queda en el volumen y el perfil "parece en uso por otro
+ * equipo". Solo se quita cuando ese proceso ya no existe: otra maquina o un
+ * pid muerto en esta.
+ */
+export function liberarPerfil(perfil, { host = os.hostname(), vivo = pidVivo } = {}) {
+  let destino;
+  try {
+    destino = fs.readlinkSync(path.join(perfil, "SingletonLock"));
+  } catch {
+    try {
+      // en algunos sistemas es un archivo normal, no un enlace
+      destino = fs.readFileSync(path.join(perfil, "SingletonLock"), "utf8");
+    } catch {
+      return false; // no hay candado
+    }
+  }
+  const m = String(destino).trim().match(/^(.*)-(\d+)$/);
+  const ajeno = !m || m[1] !== host || !vivo(Number(m[2]));
+  if (!ajeno) return false;
+  for (const n of CANDADOS) {
+    try {
+      fs.rmSync(path.join(perfil, n), { force: true });
+    } catch {
+      /* sin permiso: Chromium avisara */
+    }
+  }
+  return true;
+}
+
+function pidVivo(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e?.code === "EPERM";
+  }
+}
+
 export function crearDropiNavegador(config = {}) {
   const perfil = String(config.DROPI_PERFIL ?? "");
   const chrome = String(config.DROPI_CHROME ?? DEFECTO_CHROME);
@@ -198,6 +244,7 @@ export function crearDropiNavegador(config = {}) {
       timezoneId: "America/Bogota",
       args: ["--disable-blink-features=AutomationControlled"],
     };
+    if (liberarPerfil(perfil)) console.log("[dropi] se quitó el candado viejo del perfil del navegador (reinicio o despliegue)");
     navegador = await chromium.launchPersistentContext(perfil, opciones);
     pagina = navegador.pages()[0] ?? (await navegador.newPage());
     // Sin pantalla (Railway) Chromium se presenta como "HeadlessChrome" y
