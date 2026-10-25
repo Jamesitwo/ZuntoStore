@@ -4,7 +4,7 @@
 import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { crearDropiNavegador, direccionOficinaInter, precioDeTarjeta } from "../dropiNavegador.js";
+import { crearDropiNavegador, direccionOficinaInter, montoDeTexto, precioDeTarjeta } from "../dropiNavegador.js";
 
 const RUTAS = [process.env.CHROMIUM_PATH, "/opt/pw-browsers/chromium", "/usr/bin/chromium", "/usr/bin/chromium-browser"].filter(Boolean);
 let navegador = null;
@@ -388,4 +388,24 @@ test("ciudad repetida: «Armenia (Q)» es la del Quindio, no la de Antioquia", a
   } finally {
     await p.close();
   }
+});
+
+test("resumen de Dropi: ganancia y precio del envio del formulario", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  const p = await pagina(`<!doctype html><body>
+    <div class="total bold"><div class="left Label-S">Ganancias</div><div data-cy="order-create-summary-earnings" class="right Label-S"><dropi-icon name="dolar-top"><svg width="16px"></svg></dropi-icon><currency>$&nbsp;14.806</currency></div></div>
+    <div class="total"><div class="left"> Precio de envío: </div><div data-cy="order-create-summary-shipping" class="right"><currency>$&nbsp;25.295</currency></div></div>
+  </body>`);
+  try {
+    assert.deepEqual(await nav.leerResumenDropi(p), { ganancia: 14806, envio: 25295 });
+  } finally {
+    await p.close();
+  }
+});
+
+test("montoDeTexto: con signo y cero", () => {
+  assert.equal(montoDeTexto("$ 14.806"), 14806);
+  assert.equal(montoDeTexto("-$ 1.200"), -1200);
+  assert.equal(montoDeTexto("$ 0"), 0);
+  assert.equal(montoDeTexto(""), null);
 });

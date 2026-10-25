@@ -118,6 +118,26 @@ function VeredictoAutomatico({ id, recarga }: { id: number | string; recarga: nu
           {reg.intentos ? ` · intento(s): ${reg.intentos} de ${datos.maxIntentos ?? 2}` : ""}
         </span>
       </div>
+      {reg.dropi && (reg.dropi.ganancia !== null || reg.dropi.envio !== null || reg.dropi.id) ? (
+        <div className="dropi-resumen">
+          {reg.dropi.id ? (
+            <span>
+              Orden Dropi <strong>#{reg.dropi.id}</strong>
+            </span>
+          ) : null}
+          {typeof reg.dropi.ganancia === "number" ? (
+            <span className={reg.dropi.ganancia < 0 ? "dropi-perdida" : "dropi-ganancia"}>
+              Ganancia <strong>${Math.round(reg.dropi.ganancia).toLocaleString("es-CO")}</strong>
+            </span>
+          ) : null}
+          {typeof reg.dropi.envio === "number" ? (
+            <span>
+              Envío <strong>${Math.round(reg.dropi.envio).toLocaleString("es-CO")}</strong>
+            </span>
+          ) : null}
+          {reg.accion === "preparado" ? <span className="muted small">(modo prueba: no se creó)</span> : null}
+        </div>
+      ) : null}
       {reg.detalle ? <p className="small" style={{ margin: "6px 0 0" }}>{reg.detalle}</p> : null}
       {reg.analisis ? <AnalisisPedido analisis={reg.analisis} abierto /> : null}
       {reg.accion === "posible-duplicado" ? (

@@ -19,7 +19,7 @@ interface Intento {
   direccion?: any;
   oficina?: { como: "detectada" | "cliente"; nombre?: string | null; direccion?: string | null } | null;
   envio?: { transportadoras?: number[]; tope?: number | null; motivoTope?: string | null; elegida?: any } | null;
-  dropi?: { id?: string | number } | null;
+  dropi?: { id?: string | number | null; ganancia?: number | null; envio?: number | null } | null;
 }
 
 const NOMBRE_TRANSPORTADORA: Record<number, string> = {
@@ -49,7 +49,8 @@ const RESULTADO: Record<string, { texto: string; tono: "ok" | "warn" | "mal" }> 
   "posible-duplicado": { texto: "Posible pedido repetido", tono: "mal" },
 };
 
-const peso = (n: unknown) => (typeof n === "number" ? `$${Math.round(n).toLocaleString("es-CO")}` : "—");
+const peso = (n: unknown) =>
+  typeof n === "number" ? `${n < 0 ? "-" : ""}$${Math.round(Math.abs(n)).toLocaleString("es-CO")}` : "—";
 const v = (x: unknown) =>
   x === true ? "sí" : x === false ? "no" : x === null || x === undefined || x === "" ? "—" : String(x);
 
@@ -208,6 +209,13 @@ function Envio({ it }: { it: Intento }) {
         {it.dropi?.id ? (
           <li>
             <strong>Orden en Dropi:</strong> #{it.dropi.id}
+          </li>
+        ) : null}
+        {typeof it.dropi?.ganancia === "number" || typeof it.dropi?.envio === "number" ? (
+          <li>
+            <strong>Resumen de Dropi:</strong>
+            {typeof it.dropi?.ganancia === "number" ? ` ganancia ${peso(it.dropi.ganancia)}` : ""}
+            {typeof it.dropi?.envio === "number" ? ` · precio de envío ${peso(it.dropi.envio)}` : ""}
           </li>
         ) : null}
       </ul>

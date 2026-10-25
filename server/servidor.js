@@ -1256,9 +1256,20 @@ export function crearManejador({
             : [{ id: linea.id, cantidad: linea.cantidad, precio: linea.precio }],
           soloPreparar: cuerpo?.dryRun === true,
         });
+        // lo que mostro Dropi: id de la orden, ganancia y precio del envio
+        const dropiManual =
+          rNav?.idDropi || rNav?.resumenDropi
+            ? { id: rNav.idDropi ?? null, ganancia: rNav.resumenDropi?.ganancia ?? null, envio: rNav.resumenDropi?.envio ?? null }
+            : null;
         if (res.__intento) {
           if (rNav?.envio) res.__intento.envio = { ...res.__intento.envio, elegida: rNav.envio };
-          if (rNav?.idDropi) res.__intento.dropi = { id: rNav.idDropi };
+          if (rNav?.idDropi || rNav?.resumenDropi) {
+            res.__intento.dropi = {
+              id: rNav.idDropi ?? null,
+              ganancia: rNav.resumenDropi?.ganancia ?? null,
+              envio: rNav.resumenDropi?.envio ?? null,
+            };
+          }
         }
 
         // el navegador esta ocupado con otra subida: no es un fallo del pedido,
@@ -1340,7 +1351,7 @@ export function crearManejador({
         if (rNav?.resultadoIncierto) {
           subida.registrarResultado?.(id, "resultado-incierto", rNav.detalle);
         } else if (rNav?.creado) {
-          subida.registrarResultado?.(id, "subido", detalleRegistro);
+          subida.registrarResultado?.(id, "subido", detalleRegistro, dropiManual ? { dropi: dropiManual } : {});
         }
         let estadoLucidSales = Number(resumen?.estadoPedido) === 2;
         let avisoEstado = null;
@@ -1375,9 +1386,9 @@ export function crearManejador({
           }
         }
         if (rNav?.creado && avisoEstado) {
-          subida.registrarResultado?.(id, "subido", detalleRegistro);
+          subida.registrarResultado?.(id, "subido", detalleRegistro, dropiManual ? { dropi: dropiManual } : {});
         } else if (rNav?.creado && estadoLucidSales) {
-          subida.registrarResultado?.(id, "subido", `${detalleRegistro}; LucidSales Confirmado`);
+          subida.registrarResultado?.(id, "subido", `${detalleRegistro}; LucidSales Confirmado`, dropiManual ? { dropi: dropiManual } : {});
         }
         json(res, rNav.resultadoIncierto ? 202 : rNav.ok ? 200 : 502, {
           ok: rNav.ok,

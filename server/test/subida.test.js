@@ -1202,3 +1202,18 @@ test("pedido repetido: si el chat muestra una compra nueva, se sube", async () =
   assert.equal(subidos.length, 2);
   fs.rmSync(ruta, { force: true });
 });
+
+test("la ganancia y el envio que muestra Dropi quedan con el pedido", async () => {
+  const intentos = crearRegistroIntentos();
+  const { s, ruta } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    respuestaDropi: () => ({ ok: true, creado: false, preparado: true, seguro: true, resumenDropi: { ganancia: 14806, envio: 25295 } }),
+    intentos,
+  });
+  s.configurar({ automatico: true, dryRun: true });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.deepEqual(s.estadoPedido(1).dropi, { id: null, ganancia: 14806, envio: 25295 });
+  assert.equal(intentos.dePedido("1")[0].dropi.ganancia, 14806);
+  fs.rmSync(ruta, { force: true });
+});

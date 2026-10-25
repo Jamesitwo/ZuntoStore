@@ -66,6 +66,16 @@ export function precioDeTarjeta(texto) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/** Un monto en pesos del resumen de Dropi, con signo y cero ("-$ 1.200", "$ 0"). */
+export function montoDeTexto(texto) {
+  const t = String(texto ?? "");
+  const negativo = /-\s*\$|\$[ \t\u00a0\u202f]*-/.test(t);
+  const limpio = t.replace(/-/g, "");
+  if (/\$[ \t\u00a0\u202f]*0(?![\d.,]*[1-9])/.test(limpio)) return 0;
+  const n = precioDeTarjeta(limpio);
+  return n === null ? null : negativo ? -n : n;
+}
+
 const pesos = (v) => `$${Math.round(Number(v) || 0).toLocaleString("es-CO")}`;
 
 /**
@@ -255,6 +265,21 @@ export function crearDropiNavegador(config = {}) {
     else if (/no (existe|encontr)|not found|404/i.test(plano)) motivo = "Dropi dice que el producto no existe (revisa el dropiLink del sheet)";
     else if (plano.length < 40) motivo = "la ficha de Dropi no terminó de cargar (página en blanco)";
     return { motivo, url, titulo, texto: plano.slice(0, 200) };
+  }
+
+  /**
+   * Resumen del formulario Crear Orden con todo elegido: "Ganancias" y
+   * "Precio de envío" (data-cy order-create-summary-*). null si no estan.
+   */
+  async function leerResumenDropi(p) {
+    const leer = async (cy) => {
+      const el = p.locator(`[data-cy="${cy}"]`).first();
+      if (!(await el.count().catch(() => 0))) return null;
+      return montoDeTexto(await el.innerText({ timeout: 2000 }).catch(() => ""));
+    };
+    const ganancia = await leer("order-create-summary-earnings");
+    const envio = await leer("order-create-summary-shipping");
+    return ganancia === null && envio === null ? null : { ganancia, envio };
   }
 
   /** Elige una opcion de un p-dropdown de PrimeNG con filtro (depto / ciudad). */
@@ -1087,6 +1112,11 @@ export function crearDropiNavegador(config = {}) {
       return elegirOficinaInter(p, opciones);
     },
 
+    /** Ganancia y envio del resumen de Dropi (se usa en pruebas). */
+    leerResumenDropi(p) {
+      return leerResumenDropi(p);
+    },
+
     /** Departamento / ciudad en un formulario ya abierto (se usa en pruebas). */
     autocompletar(p, cy, texto, opciones) {
       return autocompletar(p, cy, texto, opciones);
@@ -1363,6 +1393,9 @@ export function crearDropiNavegador(config = {}) {
       const rBoton = await esperarBotonCrear(p);
       if (!rBoton.ok) return { ok: false, creado: false, seguro: seguroActivado, detalle: rBoton.detalle };
 
+      // resumen de Dropi con todo elegido: ganancia y precio del envio
+      const resumenDropi = await leerResumenDropi(p);
+
       // modo preparacion: todo listo pero NO se pulsa crear
       if (datos.soloPreparar) {
         return {
@@ -1372,6 +1405,7 @@ export function crearDropiNavegador(config = {}) {
           seguroEncontrado,
           ubicacion,
           envio,
+          resumenDropi,
           tienda: tiendaSel.elegido,
           detalle: `formulario preparado en la tienda ${tiendaSel.elegido} con ${envio.transportadora} (${pesos(envio.precio)}${oficina ? `, oficina ${oficina}` : ""}) y «Enviar al cliente» habilitado; no se pulsó (modo prueba)`,
           url: p.url(),
@@ -1434,6 +1468,7 @@ export function crearDropiNavegador(config = {}) {
         creado: true,
         idDropi: resultado?.objects?.id ?? resultado?.objects?.order_id ?? null,
         envio,
+        resumenDropi,
         tienda: tiendaSel.elegido,
         seguro: seguroActivado,
         seguroEncontrado,

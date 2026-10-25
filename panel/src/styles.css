@@ -5292,3 +5292,8 @@ li.pedido-movil.fila-estado {
 .checklist-pasos li.ok .checklist-marca { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
 .checklist-pasos li.falta .checklist-marca { background: #fffbeb; color: #92400e; border-color: #fde68a; }
 .checklist-pasos li.opcional .checklist-marca { color: var(--muted); }
+
+/* resumen de Dropi en el veredicto del pedido */
+.dropi-resumen { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--surface-2, #f6f6f8); font-size: 13px; }
+.dropi-ganancia strong { color: #166534; }
+.dropi-perdida strong { color: #b91c1c; }

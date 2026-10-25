@@ -497,6 +497,8 @@ export function crearSubidaAutomatica({
       ...(notificado ? { notificado } : {}),
       ...(clienteDatos ? { cliente: clienteDatos } : {}),
       ...(extra.analisis ? { analisis: extra.analisis } : {}),
+      // lo que mostro Dropi al subir: id de la orden, ganancia y envio
+      ...(extra.dropi ?? previo.dropi ? { dropi: extra.dropi ?? previo.dropi } : {}),
       // tienda de LucidSales del pedido (para separar por tienda despues)
       ...(extra.tienda ?? previo.tienda ? { tienda: extra.tienda ?? previo.tienda } : {}),
     };
@@ -577,10 +579,16 @@ export function crearSubidaAutomatica({
             nombre: [p?.Nombre, p?.Apellido].filter(Boolean).join(" ").trim(),
           };
           let analisisActual = null;
+          let dropiActual = null; // { id, ganancia, envio } cuando Dropi la muestra
           // lo que se va sabiendo de este intento (para el historial)
           const intento = { origen: "automatica", dryRun: c.dryRun === true };
           const marcarP = (accion, det) => {
-            const e = marcar(c, id, accion, det, { tienda: Number(idEmpresa) || null, cliente: { ...contacto }, ...(analisisActual ? { analisis: analisisActual } : {}) });
+            const e = marcar(c, id, accion, det, {
+              tienda: Number(idEmpresa) || null,
+              cliente: { ...contacto },
+              ...(analisisActual ? { analisis: analisisActual } : {}),
+              ...(dropiActual ? { dropi: dropiActual } : {}),
+            });
             try {
               intentos?.registrar({
                 pedido: id,
@@ -922,7 +930,14 @@ export function crearSubidaAutomatica({
             break vueltaTiendas;
           }
           if (rNav?.envio) intento.envio = { ...intento.envio, elegida: rNav.envio };
-          if (rNav?.idDropi) intento.dropi = { id: rNav.idDropi };
+          if (rNav?.idDropi || rNav?.resumenDropi) {
+            dropiActual = {
+              id: rNav.idDropi ?? null,
+              ganancia: rNav.resumenDropi?.ganancia ?? null,
+              envio: rNav.resumenDropi?.envio ?? null,
+            };
+            intento.dropi = dropiActual;
+          }
           // llego al formulario: la sesion sirve
           if (c.sesionDropi?.estado && c.sesionDropi.estado !== "ok" && (rNav?.ok || rNav?.creado || rNav?.preparado)) {
             sesionOk(c, "subida");
@@ -1211,9 +1226,9 @@ export function crearSubidaAutomatica({
       return resultadosTerminales.get(clave) ?? leer().procesados?.[clave] ?? null;
     },
 
-    registrarResultado(id, accion, detalle) {
+    registrarResultado(id, accion, detalle, extra = {}) {
       const c = leer();
-      marcar(c, id, accion, detalle);
+      marcar(c, id, accion, detalle, extra);
       const resultado = c.procesados?.[String(id)] ?? null;
       if (resultado && ["subido", "subido-pendiente-confirmacion", "resultado-incierto"].includes(accion)) {
         resultadosTerminales.set(String(id), resultado);
