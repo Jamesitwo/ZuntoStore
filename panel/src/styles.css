@@ -5299,3 +5299,11 @@ li.pedido-movil.fila-estado {
 .dropi-perdida strong { color: #b91c1c; }
 
 .fuente-zunto { font-size: 11.5px; color: var(--muted); }
+
+/* temporizador de la subida automatica */
+.reloj-subida { margin: 10px 0 4px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 13.5px; }
+.reloj-subida.en-curso { display: flex; align-items: center; gap: 8px; }
+.reloj-barra { height: 4px; border-radius: 4px; background: var(--border); overflow: hidden; }
+.reloj-barra > div { height: 100%; background: var(--primary, #7c3aed); transition: width 1s linear; }
+.reloj-punto { width: 8px; height: 8px; border-radius: 50%; background: var(--primary, #7c3aed); animation: reloj-pulso 1s ease-in-out infinite; }
+@keyframes reloj-pulso { 50% { opacity: .3; } }

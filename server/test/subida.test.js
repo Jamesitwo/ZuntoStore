@@ -1261,3 +1261,18 @@ test("marcar a mano como ya subido lo saca de revision", async () => {
   assert.equal(s.rearmarRevision().rearmados, 0);
   fs.rmSync(ruta, { force: true });
 });
+
+test("el reloj dice cuando es la proxima revision", async () => {
+  const { s, ruta } = armar({ pedidos: [] });
+  s.configurar({ automatico: true, dryRun: true, cadaSegundos: 300 });
+  const r = s.config().reloj;
+  const falta = (Date.parse(r.proxima) - Date.parse(r.ahora)) / 1000;
+  assert.ok(falta > 295 && falta <= 300, `falta ${falta}`);
+  assert.equal(r.enCurso, false);
+  s.detener();
+  assert.equal(s.config().reloj.proxima, null);
+  s.configurar({ automatico: false });
+  assert.equal(s.config().reloj.proxima, null); // apagada: sin reloj
+  s.detener();
+  fs.rmSync(ruta, { force: true });
+});

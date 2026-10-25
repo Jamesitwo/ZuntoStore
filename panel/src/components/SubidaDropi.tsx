@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { errMsg } from "../api/client";
 import { backend, backendSuave } from "../api/backend";
 import { ESTADOS_PEDIDO } from "../api/endpoints";
@@ -100,6 +100,61 @@ function normalizaConfig(c: any): {
   };
 }
 
+/** Cuenta regresiva hasta la próxima revisión de la subida automática. */
+function RelojSubida({ reloj, cadaSegundos, onVuelta }: { reloj: any; cadaSegundos: number; onVuelta: () => void }) {
+  const [ahora, setAhora] = useState(() => Date.now());
+  // diferencia entre el reloj del servidor y el de este equipo
+  const desfase = reloj?.ahora ? Date.parse(reloj.ahora) - Date.now() : 0;
+  const avisado = useRef<string | null>(null);
+  useEffect(() => {
+    const t = setInterval(() => setAhora(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const proxima = reloj?.proxima ? Date.parse(reloj.proxima) : null;
+  const falta = proxima ? Math.round((proxima - (ahora + desfase)) / 1000) : null;
+  // al llegar a cero (y un rato después) se refresca para ver la vuelta
+  useEffect(() => {
+    if (falta === null || !reloj?.proxima) return;
+    if (falta <= -5 && avisado.current !== reloj.proxima) {
+      avisado.current = reloj.proxima;
+      onVuelta();
+    }
+  }, [falta, reloj?.proxima, onVuelta]);
+  if (reloj?.enCurso) {
+    const seg = reloj.desde ? Math.max(0, Math.round((ahora + desfase - Date.parse(reloj.desde)) / 1000)) : null;
+    return (
+      <div className="reloj-subida en-curso" role="status">
+        <span className="reloj-punto" /> Revisando pedidos ahora{seg !== null ? ` (${textoReloj(seg)})` : ""}…
+      </div>
+    );
+  }
+  if (falta === null) return null;
+  const pct = Math.max(0, Math.min(100, 100 - (falta / Math.max(1, cadaSegundos)) * 100));
+  return (
+    <div className="reloj-subida" role="status" title={proxima ? `Próxima revisión: ${new Date(proxima - desfase).toLocaleTimeString("es-CO")}` : ""}>
+      <div className="row between" style={{ marginBottom: 4 }}>
+        <span>
+          Próxima revisión en <strong>{falta > 0 ? textoReloj(falta) : "unos segundos"}</strong>
+          {reloj?.detenida ? <span className="muted"> · la subida está en pausa hasta arreglar la sesión de Dropi</span> : null}
+        </span>
+        <span className="muted small">{proxima ? new Date(proxima - desfase).toLocaleTimeString("es-CO", { hour: "numeric", minute: "2-digit", second: "2-digit" }) : ""}</span>
+      </div>
+      <div className="reloj-barra">
+        <div style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/** 3725 -> "1:02:05", 75 -> "1:15". */
+function textoReloj(seg: number) {
+  const h = Math.floor(seg / 3600);
+  const m = Math.floor((seg % 3600) / 60);
+  const s = seg % 60;
+  const dos = (n: number) => String(n).padStart(2, "0");
+  return h ? `${h}:${dos(m)}:${dos(s)}` : `${m}:${dos(s)}`;
+}
+
 export function SubidaDropi() {
   const { session } = useAuth();
   const toast = useToast();
@@ -131,6 +186,20 @@ export function SubidaDropi() {
   const cargado = useRef(false);
 
   const refrescar = () => setRecarga((x) => x + 1);
+  // solo estado y últimos pedidos (no toca lo que estés editando)
+  const refrescarEstado = useCallback(() => {
+    void backendSuave<any>("/api/subida").then((r) => {
+      if (!r?.ok) return;
+      setConfig(r.config ?? null);
+      setUltimos(Array.isArray(r.ultimos) ? r.ultimos : []);
+    });
+  }, []);
+  // mientras corre una vuelta, se mira cada 5 s hasta que termine
+  useEffect(() => {
+    if (!config?.reloj?.enCurso) return;
+    const t = setTimeout(refrescarEstado, 5000);
+    return () => clearTimeout(t);
+  }, [config, refrescarEstado]);
 
   useEffect(() => {
     let cancel = false;
@@ -438,6 +507,9 @@ export function SubidaDropi() {
               : "apagada"}
         </span>
       </div>
+      {config?.automatico ? (
+        <RelojSubida reloj={config.reloj} cadaSegundos={Number(config.cadaSegundos) || 120} onVuelta={refrescarEstado} />
+      ) : null}
 
       <p className="muted small" style={{ marginTop: 8 }}>
         Con <strong>la subida encendida</strong>, el backend mira cada N segundos los pedidos

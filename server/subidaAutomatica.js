@@ -293,6 +293,9 @@ export function crearSubidaAutomatica({
   let numeroVuelta = 0;
   let timer = null;
   let corriendo = false;
+  /** Reloj para el panel: cuando toca la proxima vuelta y desde cuando corre la actual. */
+  let proximaMs = null;
+  let vueltaDesde = null;
   let ultimoAviso = null;
   const resultadosTerminales = new Map();
 
@@ -540,6 +543,7 @@ export function crearSubidaAutomatica({
     if (!c.automatico && !opciones.forzar) return { ok: true, saltado: "desactivado" };
     if (corriendo) return { ok: true, saltado: "en curso" };
     corriendo = true;
+    vueltaDesde = new Date().toISOString();
 
     try {
       // Tiendas que revisar: las de la config de subida; si no, las del reparto
@@ -1082,6 +1086,7 @@ export function crearSubidaAutomatica({
       return { ok: false, error: msg };
     } finally {
       corriendo = false;
+      vueltaDesde = null;
     }
   }
 
@@ -1091,7 +1096,9 @@ export function crearSubidaAutomatica({
       if (timer) return;
       const c = leer();
       const seg = segundosValidos(c.cadaSegundos);
+      proximaMs = Date.now() + seg * 1000;
       timer = setInterval(() => {
+        proximaMs = Date.now() + seg * 1000;
         tick().catch(() => {});
       }, seg * 1000);
       // unref: el intervalo no debe mantener vivo el proceso por si solo
@@ -1103,6 +1110,7 @@ export function crearSubidaAutomatica({
     detener() {
       if (timer) clearInterval(timer);
       timer = null;
+      proximaMs = null;
     },
 
     tick,
@@ -1111,7 +1119,18 @@ export function crearSubidaAutomatica({
     config() {
       const c = leer();
       const { procesados, ...resto } = c;
-      return { ...resto, procesados: Object.keys(procesados ?? {}).length };
+      return {
+        ...resto,
+        procesados: Object.keys(procesados ?? {}).length,
+        // para el temporizador del panel (no se guarda)
+        reloj: {
+          ahora: new Date().toISOString(),
+          proxima: timer && c.automatico && proximaMs ? new Date(proximaMs).toISOString() : null,
+          enCurso: corriendo,
+          desde: vueltaDesde,
+          detenida: c.sesionDropi?.estado && c.sesionDropi.estado !== "ok" ? c.sesionDropi.estado : null,
+        },
+      };
     },
 
     /** Actualiza la configuracion. */
