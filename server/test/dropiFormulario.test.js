@@ -324,13 +324,13 @@ test("ficha: si Dropi redirige a otra pagina lo dice (no que el producto no exis
 });
 
 /** Autocomplete de departamento como el de Dropi: filtra por lo que se escribe. */
-function paginaDepartamentos(opciones) {
+function paginaDepartamentos(opciones, cy = "client-state") {
   return `<!doctype html><html><body>
-  <div data-cy="client-state"><input type="text"></div>
+  <div data-cy="${cy}"><input type="text"></div>
   <ul class="p-autocomplete-panel"></ul>
   <script>
     const ops = ${JSON.stringify(opciones)};
-    const caja = document.querySelector('[data-cy="client-state"] input');
+    const caja = document.querySelector('[data-cy="${cy}"] input');
     const panel = document.querySelector("ul");
     const norm = (t) => t.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
     caja.addEventListener("input", () => {
@@ -368,6 +368,23 @@ test("departamento: un nombre que no esta no elige uno parecido", async (t) => {
     assert.equal(r.elegido, "SANTANDER");
     const r2 = await nav.autocompletar(p, "client-state", "Antioquia");
     assert.equal(r2.ok, false);
+  } finally {
+    await p.close();
+  }
+});
+
+test("ciudad repetida: «Armenia (Q)» es la del Quindio, no la de Antioquia", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  const p = await pagina(paginaDepartamentos(["Armenia (A)", "Armenia (Q)"], "client-city"));
+  try {
+    const r = await nav.autocompletar(p, "client-city", "Armenia", { departamento: "Quindío" });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.equal(r.elegido, "Armenia (Q)");
+    const r2 = await nav.autocompletar(p, "client-city", "Armenia", { departamento: "Antioquia" });
+    assert.equal(r2.elegido, "Armenia (A)");
+    // sin saber el departamento no adivina
+    const r3 = await nav.autocompletar(p, "client-city", "Armenia");
+    assert.equal(r3.ok, false);
   } finally {
     await p.close();
   }

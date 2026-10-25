@@ -101,6 +101,30 @@ export function variantesUbicacion(texto) {
   return [...new Set([n, ...(grupo ?? [])])].filter(Boolean);
 }
 
+/** Iniciales de un nombre sin "de/del/la/y": "valle del cauca" -> "vc". */
+const iniciales = (n) =>
+  n
+    .split(" ")
+    .filter((w) => w && !["de", "del", "la", "las", "los", "y"].includes(w))
+    .map((w) => w[0])
+    .join("");
+
+/**
+ * ¿La opcion de Dropi es este lugar? Igual a alguna forma aceptada, o con la
+ * marca del departamento que Dropi pone a las ciudades repetidas:
+ * "Armenia (Q)" = Armenia del Quindio (no la de Antioquia).
+ */
+export function coincideUbicacion(opcion, aceptadas, departamento = "") {
+  if (aceptadas.includes(normalizarUbicacion(opcion))) return true;
+  const m = String(opcion ?? "").match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+  if (!m || !aceptadas.includes(normalizarUbicacion(m[1]))) return false;
+  const codigo = normalizarUbicacion(m[2]).replace(/ /g, "");
+  if (!codigo || !departamento) return false;
+  return variantesUbicacion(departamento).some(
+    (d) => d.replace(/ /g, "").startsWith(codigo) || iniciales(d) === codigo,
+  );
+}
+
 /** Direccion que se escribe en Dropi cuando la oficina la detecto el sistema. */
 export const DIRECCION_OFICINA_INTER = "Oficina Interrapidisimo";
 
@@ -275,20 +299,20 @@ export function crearDropiNavegador(config = {}) {
    * primera. Devuelve {ok, elegido} sin lanzar (si falla, el boton crear
    * quedara deshabilitado y eso ya se avisa mas abajo).
    */
-  async function autocompletar(p, cy, texto) {
+  async function autocompletar(p, cy, texto, { departamento = "" } = {}) {
     // se prueba con el nombre tal cual y luego con sus equivalentes ("Valle
     // del Cauca" -> "Valle"): Dropi acorta algunos nombres
     const aceptadas = variantesUbicacion(texto);
     let ultimo = null;
     for (const escrito of [String(texto ?? ""), ...aceptadas.slice(1)]) {
-      const r = await autocompletarUna(p, cy, escrito, aceptadas);
+      const r = await autocompletarUna(p, cy, escrito, aceptadas, departamento);
       if (r.ok || r.paso === "sin campo") return { ...r, solicitado: String(texto ?? "") };
       ultimo = r;
     }
     return { ...ultimo, solicitado: String(texto ?? "") };
   }
 
-  async function autocompletarUna(p, cy, texto, aceptadas) {
+  async function autocompletarUna(p, cy, texto, aceptadas, departamento = "") {
     const caja = p.locator(`[data-cy="${cy}"] input`).first();
     if (!(await caja.count().catch(() => 0))) {
       return { ok: false, paso: "sin campo", campo: cy };
@@ -314,7 +338,7 @@ export function crearDropiNavegador(config = {}) {
     let elegido = "";
     for (const opcion of candidatas) {
       const textoOpcion = (await opcion.innerText().catch(() => "")).trim();
-      if (aceptadas.includes(normalizarUbicacion(textoOpcion))) {
+      if (coincideUbicacion(textoOpcion, aceptadas, departamento)) {
         opcionExacta = opcion;
         elegido = textoOpcion;
         break;
@@ -1064,8 +1088,8 @@ export function crearDropiNavegador(config = {}) {
     },
 
     /** Departamento / ciudad en un formulario ya abierto (se usa en pruebas). */
-    autocompletar(p, cy, texto) {
-      return autocompletar(p, cy, texto);
+    autocompletar(p, cy, texto, opciones) {
+      return autocompletar(p, cy, texto, opciones);
     },
 
     /** Elige la tienda en un formulario Crear Orden ya abierto (se usa en pruebas). */
@@ -1284,7 +1308,10 @@ export function crearDropiNavegador(config = {}) {
 
       // 5.6) ciudad por NOMBRE (se habilita tras el departamento; se elige
       //      despues del tipo de recaudo para que no la borre)
-      ubicacion.ciudad = datos.ciudad ? await autocompletar(p, "client-city", datos.ciudad) : null;
+      // la ciudad con su departamento: Dropi marca las repetidas ("Armenia (Q)")
+      ubicacion.ciudad = datos.ciudad
+        ? await autocompletar(p, "client-city", datos.ciudad, { departamento: datos.departamento })
+        : null;
       if (!ubicacion.ciudad?.ok) {
         return { ok: false, creado: false, detalle: `No se envió a Dropi: no se confirmó la ciudad exacta (${ubicacion.ciudad?.solicitado ?? datos.ciudad}).` };
       }
