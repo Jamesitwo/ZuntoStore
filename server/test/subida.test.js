@@ -1213,7 +1213,7 @@ test("la ganancia y el envio que muestra Dropi quedan con el pedido", async () =
   s.configurar({ automatico: true, dryRun: true });
   s.detener();
   await s.tick({ forzar: true });
-  assert.deepEqual(s.estadoPedido(1).dropi, { id: null, ganancia: 14806, envio: 25295 });
+  assert.deepEqual(s.estadoPedido(1).dropi, { id: null, ganancia: 14806, envio: 25295, transportadora: null });
   assert.equal(intentos.dePedido("1")[0].dropi.ganancia, 14806);
   fs.rmSync(ruta, { force: true });
 });

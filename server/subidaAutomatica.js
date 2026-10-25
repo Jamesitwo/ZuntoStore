@@ -935,6 +935,7 @@ export function crearSubidaAutomatica({
               id: rNav.idDropi ?? null,
               ganancia: rNav.resumenDropi?.ganancia ?? null,
               envio: rNav.resumenDropi?.envio ?? null,
+              transportadora: rNav.envio?.transportadora ?? null,
             };
             intento.dropi = dropiActual;
           }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { backendSuave } from "../api/backend";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { errMsg } from "../api/client";
@@ -45,7 +46,50 @@ const num = (v: unknown, fallback = 0): number => {
  * solo lectura; cada campo solo se pinta si trae valor (mismo criterio que
  * LucidSales: falsy o "0" no se muestra).
  */
-function datosEnvio(p: any): Array<{ label: string; valor: string }> {
+interface FilaEnvio {
+  label: string;
+  valor: string;
+  /** de donde salio si no es de LucidSales (lo guardo Zunto al subir) */
+  fuente?: string;
+}
+
+/** Lo que Zunto sabe del envio: lo que mostro Dropi al subir y lo que manda Lucid Bot. */
+interface EnvioZunto {
+  dropi?: { id?: string | number | null; ganancia?: number | null; envio?: number | null; transportadora?: string | null } | null;
+  bot?: { estado?: string; guia?: string; transportadora?: string; ts?: string } | null;
+}
+
+/**
+ * Completa la seccion «Envío» con lo de Zunto donde LucidSales no tiene nada
+ * (pedidos subidos a Dropi por fuera de su integracion: ahi queda en 0).
+ */
+function completarEnvio(filas: FilaEnvio[], z: EnvioZunto): FilaEnvio[] {
+  const vacio = (v: string | undefined) => {
+    const t = String(v ?? "").trim().toLowerCase();
+    return !t || t === "0" || t === "0,00" || t === "$0" || t === "$ 0" || t === "sin envio" || t === "sin envío" || /^\$?\s*0([.,]0+)?$/.test(t);
+  };
+  const out = [...filas];
+  const poner = (label: string, valor: string, fuente: string) => {
+    if (!valor) return;
+    const i = out.findIndex((f) => f.label === label);
+    if (i >= 0) {
+      if (vacio(out[i].valor)) out[i] = { label, valor, fuente };
+    } else out.push({ label, valor, fuente });
+  };
+  const d = z.dropi;
+  const b = z.bot;
+  if (d?.id) poner("ID de pedido", String(d.id), "Dropi, al subir desde Zunto");
+  if (b?.estado) poner("Estado de envío", b.estado, `Lucid Bot${b.ts ? ` · ${fmtFecha(b.ts)}` : ""}`);
+  if (d?.transportadora || b?.transportadora) {
+    poner("Transportadora", String(d?.transportadora || b?.transportadora), d?.transportadora ? "Dropi, al subir desde Zunto" : "Lucid Bot");
+  }
+  if (b?.guia) poner("ID Guia Transportadora", b.guia, "Lucid Bot");
+  if (typeof d?.envio === "number") poner("Costo de flete", money(d.envio), "Dropi, al subir desde Zunto");
+  if (typeof d?.ganancia === "number") poner("Ganancia esperada", money(d.ganancia), "Dropi, al subir desde Zunto");
+  return out;
+}
+
+function datosEnvio(p: any): FilaEnvio[] {
   const txt = (v: unknown): string => (v === undefined || v === null ? "" : String(v).trim());
   const noCero = (v: unknown): string => {
     const s = txt(v);
@@ -70,7 +114,7 @@ function datosEnvio(p: any): Array<{ label: string; valor: string }> {
     return /^-?\d+(\.\d+)?$/.test(s) ? money(Number(s)) : s;
   };
 
-  const filas: Array<{ label: string; valor: string }> = [];
+  const filas: FilaEnvio[] = [];
   const agregar = (label: string, valor: string) => {
     if (valor) filas.push({ label, valor });
   };
@@ -244,6 +288,18 @@ export function PedidoDetallePage() {
   const [otros, setOtros] = useState<any[]>([]);
   // estado del envio que manda Lucid Bot (este pedido y los otros del cliente)
   const enviosBot = useEstadosEnvioBot(original ? [original, ...otros] : otros);
+  // lo que guardo la subida a Dropi de este pedido (ganancia, flete, orden)
+  const [regSubida, setRegSubida] = useState<any>(null);
+  useEffect(() => {
+    if (!id) return;
+    let cancel = false;
+    void backendSuave<any>(`/api/subida/pedido/${encodeURIComponent(String(id))}`).then((r) => {
+      if (!cancel) setRegSubida(r?.ok ? r.registro ?? null : null);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [id]);
   const [totalOtros, setTotalOtros] = useState(0);
   const [cargandoOtros, setCargandoOtros] = useState(false);
   const [errorOtros, setErrorOtros] = useState<string | null>(null);
@@ -326,8 +382,12 @@ export function PedidoDetallePage() {
     return { sub, envio, total: sub + envio };
   }, [items, form.CostoEnvio]);
 
-  // datos de la guia (seccion "Envio" del panel oficial); solo lectura
-  const envio = datosEnvio(original);
+  // datos de la guia (seccion "Envio" del panel oficial); solo lectura. Lo
+  // que LucidSales no tiene se completa con lo que guardo Zunto
+  const envio = completarEnvio(datosEnvio(original), {
+    dropi: regSubida?.dropi ?? null,
+    bot: enviosBot[String(original?.id ?? original?.idPedido ?? "")] ?? null,
+  });
 
   const actualizarLinea = (i: number, patch: Record<string, any>) =>
     setItems((arr) => arr.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
@@ -872,14 +932,22 @@ export function PedidoDetallePage() {
             <div className="form-grid">
               {envio.map((d) => (
                 <div className="field" key={d.label}>
-                  <label title={`Campo ${d.label} del pedido (solo lectura)`}>{d.label}</label>
-                  <div className="valor-solo">{d.valor}</div>
+                  <label title={d.fuente ? `Dato de ${d.fuente}` : `Campo ${d.label} del pedido (solo lectura)`}>{d.label}</label>
+                  <div className="valor-solo">
+                    {d.valor}
+                    {d.fuente ? (
+                      <span className="fuente-zunto" title={`LucidSales no tiene este dato; lo guardó Zunto (${d.fuente})`}>
+                        {" "}
+                        · {d.fuente.startsWith("Lucid Bot") ? "Lucid Bot" : "Dropi"}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               ))}
             </div>
             <p className="muted small" style={{ marginBottom: 0 }}>
-              Datos de solo lectura que devuelve <code>get-pedido-by-id</code>, tal como los
-              pinta el panel oficial en su sección «Envío»: aqui no se pueden editar.
+              Datos de solo lectura de LucidSales. Los marcados «Dropi» o «Lucid Bot» los guardó Zunto
+              (LucidSales no los tiene cuando el pedido se sube por fuera de su integración).
             </p>
           </>
         ) : (

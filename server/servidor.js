@@ -1259,16 +1259,17 @@ export function crearManejador({
         // lo que mostro Dropi: id de la orden, ganancia y precio del envio
         const dropiManual =
           rNav?.idDropi || rNav?.resumenDropi
-            ? { id: rNav.idDropi ?? null, ganancia: rNav.resumenDropi?.ganancia ?? null, envio: rNav.resumenDropi?.envio ?? null }
+            ? {
+                id: rNav.idDropi ?? null,
+                ganancia: rNav.resumenDropi?.ganancia ?? null,
+                envio: rNav.resumenDropi?.envio ?? null,
+                transportadora: rNav.envio?.transportadora ?? null,
+              }
             : null;
         if (res.__intento) {
           if (rNav?.envio) res.__intento.envio = { ...res.__intento.envio, elegida: rNav.envio };
           if (rNav?.idDropi || rNav?.resumenDropi) {
-            res.__intento.dropi = {
-              id: rNav.idDropi ?? null,
-              ganancia: rNav.resumenDropi?.ganancia ?? null,
-              envio: rNav.resumenDropi?.envio ?? null,
-            };
+            res.__intento.dropi = dropiManual;
           }
         }
 
