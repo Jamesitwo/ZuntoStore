@@ -105,6 +105,7 @@ const EQUIVALENTES_UBICACION = [
   ["el carmen de viboral", "carmen de viboral"],
   ["san andres de tumaco", "tumaco"],
   ["guadalajara de buga", "buga"],
+  ["inirida", "puerto inirida"],
 ];
 
 /** Todas las formas aceptadas para un nombre (normalizadas), la propia primero. */

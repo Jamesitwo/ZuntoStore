@@ -4,7 +4,7 @@
 import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { crearDropiNavegador, direccionOficinaInter, montoDeTexto, precioDeTarjeta } from "../dropiNavegador.js";
+import { coincideUbicacion, crearDropiNavegador, direccionOficinaInter, montoDeTexto, precioDeTarjeta, variantesUbicacion } from "../dropiNavegador.js";
 
 const RUTAS = [process.env.CHROMIUM_PATH, "/opt/pw-browsers/chromium", "/usr/bin/chromium", "/usr/bin/chromium-browser"].filter(Boolean);
 let navegador = null;
@@ -408,4 +408,11 @@ test("montoDeTexto: con signo y cero", () => {
   assert.equal(montoDeTexto("-$ 1.200"), -1200);
   assert.equal(montoDeTexto("$ 0"), 0);
   assert.equal(montoDeTexto(""), null);
+});
+
+test("«Puerto Inírida» se busca como «Inírida» en Dropi", () => {
+  const v = variantesUbicacion("Puerto Inírida");
+  assert.deepEqual(v, ["puerto inirida", "inirida"]);
+  assert.equal(coincideUbicacion("INIRIDA", v, "Guainía"), true);
+  assert.equal(coincideUbicacion("Inírida", variantesUbicacion("Inirida"), "Guainía"), true);
 });
