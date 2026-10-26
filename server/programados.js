@@ -9,7 +9,7 @@ import path from "node:path";
 import { diasHasta, fechaValida, hoyColombia } from "./fechaEntrega.js";
 
 /** Con cuantos dias de anticipacion se resalta (y se sube) por defecto. */
-export const DIAS_ANTES_DEFECTO = 1;
+export const DIAS_ANTES_DEFECTO = 5;
 
 export function crearProgramados({ ruta = null, log = console } = {}) {
   let datos = {};

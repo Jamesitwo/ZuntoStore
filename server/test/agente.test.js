@@ -290,3 +290,30 @@ test("sin corregimiento no aparece la verificacion", async () => {
   const r = await ejecutarAgente({ resumen: RESUMEN, mensajes: [], extraer: async () => EXTRAIDO_BIEN });
   assert.equal(r.validacion.checks.some((c) => c.campo === "corregimiento"), false);
 });
+
+// ---------- entrega futura vs tiempo normal de envio ----------
+test("fecha pedida dentro del tiempo de envio: no es entrega futura, se sube ya", async () => {
+  const { hoyColombia, sumarDias } = await import("../fechaEntrega.js");
+  const r = await ejecutarAgente({
+    resumen: RESUMEN,
+    mensajes: [],
+    diasEntrega: 5,
+    extraer: async () => ({ ...EXTRAIDO_BIEN, entregaFutura: true, fechaEntregaSolicitada: "el jueves", fechaEntregaISO: sumarDias(hoyColombia(), 3) }),
+  });
+  assert.equal(r.accion, "subir");
+  assert.equal(r.entrega, null);
+  assert.match(r.validacion.checks.find((c) => c.campo === "entregaFutura").detalle, /dentro del tiempo normal de envío/);
+});
+
+test("fecha pedida mas alla del tiempo de envio: es entrega futura", async () => {
+  const { hoyColombia, sumarDias } = await import("../fechaEntrega.js");
+  const fecha = sumarDias(hoyColombia(), 9);
+  const r = await ejecutarAgente({
+    resumen: RESUMEN,
+    mensajes: [],
+    diasEntrega: 5,
+    extraer: async () => ({ ...EXTRAIDO_BIEN, entregaFutura: true, fechaEntregaSolicitada: "en 9 dias", fechaEntregaISO: fecha }),
+  });
+  assert.equal(r.accion, "frenar");
+  assert.equal(r.entrega.fecha, fecha);
+});

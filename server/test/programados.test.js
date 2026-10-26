@@ -42,7 +42,7 @@ test("programados: la IA no pisa una marca manual y quitar no deja que la IA rep
   p.poner(7, { fecha: f1, origen: "manual", nota: "quincena", por: "ana@x.co" });
   p.poner(7, { fecha: f2, origen: "ia" });
   assert.equal(p.get(7).fecha, f1);
-  assert.equal(p.get(7).estado, "en-espera");
+  assert.equal(p.get(7, { diasAntes: 1 }).estado, "en-espera");
   assert.equal(p.toca(7, 3), true);
   assert.equal(p.toca(7, 1), false);
   // persiste

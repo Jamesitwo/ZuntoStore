@@ -49,6 +49,12 @@ const FINALES = new Set([
 ]);
 /** Resultados en revision que se dan por resueltos si una persona mueve el pedido. */
 const RESOLUBLES = new Set(["requiere-revision", "direccion-invalida", "envio-caro", "sin-transportadora", "posible-duplicado", "entrega-programada"]);
+/**
+ * Lo que tarda un envio normal (dias). Una fecha pedida dentro de ese margen
+ * no es entrega futura; una mas lejana se programa y se sube cuando faltan
+ * esos dias.
+ */
+const DIAS_ENTREGA = 5;
 /** Pedidos mas recientes que mira cada vuelta, por tienda (en paginas de 100). */
 const MAX_PEDIDOS_VUELTA = 200;
 const POR_PAGINA = 100;
@@ -318,7 +324,7 @@ export function crearSubidaAutomatica({
 
   /** Configuracion de entregas programadas, siempre completa. */
   const confProg = (c) => ({
-    diasAntes: Math.max(0, Math.min(Number.isFinite(Number(c?.programados?.diasAntes)) ? Number(c.programados.diasAntes) : 1, 30)),
+    diasAntes: Math.max(0, Math.min(Number.isFinite(Number(c?.programados?.diasAntes)) ? Number(c.programados.diasAntes) : DIAS_ENTREGA, 30)),
     subirSolo: c?.programados?.subirSolo !== false,
   });
 
@@ -347,7 +353,7 @@ export function crearSubidaAutomatica({
     detectarOficinaInter: true,
     // entregas programadas: con cuantos dias de anticipacion se envian y si
     // la subida automatica los sube sola cuando llega la fecha
-    programados: { diasAntes: 1, subirSolo: true },
+    programados: { diasAntes: DIAS_ENTREGA, subirSolo: true },
     // intentos fallidos antes de dejar el pedido para revision manual
     maxIntentos: 2,
     // tienda de LucidSales (idEmpresa) -> nombre exacto de la tienda en Dropi
@@ -803,7 +809,7 @@ export function crearSubidaAutomatica({
           const otrosPedidos = c.duplicadosAprobados?.[id]
             ? []
             : otrosPedidosDelCliente(p, pedidos, { procesados: c.procesados });
-          const r2 = await ejecutarAgente({ resumen, mensajes, extraer, oficina: oficinaAuto ? oficina : null, otrosPedidos, entregaProgramada });
+          const r2 = await ejecutarAgente({ resumen, mensajes, extraer, oficina: oficinaAuto ? oficina : null, otrosPedidos, entregaProgramada, diasEntrega: confProg(c).diasAntes });
           analisisActual = resumirAnalisis(r2);
           // la IA no respondio (timeout, saldo, clave): error tecnico, no un
           // pedido frenado por su contenido

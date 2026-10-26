@@ -1282,7 +1282,7 @@ test("entrega futura con fecha: queda programada sin gastar intentos y se sube c
   const { crearProgramados } = await import("../programados.js");
   const { hoyColombia, sumarDias } = await import("../fechaEntrega.js");
   const programados = crearProgramados({ ruta: null });
-  const fecha = sumarDias(hoyColombia(), 5);
+  const fecha = sumarDias(hoyColombia(), 12);
   const extraido = {
     producto: "Taladro Inalambrico 68V", cantidad: 1, precioAcordado: 105690, direccion: "Carrera 92 #78b-02",
     clienteConfirmo: true, entregaFutura: true, fechaEntregaSolicitada: "para el sábado", fechaEntregaISO: fecha, incertidumbre: [],
@@ -1298,8 +1298,8 @@ test("entrega futura con fecha: queda programada sin gastar intentos y se sube c
   assert.equal(e.intentos, undefined); // no gasta intentos
   assert.equal(programados.get(1).fecha, fecha);
   assert.equal(programados.get(1).origen, "ia");
-  // con 5 dias de anticipacion ya toca: se sube aunque el chat pida otra fecha
-  s.configurar({ programados: { diasAntes: 5 } });
+  // si los envios tardan 12 dias ya toca: se sube aunque el chat pida otra fecha
+  s.configurar({ programados: { diasAntes: 12 } });
   await s.tick({ forzar: true });
   assert.equal(subidos.length, 1);
   assert.match(s.estadoPedido(1).accion, /^subido/);

@@ -9,7 +9,7 @@
 //
 // Todo lo de comparacion es puro y sin red: se puede probar sin LLM ni APIs.
 
-import { fechaDeExtraccion } from "./fechaEntrega.js";
+import { diasHasta, fechaDeExtraccion } from "./fechaEntrega.js";
 import { claveCalle, recogeEnOficina, validarDireccion } from "./direccionColombia.js";
 
 /** Separa los acentos y baja a minusculas: "Medellin" == "medellín". */
@@ -319,7 +319,7 @@ export function textoOtrosPedidos(otros = []) {
  * una entrega programada (por la IA o a mano). Cuando ya toca enviarlo, que
  * el cliente haya pedido una fecha futura deja de frenar la subida.
  */
-export async function ejecutarAgente({ resumen, mensajes, extraer, oficina = null, otrosPedidos = [], entregaProgramada = null }) {
+export async function ejecutarAgente({ resumen, mensajes, extraer, oficina = null, otrosPedidos = [], entregaProgramada = null, diasEntrega = null }) {
   // la IA tambien descompone la direccion del pedido (la que se envia) y, si
   // el cliente tiene otro pedido reciente, dice si el chat muestra una
   // segunda compra (el codigo decide)
@@ -366,6 +366,19 @@ export async function ejecutarAgente({ resumen, mensajes, extraer, oficina = nul
     });
     validacion.ok = validacion.checks.every((c) => c.ok);
   }
+  // Pidio una fecha que cae dentro de lo que tarda un envio normal: no es una
+  // entrega futura, se sube ya (llega mas o menos para ese dia).
+  let dentroDelPlazo = false;
+  if (fechaEntrega && Number.isFinite(Number(diasEntrega)) && Number(diasEntrega) >= 0 && !entregaProgramada?.toca) {
+    const faltan = diasHasta(fechaEntrega);
+    const ch = validacion.checks.find((c) => c.campo === "entregaFutura");
+    if (ch && !ch.ok && faltan <= Number(diasEntrega)) {
+      dentroDelPlazo = true;
+      ch.ok = true;
+      ch.detalle = `pidió la entrega para el ${fechaEntrega} (${faltan <= 0 ? "hoy" : faltan === 1 ? "mañana" : `en ${faltan} días`}): está dentro del tiempo normal de envío (hasta ${Number(diasEntrega)} días), se sube ya`;
+      validacion.ok = validacion.checks.every((c) => c.ok);
+    }
+  }
   if (entregaProgramada?.toca) {
     const ch = validacion.checks.find((c) => c.campo === "entregaFutura");
     if (ch && !ch.ok) {
@@ -403,7 +416,7 @@ export async function ejecutarAgente({ resumen, mensajes, extraer, oficina = nul
     falloIA: extraido?.falloTecnico || null,
     // el cliente pidio otra fecha: { fecha: "AAAA-MM-DD" | null, texto }
     entrega:
-      extraidoSeguro.entregaFutura === true
+      extraidoSeguro.entregaFutura === true && !dentroDelPlazo
         ? { fecha: fechaEntrega, texto: String(extraidoSeguro.fechaEntregaSolicitada ?? "").slice(0, 120) }
         : null,
   };

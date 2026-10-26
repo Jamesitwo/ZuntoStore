@@ -89,7 +89,7 @@ function normalizaConfig(c: any): {
     oficinaInter: c?.oficinaInter === true,
     detectarOficinaInter: c?.detectarOficinaInter !== false,
     programados: {
-      diasAntes: Number.isFinite(Number(c?.programados?.diasAntes)) ? Math.max(0, Math.min(30, Number(c.programados.diasAntes))) : 1,
+      diasAntes: Number.isFinite(Number(c?.programados?.diasAntes)) ? Math.max(0, Math.min(30, Number(c.programados.diasAntes))) : 5,
       subirSolo: c?.programados?.subirSolo !== false,
     },
     minCalificacionDireccion: Number.isFinite(Number(c?.minCalificacionDireccion))
@@ -1041,13 +1041,13 @@ export function SubidaDropi() {
 
           <Campo label="Entregas programadas" id="sub-prog-dias">
             <p className="campo-ayuda" style={{ marginTop: 0 }}>
-              Pedidos que el cliente pidió para otra fecha («lo quiero para el 30»). Los detecta la IA en el chat o se
-              marcan a mano en el pedido; no se suben antes de tiempo y la lista de pedidos los resalta cuando se acerca la
-              fecha.
+              Si el cliente pide una fecha que cae dentro de lo que tarda un envío, se sube ya. Si pide una fecha más
+              lejana («lo quiero para el 30»), queda programado (lo detecta la IA o se marca a mano en el pedido), no se
+              sube antes de tiempo y la lista de pedidos lo resalta cuando le toca.
             </p>
             <div className="row gap" style={{ flexWrap: "wrap", marginBottom: 0 }}>
               <label className="small">
-                Enviar con
+                Los envíos tardan hasta
                 <input
                   id="sub-prog-dias"
                   type="number"
@@ -1059,7 +1059,7 @@ export function SubidaDropi() {
                   }
                   style={{ width: 64, margin: "0 6px" }}
                 />
-                día(s) de anticipación
+                día(s)
               </label>
               <label className="check-linea">
                 <input

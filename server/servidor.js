@@ -784,7 +784,7 @@ export function crearManejador({
     }
     if (ruta === "/api/programados" && req.method === "GET") {
       autorizar(req);
-      const conf = subida.programacion?.() ?? { diasAntes: 1, subirSolo: true };
+      const conf = subida.programacion?.() ?? { diasAntes: 5, subirSolo: true };
       json(res, 200, { ok: true, config: conf, programados: programados?.lista({ diasAntes: conf.diasAntes }) ?? [] });
       return;
     }
@@ -793,7 +793,7 @@ export function crearManejador({
       autorizar(req);
       if (!programados) throw new ErrorApi(503, "Las entregas programadas no están disponibles");
       const id = decodeURIComponent(progId[1]);
-      const conf = subida.programacion?.() ?? { diasAntes: 1, subirSolo: true };
+      const conf = subida.programacion?.() ?? { diasAntes: 5, subirSolo: true };
       if (req.method === "GET") {
         json(res, 200, { ok: true, programado: programados.get(id, { diasAntes: conf.diasAntes }), config: conf });
         return;
@@ -1137,6 +1137,7 @@ export function crearManejador({
         oficina: oficinaAuto ? oficina : null,
         otrosPedidos,
         entregaProgramada: progManual && !progManual.enviado ? { fecha: progManual.fecha, toca: true } : null,
+        diasEntrega: subida.programacion?.()?.diasAntes ?? 5,
       });
       if (res.__intento) res.__intento.analisis = resumirAnalisis(r);
 
