@@ -205,3 +205,13 @@ test("claveCalle encuentra la calle aunque el texto traiga ciudad y barrio antes
   assert.notEqual(claveCalle("Kennedy Calle 51B Sur #82 C18"), claveCalle("Calle 51B Sur #82 C19"));
   assert.equal(claveCalle("casa verde frente al parque"), null);
 });
+
+test("la calle no tiene que ir al principio y con dos tipos seguidos vale el segundo", () => {
+  assert.equal(validarDireccion("Etapa Tres, Calle KR 5 No. 19-105").normalizada, "Cra 5 # 19-105, Etapa Tres");
+  assert.equal(validarDireccion("Calle KR 5 No. 19-105").normalizada, "Cra 5 # 19-105");
+  assert.equal(validarDireccion("Barrio Calle Real, Cra 5 # 3-20").normalizada, "Cra 5 # 3-20, Barrio Calle Real");
+  // compuestos de verdad se respetan
+  assert.equal(validarDireccion("Av Calle 80 # 20-10").normalizada, "Av. Calle 80 # 20-10");
+  // una referencia no es la direccion
+  assert.equal(validarDireccion("Cerca de la Cra 5 # 3-20").ok, false);
+});

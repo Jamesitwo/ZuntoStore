@@ -85,6 +85,30 @@ function capitalizarResto(r) {
  * placa, resto, normalizada} o null si no tiene el formato.
  */
 export function parsearDireccion(direccion) {
+  // La calle puede no estar al principio ("Etapa Tres, Calle KR 5 No. 19-105"):
+  // se busca desde cada tipo de via y lo que va antes pasa al final (barrio,
+  // etapa...). Con dos tipos seguidos que no forman uno compuesto ("Calle KR
+  // 5") vale el segundo, que es la abreviatura que escribio el cliente.
+  const palabras = String(direccion ?? "").replace(/\s+/g, " ").trim().split(" ");
+  for (let i = 0; i < palabras.length; i++) {
+    const tipo = tipoViaCanonico(palabras[i]);
+    if (!tipo) continue;
+    let desde = i;
+    const sig = palabras[i + 1];
+    if (sig && tipoViaCanonico(sig) && tipoViaCanonico(`${palabras[i]} ${sig}`) === tipo) desde = i + 1;
+    const p = parsearDesdeElInicio(palabras.slice(desde).join(" "));
+    if (!p) continue;
+    const antes = palabras.slice(0, i).join(" ").replace(/^[\s,.;:-]+|[\s,.;:-]+$/g, "");
+    if (!antes) return p;
+    // "frente a la cra 5 # 3-2" no es esa direccion: es una referencia
+    if (/\b(frente|lado|cerca|junto|detras|diagonal|enseguida|despues|antes|cruzando|vuelta)\b(\s+(a|al|de|del))?(\s+(la|el|los|las))?$/.test(normalizarTextoDir(antes))) continue;
+    const resto = [p.resto, antes].filter(Boolean).join(", ");
+    return { ...p, resto, normalizada: `${p.tipoVia} ${p.via} # ${p.cruce}-${p.placa}${resto ? `, ${resto}` : ""}` };
+  }
+  return null;
+}
+
+function parsearDesdeElInicio(direccion) {
   const t = normalizarTextoDir(direccion)
     .replace(/\s*#\s*/g, " # ")
     // letra del cruce pegada a la placa: "# 82 C19" / "# 82c19" = cruce 82C, placa 19
@@ -100,6 +124,8 @@ export function parsearDireccion(direccion) {
   if (!tipoVia) return null;
   // el "tipo" no puede traer texto de mas ("frente a la cra" no es un tipo)
   if (normalizarTextoDir(m[1]).split(" ").length > 3) return null;
+  // ni otra frase antes de una coma ("Calle Real, Cra 5": la via es la Cra)
+  if (/,/.test(m[1])) return null;
   const via = armarNumero(m[2], m[3], m[4], m[5], m[6]);
   const cruce = armarNumero(m[7], m[8], m[9], m[10], m[11]);
   const placa = String(m[12]) + (m[13] ? ` ${m[13][0].toUpperCase()}${m[13].slice(1)}` : "");
