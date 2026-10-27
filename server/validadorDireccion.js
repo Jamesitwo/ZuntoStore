@@ -142,9 +142,18 @@ export function evaluarGeocodificacion(respuesta, { ciudad = "", departamento = 
   if (!r) return { veredicto: "no-encontrada", detalle: "Google no encontró esa dirección" };
 
   const comp = (tipo) => r.address_components?.find((c) => c.types?.includes(tipo))?.long_name ?? "";
-  const municipio = comp("locality") || comp("administrative_area_level_2");
   const depto = comp("administrative_area_level_1");
-  const tipos = r.types ?? [];
+  // Google a veces pone el barrio como "locality" ("VILLA CIELO, Montería,
+  // Córdoba"): el municipio viene entonces en administrative_area_level_2
+  const lugares = [comp("locality"), comp("administrative_area_level_2"), comp("administrative_area_level_3")].filter(Boolean);
+  const delPedido = ciudad ? lugares.find((x) => mismoLugar(x, ciudad)) : null;
+  const municipio = delPedido || comp("locality") || comp("administrative_area_level_2");
+  let tipos = r.types ?? [];
+  // la "localidad" era un barrio de la ciudad del pedido: cuenta como barrio
+  const localidad = comp("locality");
+  if (delPedido && localidad && !mismoLugar(localidad, ciudad) && tipos.includes("locality")) {
+    tipos = [...tipos.filter((t) => t !== "locality"), "neighborhood"];
+  }
   const precisa = ["ROOFTOP", "RANGE_INTERPOLATED"].includes(r.geometry?.location_type);
   const esPlaca = tipos.some((t) => ["street_address", "premise", "subpremise"].includes(t));
   const base = {
@@ -160,7 +169,7 @@ export function evaluarGeocodificacion(respuesta, { ciudad = "", departamento = 
   base.mapa = base.lat !== null ? `https://www.google.com/maps/search/?api=1&query=${base.lat},${base.lng}` : null;
 
   // la ciudad del pedido manda: si Google la ubica en otra, no sirve
-  const ciudadOk = !ciudad || mismoLugar(municipio, ciudad) || mismoLugar(depto, ciudad);
+  const ciudadOk = !ciudad || Boolean(delPedido) || mismoLugar(depto, ciudad);
   const deptoOk =
     !departamento || !depto || mismoDepartamento(depto, departamento) || mismoDepartamento(municipio, departamento);
   if (!ciudadOk || !deptoOk) {

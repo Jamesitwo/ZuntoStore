@@ -364,3 +364,27 @@ test("manzana con el barrio en las referencias: valida", async () => {
   assert.equal(r.sugerida, "Mz A Cs 14, Barrio Los Pinos");
   fs.rmSync(ruta, { force: true });
 });
+
+test("Google pone el barrio como localidad pero la ciudad esta en la direccion: es de la ciudad", () => {
+  const r = evaluarGeocodificacion(
+    {
+      status: "OK",
+      results: [
+        {
+          formatted_address: "VILLA CIELO, Montería, Córdoba, Colombia",
+          types: ["locality", "political"],
+          geometry: { location: { lat: 8.75, lng: -75.84 }, location_type: "APPROXIMATE" },
+          address_components: [
+            { long_name: "VILLA CIELO", types: ["locality", "political"] },
+            { long_name: "Montería", types: ["administrative_area_level_2", "political"] },
+            { long_name: "Córdoba", types: ["administrative_area_level_1", "political"] },
+          ],
+        },
+      ],
+    },
+    { ciudad: "Monteria", departamento: "Córdoba" },
+  );
+  assert.equal(r.veredicto, "aproximada");
+  assert.equal(r.municipio, "Montería");
+  assert.match(r.detalle, /solo el barrio/);
+});
