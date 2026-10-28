@@ -200,6 +200,12 @@ export function ListaProductos({
   const [dropiRes, setDropiRes] = useState<{ ok: boolean; msg: string; product?: any } | null>(null);
   // mensaje inicial (secuencia de bienvenida del bot)
   const [inicial, setInicial] = useState<PasoInicial[]>([]);
+  /**
+   * Mensajes iniciales "nuevos" de LucidSales (initialMessages: versiones A,
+   * B... con sus ventas). Se muestran, pero se guardan con otro endpoint que
+   * aun no esta conectado: mientras tanto el MensajeInicial viejo no se toca.
+   */
+  const [inicialNuevo, setInicialNuevo] = useState<{ letras: string[]; legado: unknown } | null>(null);
   // campanas de Meta (ads)
   const [cargandoCamp, setCargandoCamp] = useState(false);
   const [campCargadas, setCampCargadas] = useState(false);
@@ -417,7 +423,17 @@ export function ListaProductos({
       setDropiTexto(texto(p?.idProductoDropi));
       setDropiRes(null);
       // el GET lo trae como MensajeInicial (mayuscula); si no trae nada, []
-      setInicial(parsearMensajeInicial(p?.MensajeInicial ?? p?.mensajeInicial));
+      const legado = p?.MensajeInicial ?? p?.mensajeInicial;
+      const versiones = (Array.isArray(p?.initialMessages) ? p.initialMessages : []).filter((m: any) => m && m.message);
+      if (!parsearMensajeInicial(legado).length && (versiones.length || p?.initialMessage)) {
+        // version nueva: se muestra la primera activa (o la A)
+        const activa = versiones.find((m: any) => m.enabled !== false) ?? versiones[0];
+        setInicial(parsearMensajeInicial(activa?.message ?? p?.initialMessage));
+        setInicialNuevo({ letras: versiones.map((m: any) => String(m.letter ?? "?")), legado: legado ?? null });
+      } else {
+        setInicial(parsearMensajeInicial(legado));
+        setInicialNuevo(null);
+      }
       // campanas de Meta: lo guardado se muestra ya; el catalogo se pide al
       // abrir el desplegable (como el oficial, que lo carga al abrir la seccion)
       setCampSel(campanasGuardadas(p?.AdsMetaCampaigns));
@@ -484,7 +500,8 @@ export function ListaProductos({
         idProductoDropi: form.idDropi.trim() === "" ? 0 : Number(form.idDropi) || 0,
         nameProductoDropi: form.nameDropi,
         // el GET lo trae como MensajeInicial; el alias lo manda como mensajeInicial
-        MensajeInicial: serializarMensajeInicial(inicial),
+        // con los mensajes nuevos (A/B) el viejo se deja como estaba
+        MensajeInicial: inicialNuevo ? (inicialNuevo.legado ?? "") : serializarMensajeInicial(inicial),
         // campanas de Meta y sus anuncios (los dos van serializados a JSON)
         AdsMetaCampaigns: campSel,
         AdsMetaTags: tags,
@@ -1493,6 +1510,20 @@ export function ListaProductos({
                   value={String(m?.precioBodega ?? "")}
                   onChange={(e) => nombraPrecio(i, "precioBodega", e.target.value)}
                 />
+                {(() => {
+                  // el precio que se cobra esta en el bundle ("1 Unidad")
+                  const its = (Array.isArray(m?.items) ? m.items : []).map((x: any) => String(x).trim().toLowerCase());
+                  const enBundle = (Array.isArray(bundleVar[0]?.variantes) ? bundleVar[0].variantes : []).find((v: any) => {
+                    const b = (Array.isArray(v?.items) ? v.items : []).map((x: any) => String(x).trim().toLowerCase());
+                    return b.length === its.length && b.every((x: string, k: number) => x === its[k]);
+                  });
+                  const pr = Number(enBundle?.precioSugerido);
+                  return enBundle ? (
+                    <span className="chip" title={`Precio de venta en el bundle «${bundles[0]?.name ?? "1"}» (se edita abajo, en Bundles)`}>
+                      {pr > 0 ? `venta ${money(pr)}` : "sin precio en el bundle"}
+                    </span>
+                  ) : null;
+                })()}
                 <span className="chip" title="sku de la variante">
                   {String(m?.sku ?? "")}
                 </span>
@@ -1997,6 +2028,14 @@ export function ListaProductos({
                 : "⚠ El interruptor «Mensaje inicial personalizado» está apagado (en Opciones): el mensaje no se usará."}
             </p>
 
+            {inicialNuevo ? (
+              <div className="banner warn">
+                Este producto usa los <strong>mensajes iniciales nuevos</strong> de LucidSales
+                {inicialNuevo.letras.length > 1 ? ` (versiones ${inicialNuevo.letras.join(", ")})` : ""}: aquí se ve la
+                versión {inicialNuevo.letras[0] ?? "A"}, pero los cambios todavía no se guardan desde Zunto. Edítalo en
+                el panel de LucidSales por ahora.
+              </div>
+            ) : null}
             {inicial.length === 0 ? (
               <p className="muted">Sin mensaje inicial todavía: añade el primer paso.</p>
             ) : (
