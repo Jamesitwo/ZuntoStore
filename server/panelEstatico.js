@@ -77,7 +77,8 @@ export function crearPanelEstatico({ dir, lucidOrigen = "https://panel.lucidsale
         body: conCuerpo ? req : undefined,
         duplex: conCuerpo ? "half" : undefined,
         redirect: "manual",
-        signal: AbortSignal.timeout(60000),
+        // subir archivos (videos) puede tardar mas que una llamada normal
+        signal: AbortSignal.timeout(/multipart\/form-data/i.test(String(req.headers["content-type"] ?? "")) ? 300000 : 60000),
       });
     } catch (e) {
       res.writeHead(502, { "content-type": "application/json; charset=utf-8" });

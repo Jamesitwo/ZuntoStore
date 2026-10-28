@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { SubirMedia } from "./SubirMedia";
 import {
   contenidoInicialPaso,
   formaDePaso,
@@ -89,6 +90,12 @@ export function EditorPasos({
   const agregaUrl = (i: number) =>
     onChange(
       pasos.map((p, k) => (k === i ? { ...p, content: [...contenidoDe(p), ""] } : p)),
+    );
+
+  /** Urls recien subidas a la biblioteca -> al final del paso (sin los vacios). */
+  const agregaUrls = (i: number, nuevas: string[]) =>
+    onChange(
+      pasos.map((p, k) => (k === i ? { ...p, content: [...contenidoDe(p).filter((u) => u.trim()), ...nuevas] } : p)),
     );
 
   const quitaUrl = (i: number, j: number) =>
@@ -264,9 +271,32 @@ export function EditorPasos({
                         Sin urls todavía.
                       </p>
                     )}
-                    <button type="button" className="btn sm" onClick={() => agregaUrl(i)}>
-                      + Añadir url
-                    </button>
+                    <div className="row gap" style={{ marginBottom: 0 }}>
+                      <SubirMedia
+                        accept={
+                          p.type.includes("video")
+                            ? "video/*"
+                            : p.type.includes("audio")
+                              ? "audio/*"
+                              : p.type.includes("documento")
+                                ? ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                                : "image/*"
+                        }
+                        texto={
+                          p.type.includes("video")
+                            ? "⬆ Subir video"
+                            : p.type.includes("audio")
+                              ? "⬆ Subir audio"
+                              : p.type.includes("documento")
+                                ? "⬆ Subir documento"
+                                : "⬆ Subir imagen"
+                        }
+                        onSubido={(nuevas) => agregaUrls(i, nuevas)}
+                      />
+                      <button type="button" className="btn sm" onClick={() => agregaUrl(i)}>
+                        + Añadir url
+                      </button>
+                    </div>
                   </div>
                 ) : null}
               </div>

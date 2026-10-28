@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { SubirMedia } from "./SubirMedia";
 import { errMsg, pickArray } from "../api/client";
 import { auth, meta, productos } from "../api/endpoints";
 import { prodImg, prodImgs, prodPrice } from "../lib/catalogo";
@@ -617,6 +618,16 @@ export function ListaProductos({
       ),
     );
 
+  /** Urls recien subidas a la biblioteca -> al final del paso (reemplaza los vacios). */
+  const agregaUrls = (i: number, urls: string[]) =>
+    setInicial((arr) =>
+      arr.map((p, k) =>
+        k === i && Array.isArray(p.content)
+          ? { ...p, content: [...p.content.filter((u) => String(u).trim()), ...urls] }
+          : p,
+      ),
+    );
+
   const agregaUrl = (i: number) =>
     setInicial((arr) =>
       arr.map((p, k) =>
@@ -787,6 +798,17 @@ export function ListaProductos({
       a.map((b, k) =>
         k === i
           ? { ...b, imagenes: (Array.isArray(b?.imagenes) ? b.imagenes : []).map((u: any, m: number) => (m === j ? v : u)) }
+          : b,
+      ),
+    );
+    setBundlesSucios(true);
+  };
+
+  const agregaBundleUrls = (i: number, urls: string[]) => {
+    setBundles((a) =>
+      a.map((b, k) =>
+        k === i
+          ? { ...b, imagenes: [...(Array.isArray(b?.imagenes) ? b.imagenes : []).filter((u: any) => String(u ?? "").trim()), ...urls] }
           : b,
       ),
     );
@@ -1612,13 +1634,16 @@ export function ListaProductos({
                         </div>
                       );
                     })}
-                    <button
-                      type="button"
-                      className="btn sm"
-                      onClick={() => agregaBundleUrl(i)}
-                    >
-                      + Imagen
-                    </button>
+                    <div className="row gap" style={{ marginBottom: 0 }}>
+                      <SubirMedia texto="⬆ Subir imagen" onSubido={(urls) => agregaBundleUrls(i, urls)} />
+                      <button
+                        type="button"
+                        className="btn sm"
+                        onClick={() => agregaBundleUrl(i)}
+                      >
+                        + Imagen (url)
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -2013,9 +2038,18 @@ export function ListaProductos({
                               Sin urls todavía.
                             </p>
                           )}
-                          <button type="button" className="btn sm" onClick={() => agregaUrl(i)}>
-                            + Añadir url
-                          </button>
+                          <div className="row gap" style={{ marginBottom: 0 }}>
+                            {p.type === "mensaje_inicial_imagenes" || p.type === "mensaje_inicial_videos" || p.type === "mensaje_inicial_audios" ? (
+                              <SubirMedia
+                                accept={p.type === "mensaje_inicial_videos" ? "video/*" : p.type === "mensaje_inicial_audios" ? "audio/*" : "image/*"}
+                                texto={p.type === "mensaje_inicial_videos" ? "⬆ Subir video" : p.type === "mensaje_inicial_audios" ? "⬆ Subir audio" : "⬆ Subir imagen"}
+                                onSubido={(urls) => agregaUrls(i, urls)}
+                              />
+                            ) : null}
+                            <button type="button" className="btn sm" onClick={() => agregaUrl(i)}>
+                              + Añadir url
+                            </button>
+                          </div>
                         </div>
                       ) : null}
                     </div>

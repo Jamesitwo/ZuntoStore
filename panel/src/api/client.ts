@@ -135,6 +135,39 @@ export async function api<T = any>(path: string, options: RequestOptions = {}): 
   return data as T;
 }
 
+/**
+ * POST multipart (archivos). Igual que `api` pero el cuerpo es FormData: el
+ * navegador pone el content-type con su boundary.
+ */
+export async function apiFormulario<T = any>(path: string, form: FormData): Promise<T> {
+  const session = loadSession();
+  const headers: Record<string, string> = {};
+  if (session?.token) headers["x-token"] = session.token;
+  let res: Response;
+  try {
+    res = await fetch(API_BASE + path, { method: "POST", headers, body: form });
+  } catch (err) {
+    throw new ApiError(0, "No se pudo conectar con la API (red o CORS)", err);
+  }
+  const text = await res.text();
+  let data: any;
+  try {
+    data = text ? JSON.parse(text) : undefined;
+  } catch {
+    data = text;
+  }
+  if (res.status === 401) {
+    clearSession();
+    window.dispatchEvent(new Event("session-expired"));
+    throw new ApiError(401, "Sesion expirada o token invalido. Vuelve a iniciar sesion.", data);
+  }
+  if (!res.ok || (data && typeof data === "object" && data.ok === false)) {
+    const msg = (data && (data.msg || data.message || data.error)) || `Error ${res.status} del servidor`;
+    throw new ApiError(res.status, String(msg), data);
+  }
+  return data as T;
+}
+
 /** Extrae el primer arreglo util de una respuesta de forma defensiva. */
 export function pickArray(data: any, keys: string[] = []): any[] {
   if (Array.isArray(data)) return data;

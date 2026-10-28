@@ -1,5 +1,5 @@
 import { cabecerasBackend } from "./backend";
-import { api, qs, QueryValue } from "./client";
+import { api, apiFormulario, qs, QueryValue } from "./client";
 import { buildUpdateBody } from "./pedidoBody";
 
 // Wrappers sobre los endpoints de lucidsales_api_doc.md
@@ -408,6 +408,36 @@ export async function oficinasInter(
 }
 
 // ---------------- Productos ----------------
+
+/**
+ * Biblioteca de archivos (multimedia de productos):
+ *   POST /biblioteca/uploadS3File  form-data {files: (binario), idShop}
+ * La respuesta trae la(s) url(s) publicas del archivo subido.
+ */
+export const biblioteca = {
+  subir: (archivo: File, idShop: number | string) => {
+    const form = new FormData();
+    form.append("files", archivo, archivo.name);
+    form.append("idShop", String(idShop));
+    return apiFormulario("/biblioteca/uploadS3File", form);
+  },
+};
+
+/** Todas las urls http(s) que vengan en una respuesta (en cualquier campo). */
+export function urlsDeRespuesta(data: unknown, salida: string[] = [], prof = 0): string[] {
+  if (prof > 6 || data === null || data === undefined) return salida;
+  if (typeof data === "string") {
+    const t = data.trim();
+    if (/^https?:\/\/\S+$/i.test(t) && !salida.includes(t)) salida.push(t);
+    return salida;
+  }
+  if (Array.isArray(data)) {
+    for (const x of data) urlsDeRespuesta(x, salida, prof + 1);
+    return salida;
+  }
+  if (typeof data === "object") for (const v of Object.values(data as Record<string, unknown>)) urlsDeRespuesta(v, salida, prof + 1);
+  return salida;
+}
 
 export const productos = {
   list: (idEmpresa: number) =>
