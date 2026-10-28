@@ -206,21 +206,51 @@ export function ListaProductos({
    * aun no esta conectado: mientras tanto el MensajeInicial viejo no se toca.
    */
   const [inicialNuevo, setInicialNuevo] = useState<{
-    letras: string[];
     legado: unknown;
-    /** initialMessages tal cual (id, letter, sales, views, enabled...) */
+    /** initialMessages tal como llegaron (para saber que cambio) */
+    original: any[];
+    /** versiones de trabajo: letter, enabled, id, sales, views... (message se arma al guardar) */
     versiones: any[];
     /** pasos de cada version (la que se edita vive en `inicial`) */
     pasos: PasoInicial[][];
     actual: number;
+    max: number;
   } | null>(null);
+  /** Pasos de todas las versiones con lo que se esta editando incluido. */
+  const pasosVersiones = () =>
+    inicialNuevo ? inicialNuevo.pasos.map((x, i) => (i === inicialNuevo.actual ? inicial : x)) : [];
   /** Cambia la version (A, B...) que se edita, guardando lo editado de la otra. */
   const verVersion = (k: number) => {
     if (!inicialNuevo || k === inicialNuevo.actual) return;
-    const pasos = inicialNuevo.pasos.map((x, i) => (i === inicialNuevo.actual ? inicial : x));
+    const pasos = pasosVersiones();
     setInicialNuevo({ ...inicialNuevo, pasos, actual: k });
     setInicial(pasos[k] ?? []);
   };
+  /** Nueva version: copia de la que se esta viendo, con la siguiente letra libre. */
+  const nuevaVersion = () => {
+    if (!inicialNuevo || inicialNuevo.versiones.length >= inicialNuevo.max) return;
+    const usadas = new Set(inicialNuevo.versiones.map((v) => String(v.letter)));
+    const letra = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").find((l) => !usadas.has(l)) ?? String(inicialNuevo.versiones.length + 1);
+    const pasos = [...pasosVersiones(), inicial.map((x, i) => ({ ...x, id: Date.now() + i }))];
+    const versiones = [...inicialNuevo.versiones, { letter: letra, sales: 0, views: 0, enabled: true }];
+    setInicialNuevo({ ...inicialNuevo, versiones, pasos, actual: versiones.length - 1 });
+    setInicial(pasos[pasos.length - 1]);
+  };
+  const activarVersion = (k: number, enabled: boolean) => {
+    if (!inicialNuevo) return;
+    setInicialNuevo({ ...inicialNuevo, versiones: inicialNuevo.versiones.map((v, i) => (i === k ? { ...v, enabled } : v)) });
+  };
+  const borrarVersion = (k: number) => {
+    if (!inicialNuevo || inicialNuevo.versiones.length <= 1) return;
+    const v = inicialNuevo.versiones[k];
+    if (!window.confirm(`¿Borrar la versión ${v?.letter ?? ""}${v?.sales ? ` (lleva ${v.sales} venta(s))` : ""}? Se borra al guardar el producto.`)) return;
+    const pasos = pasosVersiones().filter((_, i) => i !== k);
+    const versiones = inicialNuevo.versiones.filter((_, i) => i !== k);
+    const actual = Math.min(inicialNuevo.actual === k ? 0 : inicialNuevo.actual > k ? inicialNuevo.actual - 1 : inicialNuevo.actual, versiones.length - 1);
+    setInicialNuevo({ ...inicialNuevo, versiones, pasos, actual });
+    setInicial(pasos[actual] ?? []);
+  };
+
   // campanas de Meta (ads)
   const [cargandoCamp, setCargandoCamp] = useState(false);
   const [campCargadas, setCampCargadas] = useState(false);
@@ -445,7 +475,14 @@ export function ListaProductos({
         const pasos = versiones.map((m: any) => parsearMensajeInicial(m.message));
         const k = Math.max(0, versiones.findIndex((m: any) => m.enabled !== false));
         setInicial(pasos[k] ?? []);
-        setInicialNuevo({ letras: versiones.map((m: any) => String(m.letter ?? "?")), legado: legado ?? null, versiones, pasos, actual: k });
+        setInicialNuevo({
+          legado: legado ?? null,
+          original: versiones,
+          versiones: versiones.map(({ message: _m, ...resto }: any) => resto),
+          pasos,
+          actual: k,
+          max: Number(p?.initialMessagesMax) > 0 ? Number(p.initialMessagesMax) : 20,
+        });
       } else if (!parsearMensajeInicial(legado).length && p?.initialMessage) {
         setInicial(parsearMensajeInicial(p.initialMessage));
         setInicialNuevo(null);
@@ -536,33 +573,35 @@ export function ListaProductos({
       const cuerpo = armarCuerpoProducto(ficha, edicion);
       // mensajes iniciales nuevos (A/B): van en initialMessages, cada version
       // con su `message` (JSON string, igual que llega en el GET)
-      let enviados: { i: number; message: string }[] = [];
+      let enviadas: any[] | null = null;
       if (inicialNuevo) {
-        const pasos = inicialNuevo.pasos.map((x, i) => (i === inicialNuevo.actual ? inicial : x));
+        const pasos = pasosVersiones();
         const versiones = inicialNuevo.versiones.map((v, i) => ({ ...v, message: serializarMensajeInicial(pasos[i] ?? []) }));
-        enviados = versiones
-          .map((v, i) => ({ i, message: v.message as string }))
-          .filter(({ i, message }) => message !== serializarMensajeInicial(parsearMensajeInicial(inicialNuevo.versiones[i]?.message)));
-        if (enviados.length) cuerpo.initialMessages = versiones;
+        // solo se mandan si algo cambio (texto, activa/apagada, nuevas o borradas)
+        const huella = (arr: any[]) =>
+          JSON.stringify(arr.map((v) => [String(v.letter), v.enabled !== false, serializarMensajeInicial(parsearMensajeInicial(v.message))]));
+        if (huella(versiones) !== huella(inicialNuevo.original)) {
+          cuerpo.initialMessages = versiones;
+          enviadas = versiones;
+        }
       }
 
       const r: any = await productos.update(cuerpo);
       if (r?.ok === false || r?.error)
         throw new Error(r?.msg || (typeof r?.error === "string" ? r.error : "No se pudo guardar"));
       toast.success("Producto actualizado");
-      // ¿LucidSales guardo el mensaje inicial? se vuelve a leer y se compara
-      if (enviados.length) {
+      // ¿LucidSales guardo los mensajes iniciales? se vuelve a leer y se compara
+      if (enviadas) {
         try {
           const g: any = await productos.get(editando.id);
           const prod = g?.producto ?? g?.product ?? g;
           const ahora = Array.isArray(prod?.initialMessages) ? prod.initialMessages : [];
-          const quedo = enviados.every(
-            ({ i, message }) => serializarMensajeInicial(parsearMensajeInicial(ahora[i]?.message)) === message,
-          );
-          if (quedo) toast.success("Mensaje inicial guardado");
+          const clave = (v: any) => `${String(v.letter)}|${v.enabled !== false}|${serializarMensajeInicial(parsearMensajeInicial(v.message))}`;
+          const quedo = ahora.length === enviadas.length && enviadas.every((v) => ahora.some((x: any) => clave(x) === clave(v)));
+          if (quedo) toast.success("Mensajes iniciales guardados");
           else
             toast.error(
-              "LucidSales guardó el producto pero NO el mensaje inicial. Pásale a Claude lo que envía el panel oficial al guardarlo (pestaña Red → updateproducto → Carga útil).",
+              "LucidSales guardó el producto pero los mensajes iniciales no quedaron igual (versiones nuevas, apagadas o borradas). Pásale a Claude la Carga útil de updateproducto del panel oficial.",
             );
         } catch {
           /* no se pudo comprobar */
@@ -2078,23 +2117,44 @@ export function ListaProductos({
 
             {inicialNuevo ? (
               <div className="banner info">
-                Este producto usa los <strong>mensajes iniciales nuevos</strong> de LucidSales
-                {inicialNuevo.letras.length > 1 ? ` (versiones ${inicialNuevo.letras.join(", ")})` : ""}: aquí se edita la
-                versión que elijas abajo. Al guardar el producto se mandan las versiones y Zunto comprueba que LucidSales
-                las haya guardado (si no, te avisa).
-                {inicialNuevo.letras.length > 1 ? (
+                Este producto usa los <strong>mensajes iniciales nuevos</strong> de LucidSales (versiones A, B… que el
+                bot reparte entre los clientes). Elige la versión a editar; al guardar el producto se mandan todas y
+                Zunto comprueba que LucidSales las haya guardado.
+                <div className="row gap" style={{ marginTop: 6, marginBottom: 0, flexWrap: "wrap" }}>
+                  {inicialNuevo.versiones.map((v, k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      className={`btn sm${k === inicialNuevo.actual ? " primary" : ""}`}
+                      onClick={() => verVersion(k)}
+                      title={`${v.sales ?? 0} venta(s) · ${v.views ?? 0} vista(s)`}
+                    >
+                      Versión {String(v.letter ?? k + 1)}
+                      {v.enabled === false ? " (apagada)" : ""}
+                      {v.id === undefined ? " · nueva" : ` · ${v.sales ?? 0} venta(s)`}
+                    </button>
+                  ))}
+                  {inicialNuevo.versiones.length < inicialNuevo.max ? (
+                    <button type="button" className="btn sm" onClick={nuevaVersion} title="Copia de la versión que estás viendo">
+                      + Nueva versión
+                    </button>
+                  ) : null}
+                </div>
+                {inicialNuevo.versiones[inicialNuevo.actual] ? (
                   <div className="row gap" style={{ marginTop: 6, marginBottom: 0 }}>
-                    {inicialNuevo.letras.map((l, k) => (
-                      <button
-                        key={k}
-                        type="button"
-                        className={`btn sm${k === inicialNuevo.actual ? " primary" : ""}`}
-                        onClick={() => verVersion(k)}
-                      >
-                        Versión {l}
-                        {inicialNuevo.versiones[k]?.enabled === false ? " (apagada)" : ""}
+                    <label className="check-linea">
+                      <input
+                        type="checkbox"
+                        checked={inicialNuevo.versiones[inicialNuevo.actual].enabled !== false}
+                        onChange={(e) => activarVersion(inicialNuevo.actual, e.target.checked)}
+                      />
+                      <span>Versión {String(inicialNuevo.versiones[inicialNuevo.actual].letter)} activa</span>
+                    </label>
+                    {inicialNuevo.versiones.length > 1 ? (
+                      <button type="button" className="btn sm danger" onClick={() => borrarVersion(inicialNuevo.actual)}>
+                        Borrar esta versión
                       </button>
-                    ))}
+                    ) : null}
                   </div>
                 ) : null}
               </div>
