@@ -23,6 +23,7 @@ import { prodId, prodImg, prodName, prodPrice, useCatalogo } from "../lib/catalo
 import { useEtiquetaTienda } from "../lib/tiendas";
 import { useInboxBot } from "../lib/botInbox";
 import { nombresDeVariantes, tieneVariantes, totalLinea } from "../lib/lineasPedido";
+import { etiquetaVariante, useVariantesProductos, type OpcionVariante } from "../lib/variantesProducto";
 
 function parseArray(v: unknown): any[] {
   if (Array.isArray(v)) return v;
@@ -407,6 +408,30 @@ export function PedidoDetallePage() {
     );
   // nombre de cada variante ("Copa: Blanca; Tamaño: 150 cm"), de las observaciones
   const nombresVar = nombresDeVariantes(obs);
+  // variantes de cada producto del pedido (de la ficha del producto)
+  const variantesDe = useVariantesProductos(items.map((it) => String(it.product_id ?? "")));
+  /** Linea sin variante -> con la variante elegida (precio y cantidad pasan a la variante). */
+  const elegirVariante = (i: number, op: OpcionVariante) =>
+    setItems((arr) =>
+      arr.map((it, idx) =>
+        idx === i
+          ? { ...it, price: null, quantity: null, variations: [{ variation_id: op.sku, price: op.precio ?? num(it.price), quantity: num(it.quantity, 1) }] }
+          : it,
+      ),
+    );
+  const agregarVariante = (i: number, ops: OpcionVariante[]) =>
+    setItems((arr) =>
+      arr.map((it, idx) => {
+        if (idx !== i) return it;
+        const usadas = new Set((it.variations ?? []).map((v: any) => String(v.variation_id)));
+        const op = ops.find((o) => !usadas.has(o.sku)) ?? ops[0];
+        return { ...it, variations: [...(it.variations ?? []), { variation_id: op.sku, price: op.precio ?? 0, quantity: 1 }] };
+      }),
+    );
+  const quitarVariante = (i: number, k: number) =>
+    setItems((arr) =>
+      arr.map((it, idx) => (idx === i ? { ...it, variations: (it.variations ?? []).filter((_: any, j: number) => j !== k) } : it)),
+    );
 
   /** Desplegable de producto: al elegirlo rellena el precio del catalogo */
   const seleccionarProducto = (i: number, clave: string) => {
@@ -1058,11 +1083,43 @@ export function PedidoDetallePage() {
                     <>
                       {/* producto con variantes: precio y cantidad de cada una */}
                       <td>
-                        {it.variations.map((v: any, k: number) => (
+                        {it.variations.map((v: any, k: number) => {
+                          const ops = variantesDe[String(it.product_id ?? "")] ?? [];
+                          const nombreObs =
+                            variantesPrevias(items, i) + k < nombresVar.length ? nombresVar[variantesPrevias(items, i) + k] : "";
+                          return (
                           <div key={k} className="variante-celda">
-                            <span className="variante-nombre" title={`Variante ${v.variation_id ?? ""}`}>
-                              {variantesPrevias(items, i) + k < nombresVar.length ? nombresVar[variantesPrevias(items, i) + k] : `Variante ${v.variation_id ?? k + 1}`}
-                            </span>
+                            {ops.length ? (
+                              <span className="row gap" style={{ marginBottom: 0, flexWrap: "nowrap" }}>
+                                <select
+                                  className="variante-select"
+                                  aria-label="Variante"
+                                  value={String(v.variation_id ?? "")}
+                                  onChange={(e) => {
+                                    const op = ops.find((o) => o.sku === e.target.value);
+                                    if (op) actualizarVariante(i, k, { variation_id: op.sku, ...(op.precio ? { price: op.precio } : {}) });
+                                  }}
+                                >
+                                  {ops.some((o) => o.sku === String(v.variation_id)) ? null : (
+                                    <option value={String(v.variation_id ?? "")}>{nombreObs || `Variante ${v.variation_id ?? ""}`}</option>
+                                  )}
+                                  {ops.map((o) => (
+                                    <option key={o.sku} value={o.sku}>
+                                      {etiquetaVariante(o)}
+                                    </option>
+                                  ))}
+                                </select>
+                                {it.variations.length > 1 ? (
+                                  <button type="button" className="btn sm" title="Quitar esta variante" onClick={() => quitarVariante(i, k)}>
+                                    ×
+                                  </button>
+                                ) : null}
+                              </span>
+                            ) : (
+                              <span className="variante-nombre" title={`Variante ${v.variation_id ?? ""}`}>
+                                {nombreObs || `Variante ${v.variation_id ?? k + 1}`}
+                              </span>
+                            )}
                             <input
                               type="number"
                               step="0.01"
@@ -1071,12 +1128,18 @@ export function PedidoDetallePage() {
                               style={{ minWidth: 130 }}
                             />
                           </div>
-                        ))}
+                          );
+                        })}
+                        {(variantesDe[String(it.product_id ?? "")] ?? []).length > it.variations.length ? (
+                          <button type="button" className="btn sm" onClick={() => agregarVariante(i, variantesDe[String(it.product_id ?? "")])}>
+                            + Otra variante
+                          </button>
+                        ) : null}
                       </td>
                       <td>
                         {it.variations.map((v: any, k: number) => (
                           <div key={k} className="variante-celda">
-                            <span className="variante-nombre">&nbsp;</span>
+                            <span className={(variantesDe[String(it.product_id ?? "")] ?? []).length ? "variante-espacio" : "variante-nombre"}>&nbsp;</span>
                             <input
                               type="number"
                               value={v.quantity ?? 1}
@@ -1090,6 +1153,24 @@ export function PedidoDetallePage() {
                   ) : (
                     <>
                       <td>
+                        {(variantesDe[String(it.product_id ?? "")] ?? []).length ? (
+                          <select
+                            className="variante-select variante-falta"
+                            aria-label="Elegir variante"
+                            value=""
+                            onChange={(e) => {
+                              const op = variantesDe[String(it.product_id ?? "")].find((o) => o.sku === e.target.value);
+                              if (op) elegirVariante(i, op);
+                            }}
+                          >
+                            <option value="">⚠ Elige la variante…</option>
+                            {variantesDe[String(it.product_id ?? "")].map((o) => (
+                              <option key={o.sku} value={o.sku}>
+                                {etiquetaVariante(o)}
+                              </option>
+                            ))}
+                          </select>
+                        ) : null}
                         <input
                           type="number"
                           step="0.01"

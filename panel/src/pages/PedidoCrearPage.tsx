@@ -8,6 +8,7 @@ import { Combo, type OpcionCombo } from "../components/Combo";
 import { StockDropi } from "../components/StockDropi";
 import { LocationPicker, type Ubicacion } from "../components/LocationPicker";
 import { useToast } from "../components/Toast";
+import { etiquetaVariante, useVariantesProductos } from "../lib/variantesProducto";
 import { prodId, prodImg, prodName, prodPrice, useCatalogo } from "../lib/catalogo";
 import { useEtiquetaTienda } from "../lib/tiendas";
 
@@ -57,6 +58,9 @@ export function PedidoCrearPage() {
     return { sub, total: sub + num(form.costoEnvio) };
   }, [lineas, form.costoEnvio]);
 
+  // variantes de cada producto elegido (color, talla...)
+  const variantesDe = useVariantesProductos(lineas.map((l) => l.product_id));
+
   const setLinea = (i: number, patch: Partial<Linea>) =>
     setLineas((arr) => arr.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
 
@@ -67,10 +71,11 @@ export function PedidoCrearPage() {
       return;
     }
     const p = catalogo.find((c) => prodId(c) === clave);
+    // otro producto: la variante elegida antes ya no aplica
     if (p) {
-      setLinea(i, { product_id: prodId(p), price: prodPrice(p) });
+      setLinea(i, { product_id: prodId(p), price: prodPrice(p), variations: [] });
     } else {
-      setLinea(i, { product_id: clave });
+      setLinea(i, { product_id: clave, variations: [] });
     }
   };
 
@@ -93,6 +98,11 @@ export function PedidoCrearPage() {
 
   const enviar = async (e: React.FormEvent) => {
     e.preventDefault();
+    const sinVariante = lineas.find((l) => l.product_id && (variantesDe[l.product_id] ?? []).length && !l.variations?.[0]?.variation_id);
+    if (sinVariante) {
+      setError("Elige la variante (color, tamaño…) del producto antes de crear el pedido.");
+      return;
+    }
     setSending(true);
     setError(null);
     setRespuesta(null);
@@ -100,12 +110,22 @@ export function PedidoCrearPage() {
       const json = JSON.stringify(
         lineas
           .filter((l) => l.product_id !== "")
-          .map((l) => ({
-            product_id: String(l.product_id),
-            price: num(l.price),
-            variations: l.variations ?? [],
-            quantity: num(l.quantity, 1),
-          })),
+          .map((l) =>
+            // con variante, precio y cantidad van en la variante (asi los guarda LucidSales)
+            l.variations?.[0]?.variation_id
+              ? {
+                  product_id: String(l.product_id),
+                  price: null,
+                  variations: [{ variation_id: String(l.variations[0].variation_id), price: num(l.price), quantity: num(l.quantity, 1) }],
+                  quantity: null,
+                }
+              : {
+                  product_id: String(l.product_id),
+                  price: num(l.price),
+                  variations: [],
+                  quantity: num(l.quantity, 1),
+                },
+          ),
       );
 
       const body = {
@@ -248,6 +268,25 @@ export function PedidoCrearPage() {
                   style={{ minWidth: 150, flex: 2 }}
                 />
               )}
+              {(variantesDe[l.product_id] ?? []).length ? (
+                <select
+                  className={`variante-select${l.variations?.[0]?.variation_id ? "" : " variante-falta"}`}
+                  aria-label="Variante"
+                  value={String(l.variations?.[0]?.variation_id ?? "")}
+                  onChange={(e) => {
+                    const op = variantesDe[l.product_id].find((o) => o.sku === e.target.value);
+                    setLinea(i, op ? { variations: [{ variation_id: op.sku }], ...(op.precio ? { price: op.precio } : {}) } : { variations: [] });
+                  }}
+                  style={{ maxWidth: 260 }}
+                >
+                  <option value="">⚠ Elige la variante…</option>
+                  {variantesDe[l.product_id].map((o) => (
+                    <option key={o.sku} value={o.sku}>
+                      {etiquetaVariante(o)}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
               <StockDropi
                 productId={l.product_id}
                 fila={catalogo.find((p) => prodId(p) === l.product_id)}
