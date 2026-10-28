@@ -17,6 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ErrorApi } from "./errores.js";
 import { ejecutarAgente, parsearPrecio, resumenDePedido, textoVariantes } from "./agente.js";
+import { varianteDeProducto } from "./variantes.js";
 import { cambiarEstado } from "./estado.js";
 import { direccionConReferencias, recogeEnOficina } from "./direccionColombia.js";
 import { oficinaQueCoincide } from "./oficinasInter.js";
@@ -55,6 +56,25 @@ const RESOLUBLES = new Set(["requiere-revision", "direccion-invalida", "envio-ca
  * esos dias.
  */
 const DIAS_ENTREGA = 5;
+/**
+ * Para el aviso de un pedido con variantes: cual es la variante en Dropi
+ * (" · en Dropi: variante 1837487") o si no esta vinculada. "" si no se sabe.
+ */
+export async function detalleVariantesDropi(cliente, resumen) {
+  const partes = [];
+  for (const x of (resumen?.productos ?? []).filter((y) => y.variante)) {
+    try {
+      const prod = await cliente.obtenerProducto(x.id);
+      const v = varianteDeProducto(prod, x.variante.id);
+      if (!v) continue;
+      partes.push(v.idVarianteDropi ? `${v.nombre} = variante ${v.idVarianteDropi} de Dropi` : `${v.nombre} no está vinculada a una variante de Dropi`);
+    } catch {
+      /* sin el producto, el aviso va sin ese dato */
+    }
+  }
+  return partes.length ? ` · ${partes.join(" · ")}` : "";
+}
+
 /** Pedidos mas recientes que mira cada vuelta, por tienda (en paginas de 100). */
 const MAX_PEDIDOS_VUELTA = 200;
 const POR_PAGINA = 100;
@@ -771,7 +791,8 @@ export function crearSubidaAutomatica({
           // talla...) y eso todavia lo hace una persona
           const conVariante = textoVariantes(resumen);
           if (conVariante) {
-            marcarP("requiere-humano", `producto con variantes (${conVariante}): lo sube una persona eligiendo la variante en Dropi`);
+            const enDropi = await detalleVariantesDropi(cliente, resumen);
+            marcarP("requiere-humano", `producto con variantes (${conVariante})${enDropi}: lo sube una persona eligiendo la variante en Dropi`);
             detalle.push({ id, accion: "requiere-humano", detalle: "producto con variantes" });
             continue;
           }

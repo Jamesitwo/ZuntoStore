@@ -1395,13 +1395,20 @@ test("producto con variantes: no se sube solo, lo sube una persona", async () =>
     ...COMPLETO,
     Json: JSON.stringify([{ product_id: "87498", price: null, quantity: null, variations: [{ variation_id: "aDdr", price: 105690, quantity: 1 }] }]),
   };
-  const { s, ruta, subidos } = armar({ pedidos: [{ id: 1, EstadoPedido: 0, completo: conVar }], alExtraer: () => llamadasLLM++ });
+  const cliente = clienteFalso([{ id: 1, EstadoPedido: 0, completo: conVar }]);
+  cliente.obtenerProducto = async () => ({
+    variantes: [{ nombre: "Copa" }, { nombre: "Tamaño" }],
+    mixedvariantes: [{ items: ["Blanca", "150 cm"], sku: "aDdr" }],
+    bundleVariantes: [{ variantes: [{ items: ["Blanca", "150 cm"], idVarianteDropi: "1837487" }] }],
+  });
+  const { s, ruta, subidos } = armar({ cliente, alExtraer: () => llamadasLLM++ });
   s.configurar({ automatico: true, dryRun: false });
   await s.tick({ forzar: true });
   assert.equal(subidos.length, 0);
   assert.equal(llamadasLLM, 0);
   assert.equal(s.estadoPedido(1).accion, "requiere-humano");
   assert.match(s.estadoPedido(1).detalle, /variantes/);
+  assert.match(s.estadoPedido(1).detalle, /Copa: Blanca; Tamaño: 150 cm = variante 1837487 de Dropi/);
   s.detener();
   fs.rmSync(ruta, { force: true });
 });

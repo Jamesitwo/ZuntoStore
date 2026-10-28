@@ -59,7 +59,7 @@ import { crearConfigLLM } from "./llmConfig.js";
 import { ejecutarAgente, resumenDePedido, textoVariantes } from "./agente.js";
 import { crearClienteDropi, armarPedidoDropi } from "./dropi.js";
 import { crearDropiNavegador, DIRECCION_OFICINA_INTER } from "./dropiNavegador.js";
-import { crearSubidaAutomatica, otrosPedidosDelCliente, resumirAnalisis } from "./subidaAutomatica.js";
+import { crearSubidaAutomatica, detalleVariantesDropi, otrosPedidosDelCliente, resumirAnalisis } from "./subidaAutomatica.js";
 import { faltantesDeConfig } from "./config.js";
 import { crearEstadosEnvio } from "./estadosEnvio.js";
 import { crearPedidosPorEnvio } from "./pedidosPorEnvio.js";
@@ -1091,13 +1091,14 @@ export function crearManejador({
       // la variante y eso todavia lo hace una persona
       const conVariante = textoVariantes(resumen);
       if (conVariante) {
+        const enDropi = await detalleVariantesDropi(cliente, resumen);
         delete res.__notificacionLucidBot;
         json(res, 409, {
           ok: false,
           id,
           accion: "frenar",
-          msg: `El producto tiene variantes (${conVariante}): súbelo en Dropi eligiendo esa variante.`,
-          motivos: [{ campo: "variante", detalle: `producto con variantes (${conVariante}); lo sube una persona eligiendo la variante en Dropi` }],
+          msg: `El producto tiene variantes (${conVariante}${enDropi}): súbelo en Dropi eligiendo esa variante.`,
+          motivos: [{ campo: "variante", detalle: `producto con variantes (${conVariante}${enDropi}); lo sube una persona eligiendo la variante en Dropi` }],
           subido: false,
         });
         return;
