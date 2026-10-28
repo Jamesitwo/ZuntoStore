@@ -167,6 +167,7 @@ const NOMBRES_CHECK: Record<string, string> = {
   ubicacion: "Ciudad/departamento",
   entregaFutura: "Fecha de entrega",
   corregimiento: "Corregimiento",
+  variante: "Variante",
   estado: "Estado del pedido",
   confirmacion: "Confirmación",
   duplicado: "Pedido repetido",

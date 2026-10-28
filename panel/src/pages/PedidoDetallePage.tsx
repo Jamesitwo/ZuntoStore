@@ -22,6 +22,7 @@ import { LineaTiempoEnvio } from "../components/LineaTiempoEnvio";
 import { prodId, prodImg, prodName, prodPrice, useCatalogo } from "../lib/catalogo";
 import { useEtiquetaTienda } from "../lib/tiendas";
 import { useInboxBot } from "../lib/botInbox";
+import { nombresDeVariantes, tieneVariantes, totalLinea } from "../lib/lineasPedido";
 
 function parseArray(v: unknown): any[] {
   if (Array.isArray(v)) return v;
@@ -137,6 +138,11 @@ function datosEnvio(p: any): FilaEnvio[] {
   agregar("Valor de devolución", dinero(p?.valorFleteDevolucionDropi));
   agregar("Fecha de devolución", fecha(p?.fechaDevolucionDropi));
   return filas;
+}
+
+/** Variantes de las lineas anteriores (para emparejar los nombres de las observaciones). */
+function variantesPrevias(items: any[], i: number) {
+  return items.slice(0, i).reduce((a, it) => a + (tieneVariantes(it) ? it.variations.length : 0), 0);
 }
 
 export function PedidoDetallePage() {
@@ -378,7 +384,8 @@ export function PedidoDetallePage() {
 
   // totales derivados de las lineas
   const totales = useMemo(() => {
-    const sub = items.reduce((acc, it) => acc + num(it.price) * num(it.quantity, 1), 0);
+    // con variantes, precio y cantidad van en cada variante (no en la linea)
+    const sub = items.reduce((acc, it) => acc + totalLinea(it), 0);
     const envio = num(form.CostoEnvio);
     return { sub, envio, total: sub + envio };
   }, [items, form.CostoEnvio]);
@@ -392,11 +399,21 @@ export function PedidoDetallePage() {
 
   const actualizarLinea = (i: number, patch: Record<string, any>) =>
     setItems((arr) => arr.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
+  const actualizarVariante = (i: number, k: number, patch: Record<string, any>) =>
+    setItems((arr) =>
+      arr.map((it, idx) =>
+        idx === i ? { ...it, variations: (it.variations ?? []).map((v: any, j: number) => (j === k ? { ...v, ...patch } : v)) } : it,
+      ),
+    );
+  // nombre de cada variante ("Copa: Blanca; Tamaño: 150 cm"), de las observaciones
+  const nombresVar = nombresDeVariantes(obs);
 
   /** Desplegable de producto: al elegirlo rellena el precio del catalogo */
   const seleccionarProducto = (i: number, clave: string) => {
     const p = catalogo.find((c) => prodId(c) === clave);
-    actualizarLinea(i, p ? { product_id: clave, price: prodPrice(p) } : { product_id: clave });
+    // otro producto: las variantes del anterior ya no aplican
+    const base = tieneVariantes(items[i]) ? { variations: [], quantity: 1 } : {};
+    actualizarLinea(i, p ? { ...base, product_id: clave, price: prodPrice(p) } : { ...base, product_id: clave });
   };
 
   /** Opciones del combo: catalogo + precio a la derecha, y el id actual si no esta. */
@@ -1037,24 +1054,61 @@ export function PedidoDetallePage() {
                       ) : null}
                     </div>
                   </td>
-                  <td>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={it.price ?? 0}
-                      onChange={(e) => actualizarLinea(i, { price: Number(e.target.value) })}
-                      style={{ minWidth: 130 }}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      value={it.quantity ?? 1}
-                      onChange={(e) => actualizarLinea(i, { quantity: Number(e.target.value) })}
-                      style={{ minWidth: 80 }}
-                    />
-                  </td>
-                  <td>{money(num(it.price) * num(it.quantity, 1))}</td>
+                  {tieneVariantes(it) ? (
+                    <>
+                      {/* producto con variantes: precio y cantidad de cada una */}
+                      <td>
+                        {it.variations.map((v: any, k: number) => (
+                          <div key={k} className="variante-celda">
+                            <span className="variante-nombre" title={`Variante ${v.variation_id ?? ""}`}>
+                              {variantesPrevias(items, i) + k < nombresVar.length ? nombresVar[variantesPrevias(items, i) + k] : `Variante ${v.variation_id ?? k + 1}`}
+                            </span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={v.price ?? 0}
+                              onChange={(e) => actualizarVariante(i, k, { price: Number(e.target.value) })}
+                              style={{ minWidth: 130 }}
+                            />
+                          </div>
+                        ))}
+                      </td>
+                      <td>
+                        {it.variations.map((v: any, k: number) => (
+                          <div key={k} className="variante-celda">
+                            <span className="variante-nombre">&nbsp;</span>
+                            <input
+                              type="number"
+                              value={v.quantity ?? 1}
+                              onChange={(e) => actualizarVariante(i, k, { quantity: Number(e.target.value) })}
+                              style={{ minWidth: 80 }}
+                            />
+                          </div>
+                        ))}
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={it.price ?? 0}
+                          onChange={(e) => actualizarLinea(i, { price: Number(e.target.value) })}
+                          style={{ minWidth: 130 }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          value={it.quantity ?? 1}
+                          onChange={(e) => actualizarLinea(i, { quantity: Number(e.target.value) })}
+                          style={{ minWidth: 80 }}
+                        />
+                      </td>
+                    </>
+                  )}
+                  <td>{money(totalLinea(it))}</td>
                   <td>
                     <button
                       className="btn sm danger"

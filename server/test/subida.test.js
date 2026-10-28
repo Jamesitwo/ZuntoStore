@@ -1388,3 +1388,20 @@ test("corregimiento que Dropi no tiene como municipio: no se sube y lo revisa un
   s.detener();
   fs.rmSync(ruta, { force: true });
 });
+
+test("producto con variantes: no se sube solo, lo sube una persona", async () => {
+  let llamadasLLM = 0;
+  const conVar = {
+    ...COMPLETO,
+    Json: JSON.stringify([{ product_id: "87498", price: null, quantity: null, variations: [{ variation_id: "aDdr", price: 105690, quantity: 1 }] }]),
+  };
+  const { s, ruta, subidos } = armar({ pedidos: [{ id: 1, EstadoPedido: 0, completo: conVar }], alExtraer: () => llamadasLLM++ });
+  s.configurar({ automatico: true, dryRun: false });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 0);
+  assert.equal(llamadasLLM, 0);
+  assert.equal(s.estadoPedido(1).accion, "requiere-humano");
+  assert.match(s.estadoPedido(1).detalle, /variantes/);
+  s.detener();
+  fs.rmSync(ruta, { force: true });
+});

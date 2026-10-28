@@ -448,6 +448,62 @@ function nombreDeLinea(it) {
   ).trim();
 }
 
+/** "2 x Copa: Blanca; Tamaño: 150 cm" si el pedido trae productos con variantes; "" si no. */
+export function textoVariantes(resumen) {
+  return (resumen?.productos ?? [])
+    .filter((x) => x.variante)
+    .map((x) => `${x.cantidad} x ${x.variante.nombre || `variante ${x.variante.id}`}`)
+    .join(", ");
+}
+
+/** ¿La linea trae precio y cantidad en sus variantes? (la linea va en null) */
+function conVariantes(it) {
+  return (
+    Array.isArray(it?.variations) &&
+    it.variations.length > 0 &&
+    it.variations.some((v) => v && (v.price !== undefined || v.quantity !== undefined))
+  );
+}
+
+/**
+ * Lineas del pedido -> productos. Un producto con variantes da un producto
+ * por variante (precio y cantidad de la variante) con su nombre, que sale de
+ * las observaciones de LucidSales ("2 x Arbol ... - Copa: Blanca; Tamaño: 150 cm").
+ */
+function productosDeLineas(lineas, productoTop, observaciones = []) {
+  const nombresVar = observaciones
+    .map((o) => String(o?.desc ?? "").match(/^\s*\d+\s*x\s+.+?\s+-\s+(.+:.+)$/i)?.[1]?.trim())
+    .filter(Boolean);
+  let k = 0;
+  const out = [];
+  for (const it of lineas) {
+    const base = {
+      id: String(it?.product_id ?? it?.id ?? ""),
+      // el nombre de la linea manda; si no viene, el `producto` del pedido
+      // (en un pedido de una sola linea es el nombre real del producto)
+      nombre: nombreDeLinea(it) || (lineas.length === 1 ? productoTop : ""),
+    };
+    if (conVariantes(it)) {
+      for (const v of it.variations) {
+        out.push({
+          ...base,
+          cantidad: Number(v?.quantity ?? 1) || 1,
+          precio: parsearPrecio(v?.price ?? it?.price ?? 0),
+          variante: { id: String(v?.variation_id ?? ""), nombre: nombresVar[k] ?? "" },
+        });
+        k++;
+      }
+      continue;
+    }
+    out.push({
+      ...base,
+      cantidad: Number(it?.quantity ?? it?.cantidad ?? 1) || 1,
+      precio: parsearPrecio(it?.price ?? it?.precio ?? 0),
+    });
+  }
+  return out;
+}
+
 /**
  * Pedido crudo de LucidSales (get-pedido-by-id) -> resumen para el agente.
  * Los nombres de campo son los del update de LucidSales (ver
@@ -477,13 +533,6 @@ export function resumenDePedido(p) {
     total: p?.Total,
     subtotal: p?.SubTotal,
     costoEnvio: p?.CostoEnvio,
-    productos: lineas.map((it) => ({
-      id: String(it?.product_id ?? it?.id ?? ""),
-      // el nombre de la linea manda; si no viene, el `producto` del pedido
-      // (en un pedido de una sola linea es el nombre real del producto)
-      nombre: nombreDeLinea(it) || (lineas.length === 1 ? productoTop : ""),
-      cantidad: Number(it?.quantity ?? it?.cantidad ?? 1) || 1,
-      precio: parsearPrecio(it?.price ?? it?.precio ?? 0),
-    })),
+    productos: productosDeLineas(lineas, productoTop, aArreglo(p?.Observaciones)),
   };
 }

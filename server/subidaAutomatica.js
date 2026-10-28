@@ -16,7 +16,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ErrorApi } from "./errores.js";
-import { ejecutarAgente, parsearPrecio, resumenDePedido } from "./agente.js";
+import { ejecutarAgente, parsearPrecio, resumenDePedido, textoVariantes } from "./agente.js";
 import { cambiarEstado } from "./estado.js";
 import { direccionConReferencias, recogeEnOficina } from "./direccionColombia.js";
 import { oficinaQueCoincide } from "./oficinasInter.js";
@@ -765,6 +765,14 @@ export function crearSubidaAutomatica({
           if (Number(resumen?.tipoPago) === 2) {
             marcarP("requiere-humano", "pedido sin recaudo (prepago): lo sube una persona");
             detalle.push({ id, accion: "requiere-humano", detalle: "pedido sin recaudo (prepago)" });
+            continue;
+          }
+          // producto con variantes: en Dropi hay que elegir la variante (color,
+          // talla...) y eso todavia lo hace una persona
+          const conVariante = textoVariantes(resumen);
+          if (conVariante) {
+            marcarP("requiere-humano", `producto con variantes (${conVariante}): lo sube una persona eligiendo la variante en Dropi`);
+            detalle.push({ id, accion: "requiere-humano", detalle: "producto con variantes" });
             continue;
           }
 

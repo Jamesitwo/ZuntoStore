@@ -16,6 +16,7 @@ import {
   decidir,
   ejecutarAgente,
   resumenDePedido,
+  textoVariantes,
 } from "../agente.js";
 
 // ---------- parsearPrecio: formato colombiano ----------
@@ -316,4 +317,18 @@ test("fecha pedida mas alla del tiempo de envio: es entrega futura", async () =>
   });
   assert.equal(r.accion, "frenar");
   assert.equal(r.entrega.fecha, fecha);
+});
+
+test("producto con variantes: precio y cantidad salen de la variante", () => {
+  const r = resumenDePedido({
+    id: 7,
+    Json: JSON.stringify([{ product_id: "87498", price: null, quantity: null, variations: [{ variation_id: "aDdr", price: 116900, quantity: 2 }] }]),
+    producto: "Arbol De Navidad Plegable",
+    Observaciones: JSON.stringify([{ desc: "Pedido creado por api" }, { desc: "2 x Árbol De Navidad Plegable - Copa: Blanca; Tamaño: 150 cm" }]),
+    Total: "233800.00",
+  });
+  assert.deepEqual(r.productos, [
+    { id: "87498", nombre: "Arbol De Navidad Plegable", cantidad: 2, precio: 116900, variante: { id: "aDdr", nombre: "Copa: Blanca; Tamaño: 150 cm" } },
+  ]);
+  assert.equal(textoVariantes(r), "2 x Copa: Blanca; Tamaño: 150 cm");
 });
