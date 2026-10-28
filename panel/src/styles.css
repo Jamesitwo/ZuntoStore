@@ -5329,3 +5329,4 @@ li.fila-programada-toca { background: color-mix(in srgb, var(--warn) 9%, transpa
 .variante-select.variante-falta { border-color: var(--warn); }
 .variante-celda .variante-nombre + input, .variante-celda .row + input { margin-top: 0; }
 .variante-espacio { display: block; height: 30px; margin-bottom: 4px; }
+input.variante-falta { border-color: var(--warn); }

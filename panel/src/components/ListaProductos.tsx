@@ -858,6 +858,18 @@ export function ListaProductos({
     setBundlesSucios(true);
   };
 
+  /** Precio o variante de Dropi de una combinacion dentro de un bundle. */
+  const cambiaBundleVariante = (i: number, k: number, patch: Record<string, unknown>) => {
+    setBundleVar((a) =>
+      a.map((bv, x) =>
+        x === i
+          ? { ...bv, variantes: (Array.isArray(bv?.variantes) ? bv.variantes : []).map((v: any, y: number) => (y === k ? { ...v, ...patch } : v)) }
+          : bv,
+      ),
+    );
+    setBundlesSucios(true);
+  };
+
   const quitaBundle = (i: number) => {
     setBundles((a) => a.filter((_, k) => k !== i));
     setBundleVar((a) => a.filter((_, k) => k !== i));
@@ -1479,9 +1491,9 @@ export function ListaProductos({
 
             <h4 className="subtitulo-form">Bundles</h4>
             <p className="muted small">
-              Paquetes de venta («1 Unidad», «2 Unidades»…) con su precio y sus variantes (los
-              precios por variante se cambian arriba, en <em>Precio por variante</em>). Tienen su
-              propio botón de guardar.
+              Paquetes de venta («1 Unidad», «2 Unidades»…). Con variantes, el precio de cada
+              combinación y la variante de Dropi a la que corresponde van en cada bundle (es lo que
+              usan los pedidos y la subida a Dropi). Tienen su propio botón de guardar.
             </p>
             {bundles.length === 0 ? <p className="muted">Sin bundles todavía.</p> : null}
             {bundles.map((b, i) => {
@@ -1571,6 +1583,55 @@ export function ListaProductos({
                       {nVar} variante(s) en <code>bundleVariantes</code>
                     </span>
                   </div>
+
+                  {nVar > 0 ? (
+                    <div className="table-wrap" style={{ marginTop: 6 }}>
+                      <table className="table compact">
+                        <thead>
+                          <tr>
+                            <th>Variante</th>
+                            <th>Precio</th>
+                            <th title="id de la variación en Dropi (la que se elige al subir el pedido)">Variante en Dropi</th>
+                            <th>Stock Dropi</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bundleVar[i].variantes.map((v: any, k: number) => {
+                            const idDropi = String(v?.idVarianteDropi ?? "").trim();
+                            return (
+                              <tr key={k}>
+                                <td>{(Array.isArray(v?.items) ? v.items : []).map((x: any) => String(x).trim()).join(" / ") || "—"}</td>
+                                <td>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    aria-label={`Precio de la variante ${k + 1} del bundle ${i + 1}`}
+                                    value={String(v?.precioSugerido ?? "")}
+                                    onChange={(e) => cambiaBundleVariante(i, k, { precioSugerido: e.target.value })}
+                                    style={{ maxWidth: 130 }}
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    inputMode="numeric"
+                                    aria-label={`Variante de Dropi de la variante ${k + 1} del bundle ${i + 1}`}
+                                    placeholder="sin vincular"
+                                    className={idDropi ? "" : "variante-falta"}
+                                    value={idDropi}
+                                    onChange={(e) =>
+                                      cambiaBundleVariante(i, k, { idVarianteDropi: e.target.value.replace(/\D/g, "") || null })
+                                    }
+                                    style={{ maxWidth: 130 }}
+                                  />
+                                </td>
+                                <td className="muted small">{v?.stock ?? (idDropi ? "—" : "no está en Dropi")}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
 
                   <input
                     aria-label={`Texto del bundle ${i + 1}`}
