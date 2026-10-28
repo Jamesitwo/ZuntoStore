@@ -1356,8 +1356,6 @@ export function crearManejador({
         };
         const transportadoras =
           cuerpo?.transportadoraId && !plan.oficinaInter ? [Number(cuerpo.transportadoraId)] : plan.transportadoras;
-        // sin validar: sin tope de flete (la persona ya decidio subirlo)
-        if (forzar) plan.maxEnvio = null;
         if (res.__intento) {
           if (oficinaDetectada) {
             res.__intento.oficina = { como: "detectada", nombre: oficinaDetectada.nombre ?? null, direccion: oficinaDetectada.direccion ?? null };

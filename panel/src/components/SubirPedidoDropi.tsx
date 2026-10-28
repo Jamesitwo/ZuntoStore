@@ -359,7 +359,7 @@ export function SubirPedidoDropi({
           onClick={() => {
             if (
               window.confirm(
-                "Subir SIN VALIDAR\n\nSe sube a Dropi tal como está el pedido ahora (producto, cantidad, precio, dirección, ciudad), con seguro.\n\nNO se revisa: el chat con la IA, la dirección en el mapa, si es un pedido repetido, la fecha de entrega ni el tope del flete.\n\nQueda registrado con tu usuario. ¿Ya lo revisaste y lo quieres subir?",
+                "Subir SIN VALIDAR\n\nSe sube a Dropi tal como está el pedido ahora (producto, cantidad, precio, dirección, ciudad), con seguro.\n\nNO se revisa: el chat con la IA, la dirección en el mapa, si es un pedido repetido ni la fecha de entrega. El tope del flete SÍ se respeta.\n\nQueda registrado con tu usuario. ¿Ya lo revisaste y lo quieres subir?",
               )
             ) {
               void subir(false, true);
