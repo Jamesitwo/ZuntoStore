@@ -1389,10 +1389,10 @@ test("corregimiento que Dropi no tiene como municipio: no se sube y lo revisa un
   fs.rmSync(ruta, { force: true });
 });
 
-test("producto con variantes: no se sube solo, lo sube una persona", async () => {
-  let llamadasLLM = 0;
+test("producto con variantes: se sube con su variacion de Dropi", async () => {
   const conVar = {
     ...COMPLETO,
+    producto: "Taladro Inalambrico 68V",
     Json: JSON.stringify([{ product_id: "87498", price: null, quantity: null, variations: [{ variation_id: "aDdr", price: 105690, quantity: 1 }] }]),
   };
   const cliente = clienteFalso([{ id: 1, EstadoPedido: 0, completo: conVar }]);
@@ -1401,14 +1401,58 @@ test("producto con variantes: no se sube solo, lo sube una persona", async () =>
     mixedvariantes: [{ items: ["Blanca", "150 cm"], sku: "aDdr" }],
     bundleVariantes: [{ variantes: [{ items: ["Blanca", "150 cm"], idVarianteDropi: "1837487" }] }],
   });
+  const { s, ruta, subidos } = armar({ cliente });
+  s.configurar({ automatico: true, dryRun: false });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  assert.equal(subidos[0].productos[0].varianteDropi, "1837487");
+  s.detener();
+  fs.rmSync(ruta, { force: true });
+});
+
+test("variante sin vincular a Dropi: no se sube, lo sube una persona", async () => {
+  let llamadasLLM = 0;
+  const conVar = {
+    ...COMPLETO,
+    Json: JSON.stringify([{ product_id: "87498", price: null, quantity: null, variations: [{ variation_id: "Yzn", price: 105690, quantity: 1 }] }]),
+  };
+  const cliente = clienteFalso([{ id: 1, EstadoPedido: 0, completo: conVar }]);
+  cliente.obtenerProducto = async () => ({
+    variantes: [{ nombre: "Copa" }, { nombre: "Tamaño" }],
+    mixedvariantes: [{ items: ["Blanca", "90 cm"], sku: "Yzn" }],
+    bundleVariantes: [{ variantes: [{ items: ["Blanca", "90 cm"], idVarianteDropi: null }] }],
+  });
   const { s, ruta, subidos } = armar({ cliente, alExtraer: () => llamadasLLM++ });
   s.configurar({ automatico: true, dryRun: false });
   await s.tick({ forzar: true });
   assert.equal(subidos.length, 0);
   assert.equal(llamadasLLM, 0);
   assert.equal(s.estadoPedido(1).accion, "requiere-humano");
-  assert.match(s.estadoPedido(1).detalle, /variantes/);
-  assert.match(s.estadoPedido(1).detalle, /Copa: Blanca; Tamaño: 150 cm = variante 1837487 de Dropi/);
+  assert.match(s.estadoPedido(1).detalle, /Copa: Blanca; Tamaño: 90 cm» no está vinculada/);
+  s.detener();
+  fs.rmSync(ruta, { force: true });
+});
+
+test("Dropi no deja elegir la variacion: lo sube una persona sin reintentar", async () => {
+  const conVar = {
+    ...COMPLETO,
+    producto: "Taladro Inalambrico 68V",
+    Json: JSON.stringify([{ product_id: "87498", price: null, quantity: null, variations: [{ variation_id: "aDdr", price: 105690, quantity: 1 }] }]),
+  };
+  const cliente = clienteFalso([{ id: 1, EstadoPedido: 0, completo: conVar }]);
+  cliente.obtenerProducto = async () => ({
+    mixedvariantes: [{ items: ["Blanca"], sku: "aDdr" }],
+    bundleVariantes: [{ variantes: [{ items: ["Blanca"], idVarianteDropi: "1837487" }] }],
+  });
+  const { s, ruta, subidos } = armar({
+    cliente,
+    respuestaDropi: () => ({ ok: false, creado: false, varianteHumano: true, detalle: "No se envió a Dropi: ninguna opción coincide" }),
+  });
+  s.configurar({ automatico: true, dryRun: false });
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  assert.equal(s.estadoPedido(1).accion, "requiere-humano");
   s.detener();
   fs.rmSync(ruta, { force: true });
 });

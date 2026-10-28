@@ -59,7 +59,7 @@ import { crearConfigLLM } from "./llmConfig.js";
 import { ejecutarAgente, resumenDePedido, textoVariantes } from "./agente.js";
 import { crearClienteDropi, armarPedidoDropi } from "./dropi.js";
 import { crearDropiNavegador, DIRECCION_OFICINA_INTER } from "./dropiNavegador.js";
-import { crearSubidaAutomatica, detalleVariantesDropi, otrosPedidosDelCliente, resumirAnalisis } from "./subidaAutomatica.js";
+import { crearSubidaAutomatica, otrosPedidosDelCliente, resumirAnalisis, variantesParaDropi } from "./subidaAutomatica.js";
 import { faltantesDeConfig } from "./config.js";
 import { crearEstadosEnvio } from "./estadosEnvio.js";
 import { crearPedidosPorEnvio } from "./pedidosPorEnvio.js";
@@ -1087,21 +1087,24 @@ export function crearManejador({
         });
         return;
       }
-      // producto con variantes (color, talla...): la ficha de Dropi pide elegir
-      // la variante y eso todavia lo hace una persona
+      // producto con variantes: se busca la variacion de Dropi que le
+      // corresponde; si no esta vinculada, la sube una persona
       const conVariante = textoVariantes(resumen);
       if (conVariante) {
-        const enDropi = await detalleVariantesDropi(cliente, resumen);
-        delete res.__notificacionLucidBot;
-        json(res, 409, {
-          ok: false,
-          id,
-          accion: "frenar",
-          msg: `El producto tiene variantes (${conVariante}${enDropi}): súbelo en Dropi eligiendo esa variante.`,
-          motivos: [{ campo: "variante", detalle: `producto con variantes (${conVariante}${enDropi}); lo sube una persona eligiendo la variante en Dropi` }],
-          subido: false,
-        });
-        return;
+        const rv = await variantesParaDropi(cliente, resumen);
+        if (!rv.ok) {
+          delete res.__notificacionLucidBot;
+          json(res, 409, {
+            ok: false,
+            id,
+            accion: "frenar",
+            msg: `El producto tiene variantes (${conVariante}): ${rv.detalle}. Súbelo en Dropi eligiendo esa variante.`,
+            motivos: [{ campo: "variante", detalle: `producto con variantes (${conVariante}): ${rv.detalle}` }],
+            subido: false,
+          });
+          return;
+        }
+        resumen.productos = rv.productos;
       }
       // La conversación se consulta en LucidBot al momento de subir; solo se
       // usa el registro local antiguo si aún no está configurado el campo API.
@@ -1362,7 +1365,7 @@ export function crearManejador({
           tipoPago: resumen?.tipoPago,
           productos: cuerpo?.productos?.length
             ? cuerpo.productos
-            : [{ id: linea.id, cantidad: linea.cantidad, precio: linea.precio }],
+            : [{ id: linea.id, cantidad: linea.cantidad, precio: linea.precio, ...(linea.varianteDropi ? { varianteDropi: linea.varianteDropi } : {}) }],
           soloPreparar: cuerpo?.dryRun === true,
         });
         // lo que mostro Dropi: id de la orden, ganancia y precio del envio
@@ -1429,7 +1432,7 @@ export function crearManejador({
 
         // envio caro / sin transportadora / varias oficinas: el pedido no se
         // sube; queda marcado igual que en la subida automatica
-        if (rNav?.envioCaro || rNav?.sinTransportadora || rNav?.oficinaHumano || rNav?.corregimientoHumano) {
+        if (rNav?.envioCaro || rNav?.sinTransportadora || rNav?.oficinaHumano || rNav?.corregimientoHumano || rNav?.varianteHumano) {
           const accion = rNav.envioCaro ? "envio-caro" : rNav.sinTransportadora ? "sin-transportadora" : "requiere-humano";
           const det = `${rNav.detalle}${rNav.envioCaro && plan.motivoTope ? ` (tope: ${plan.motivoTope})` : ""}`;
           if (cuerpo?.dryRun !== true) subida.registrarResultado?.(id, accion, det);
@@ -1437,7 +1440,7 @@ export function crearManejador({
             ok: false,
             id,
             accion: "frenar",
-            motivos: [{ campo: rNav.oficinaHumano ? "oficina" : rNav.corregimientoHumano ? "corregimiento" : "envio", detalle: det }],
+            motivos: [{ campo: rNav.oficinaHumano ? "oficina" : rNav.corregimientoHumano ? "corregimiento" : rNav.varianteHumano ? "variante" : "envio", detalle: det }],
             intentos: rNav.intentos,
             oficinas: rNav.oficinas,
             subido: false,

@@ -57,22 +57,28 @@ const RESOLUBLES = new Set(["requiere-revision", "direccion-invalida", "envio-ca
  */
 const DIAS_ENTREGA = 5;
 /**
- * Para el aviso de un pedido con variantes: cual es la variante en Dropi
- * (" · en Dropi: variante 1837487") o si no esta vinculada. "" si no se sabe.
+ * Productos del pedido con la variacion de Dropi de cada variante
+ * (varianteDropi). -> { ok, productos } | { ok: false, detalle }
  */
-export async function detalleVariantesDropi(cliente, resumen) {
-  const partes = [];
-  for (const x of (resumen?.productos ?? []).filter((y) => y.variante)) {
-    try {
-      const prod = await cliente.obtenerProducto(x.id);
-      const v = varianteDeProducto(prod, x.variante.id);
-      if (!v) continue;
-      partes.push(v.idVarianteDropi ? `${v.nombre} = variante ${v.idVarianteDropi} de Dropi` : `${v.nombre} no está vinculada a una variante de Dropi`);
-    } catch {
-      /* sin el producto, el aviso va sin ese dato */
+export async function variantesParaDropi(cliente, resumen) {
+  const productos = [];
+  for (const x of resumen?.productos ?? []) {
+    if (!x.variante) {
+      productos.push(x);
+      continue;
     }
+    let prod;
+    try {
+      prod = await cliente.obtenerProducto(x.id);
+    } catch (e) {
+      return { ok: false, detalle: `no se pudo leer el producto ${x.id} en LucidSales (${e?.message ?? e})` };
+    }
+    const v = varianteDeProducto(prod, x.variante.id);
+    if (!v) return { ok: false, detalle: `la variante ${x.variante.id} ya no existe en el producto` };
+    if (!v.idVarianteDropi) return { ok: false, detalle: `la variante «${v.nombre}» no está vinculada a una variación de Dropi` };
+    productos.push({ ...x, variante: { ...x.variante, nombre: v.nombre }, varianteDropi: v.idVarianteDropi });
   }
-  return partes.length ? ` · ${partes.join(" · ")}` : "";
+  return { ok: true, productos };
 }
 
 /** Pedidos mas recientes que mira cada vuelta, por tienda (en paginas de 100). */
@@ -789,12 +795,17 @@ export function crearSubidaAutomatica({
           }
           // producto con variantes: en Dropi hay que elegir la variante (color,
           // talla...) y eso todavia lo hace una persona
+          // producto con variantes: se busca la variacion de Dropi que le
+          // corresponde (la vincula el producto de LucidSales); sin ella, a mano
           const conVariante = textoVariantes(resumen);
           if (conVariante) {
-            const enDropi = await detalleVariantesDropi(cliente, resumen);
-            marcarP("requiere-humano", `producto con variantes (${conVariante})${enDropi}: lo sube una persona eligiendo la variante en Dropi`);
-            detalle.push({ id, accion: "requiere-humano", detalle: "producto con variantes" });
-            continue;
+            const rv = await variantesParaDropi(cliente, resumen);
+            if (!rv.ok) {
+              marcarP("requiere-humano", `producto con variantes (${conVariante}): ${rv.detalle}; lo sube una persona eligiendo la variante en Dropi`);
+              detalle.push({ id, accion: "requiere-humano", detalle: "producto con variantes" });
+              continue;
+            }
+            resumen.productos = rv.productos;
           }
 
           const conv = conversacion.porPedido(id);
@@ -1047,6 +1058,8 @@ export function crearSubidaAutomatica({
                 id: x.id,
                 cantidad: x.cantidad,
                 precio: x.precio,
+                // variacion de Dropi a elegir en el formulario (productos con variantes)
+                ...(x.varianteDropi ? { varianteDropi: x.varianteDropi } : {}),
               })),
               soloPreparar: c.dryRun === true,
             });
@@ -1103,7 +1116,7 @@ export function crearSubidaAutomatica({
           }
           // envio caro, sin transportadora o varias oficinas: es un resultado
           // del PEDIDO (reintentar no lo cambia). Queda final y se avisa.
-          if (rNav?.envioCaro || rNav?.sinTransportadora || rNav?.oficinaHumano || rNav?.corregimientoHumano) {
+          if (rNav?.envioCaro || rNav?.sinTransportadora || rNav?.oficinaHumano || rNav?.corregimientoHumano || rNav?.varianteHumano) {
             const accion = rNav.envioCaro ? "envio-caro" : rNav.sinTransportadora ? "sin-transportadora" : "requiere-humano";
             const det = `${rNav.detalle}${plan.motivoTope && rNav.envioCaro ? ` (tope: ${plan.motivoTope})` : ""}`;
             if (!c.dryRun) await notificarUnaVez(c, id, contactoPedido, "fallido", det);

@@ -416,3 +416,24 @@ test("«Puerto Inírida» se busca como «Inírida» en Dropi", () => {
   assert.equal(coincideUbicacion("INIRIDA", v, "Guainía"), true);
   assert.equal(coincideUbicacion("Inírida", variantesUbicacion("Inirida"), "Guainía"), true);
 });
+
+test("variaciones: de la API de Dropi a la opcion del desplegable", async () => {
+  const { variacionesDeJson, opcionDeVariante } = await import("../dropiNavegador.js");
+  const mapa = variacionesDeJson({
+    isSuccess: true,
+    objects: {
+      id: 1960650,
+      variations: [
+        { id: 1859317, attribute_values: [{ value: "árbol 90 cm", attribute: { name: "ARBOL COPO" } }] },
+        { id: 1837487, attribute_values: [{ value: "árbol 150 cm", attribute: { name: "ARBOL COPO" } }] },
+      ],
+    },
+  });
+  assert.deepEqual(mapa.get("1837487"), ["árbol 150 cm"]);
+  const ops = ["ARBOL COPO: árbol 90 cm", "ARBOL COPO: árbol 150 cm"];
+  assert.deepEqual(opcionDeVariante(ops, mapa.get("1837487")), { indice: 1 });
+  assert.deepEqual(opcionDeVariante(ops, mapa.get("1859317")), { indice: 0 });
+  assert.match(opcionDeVariante(ops, ["árbol 200 cm"]).error, /ninguna/);
+  assert.match(opcionDeVariante(["COLOR: rojo, TALLA: M", "COLOR: rojo, TALLA: L"], ["rojo"]).error, /varias/);
+  assert.deepEqual(opcionDeVariante(["COLOR: rojo, TALLA: M", "COLOR: rojo, TALLA: L"], ["rojo", "L"]), { indice: 1 });
+});

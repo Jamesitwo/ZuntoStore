@@ -70,6 +70,60 @@ export function precioDeTarjeta(texto) {
 }
 
 /** Un monto en pesos del resumen de Dropi, con signo y cero ("-$ 1.200", "$ 0"). */
+/**
+ * Variaciones de un producto de Dropi en cualquier JSON de su API: busca
+ * arreglos `variations` con `id` y `attribute_values` y devuelve
+ * id -> ["árbol 90 cm", ...] (los valores de sus atributos).
+ */
+export function variacionesDeJson(obj, salida = new Map(), profundidad = 0) {
+  if (!obj || typeof obj !== "object" || profundidad > 8) return salida;
+  if (Array.isArray(obj)) {
+    for (const x of obj) variacionesDeJson(x, salida, profundidad + 1);
+    return salida;
+  }
+  if (Array.isArray(obj.variations)) {
+    for (const v of obj.variations) {
+      if (v?.id === undefined || !Array.isArray(v?.attribute_values)) continue;
+      const valores = v.attribute_values.map((a) => String(a?.value ?? "").trim()).filter(Boolean);
+      if (valores.length) salida.set(String(v.id), valores);
+    }
+  }
+  for (const k of Object.keys(obj)) {
+    if (k !== "variations" && obj[k] && typeof obj[k] === "object") variacionesDeJson(obj[k], salida, profundidad + 1);
+  }
+  return salida;
+}
+
+const normalVariante = (t) =>
+  String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/**
+ * Opcion del desplegable "Variación" de Dropi ("ARBOL COPO: árbol 90 cm") que
+ * corresponde a una variacion: la UNICA que trae todos sus valores.
+ * -> { indice } | { error }
+ */
+export function opcionDeVariante(opciones, valores) {
+  const vals = (valores ?? []).map(normalVariante).filter(Boolean);
+  if (!vals.length) return { error: "no se conocen los valores de la variación" };
+  const conPalabra = (texto, v) => ` ${texto} `.includes(` ${v} `);
+  const coinciden = [];
+  opciones.forEach((o, i) => {
+    const t = normalVariante(String(o).replace(/^[^:]*:/, (m) => ` ${m} `));
+    if (vals.every((v) => conPalabra(t, v))) coinciden.push(i);
+  });
+  if (coinciden.length === 1) return { indice: coinciden[0] };
+  // varias: la que no trae nada de mas ("90 cm" vs "90 cm XL")
+  if (coinciden.length > 1) {
+    const exactas = coinciden.filter((i) => {
+      const t = normalVariante(String(opciones[i]).split(":").slice(1).join(":") || opciones[i]);
+      return t === vals.join(" ");
+    });
+    if (exactas.length === 1) return { indice: exactas[0] };
+    return { error: `varias opciones sirven (${coinciden.map((i) => opciones[i]).join(" | ")})` };
+  }
+  return { error: "ninguna opción coincide" };
+}
+
 export function montoDeTexto(texto) {
   const t = String(texto ?? "");
   const negativo = /-\s*\$|\$[ \t\u00a0\u202f]*-/.test(t);
@@ -801,6 +855,33 @@ export function crearDropiNavegador(config = {}) {
    * la lista trae exactamente UNA oficina; con varias (o ninguna) lo hace una
    * persona.
    */
+  /**
+   * Elige en el formulario la variacion del pedido. Sin variacion en el
+   * pedido pero con selector (producto variable en Dropi) no se adivina.
+   */
+  async function elegirVariacion(p, sel, { hayVariacion, varianteDropi, valores }) {
+    if (!varianteDropi) return { ok: false, detalle: "el producto en Dropi tiene variaciones y el pedido no dice cuál" };
+    if (!hayVariacion) return { ok: false, detalle: `el pedido es de la variante ${varianteDropi} pero Dropi no mostró el selector de variación` };
+    if (!valores?.length) return { ok: false, detalle: `no se pudo saber cuál es la variación ${varianteDropi} en Dropi` };
+    await sel.click().catch(() => {});
+    const opciones = p.locator(".p-dropdown-panel li[role='option'], .p-dropdown-items li");
+    for (let i = 0; i < 8 && !(await opciones.count().catch(() => 0)); i++) await p.waitForTimeout(400);
+    const textos = (await opciones.allInnerTexts().catch(() => [])).map((t) => t.trim());
+    if (!textos.length) return { ok: false, detalle: "el selector de variación de Dropi no mostró opciones" };
+    const r = opcionDeVariante(textos, valores);
+    if (r.error) {
+      await p.keyboard.press("Escape").catch(() => {});
+      return { ok: false, detalle: `no se encontró la variación «${valores.join(" / ")}» en Dropi: ${r.error} (opciones: ${textos.join(" | ")})` };
+    }
+    await opciones.nth(r.indice).click();
+    await p.waitForTimeout(800);
+    const quedo = (await sel.locator(".p-dropdown-label").first().innerText().catch(() => "")).trim();
+    if (normalVariante(quedo) !== normalVariante(textos[r.indice])) {
+      return { ok: false, detalle: `Dropi no dejó elegida la variación «${textos[r.indice]}» (quedó «${quedo}»)` };
+    }
+    return { ok: true, elegida: quedo };
+  }
+
   async function elegirOficinaInter(p, { objetivo = null } = {}) {
     const boton = p.locator('[data-cy="centro-servicio-interrapidisimo-field"]').first();
     const sinCentros = p.locator('[data-cy="order-create-client-no-centers-alert-dialog"]').first();
@@ -1255,6 +1336,27 @@ export function crearDropiNavegador(config = {}) {
         }
       };
       p.on("response", verRespuesta);
+      // variaciones del producto que trae la API de Dropi (id -> valores):
+      // con ellas se elige la variacion del pedido en el formulario
+      const variaciones = new Map();
+      const lecturas = [];
+      const verVariaciones = (r) => {
+        try {
+          const u = new URL(r.url());
+          if (!/dropi/i.test(u.hostname) || r.status() >= 400) return;
+          if (!/json/i.test(r.headers()["content-type"] ?? "")) return;
+          lecturas.push(
+            r
+              .json()
+              .then((j) => variacionesDeJson(j, variaciones))
+              .catch(() => {}),
+          );
+        } catch {
+          /* url rara */
+        }
+      };
+      const varianteDropi = String(datos.productos?.[0]?.varianteDropi ?? "").trim();
+      if (varianteDropi) p.on("response", verVariaciones);
 
       // 1) navegar directo a la ficha del producto (el dropiLink ya trae el
       //    slug: product-details/{id}/{slug})
@@ -1346,6 +1448,19 @@ export function crearDropiNavegador(config = {}) {
         if (await p.locator(qtySel).count().catch(() => 0)) break;
         await p.waitForTimeout(500);
       }
+      // 4.4) variacion (color, talla...): se elige ANTES de cantidad y precio
+      //      porque al cambiarla Dropi vuelve a poner su precio sugerido
+      const selVariacion = p.locator('p-dropdown[data-cy^="order-create-products-row-variation-"]').first();
+      const hayVariacion = Boolean(await selVariacion.count().catch(() => 0));
+      if (varianteDropi) await Promise.allSettled(lecturas);
+      p.off("response", verVariaciones);
+      if (hayVariacion || varianteDropi) {
+        const rVar = await elegirVariacion(p, selVariacion, { hayVariacion, varianteDropi, valores: variaciones.get(varianteDropi) });
+        if (!rVar.ok) {
+          return { ok: false, creado: false, varianteHumano: true, detalle: `No se envió a Dropi: ${rVar.detalle}. Lo sube una persona eligiendo la variación.` };
+        }
+      }
+
       const cantidad = Number(datos.productos?.[0]?.cantidad) || 1;
       const precioVenta = Number(datos.productos?.[0]?.precio) || 0;
       await p.locator(qtySel).first().fill(String(cantidad)).catch(() => {});
