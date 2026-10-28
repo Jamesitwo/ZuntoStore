@@ -205,7 +205,22 @@ export function ListaProductos({
    * B... con sus ventas). Se muestran, pero se guardan con otro endpoint que
    * aun no esta conectado: mientras tanto el MensajeInicial viejo no se toca.
    */
-  const [inicialNuevo, setInicialNuevo] = useState<{ letras: string[]; legado: unknown } | null>(null);
+  const [inicialNuevo, setInicialNuevo] = useState<{
+    letras: string[];
+    legado: unknown;
+    /** initialMessages tal cual (id, letter, sales, views, enabled...) */
+    versiones: any[];
+    /** pasos de cada version (la que se edita vive en `inicial`) */
+    pasos: PasoInicial[][];
+    actual: number;
+  } | null>(null);
+  /** Cambia la version (A, B...) que se edita, guardando lo editado de la otra. */
+  const verVersion = (k: number) => {
+    if (!inicialNuevo || k === inicialNuevo.actual) return;
+    const pasos = inicialNuevo.pasos.map((x, i) => (i === inicialNuevo.actual ? inicial : x));
+    setInicialNuevo({ ...inicialNuevo, pasos, actual: k });
+    setInicial(pasos[k] ?? []);
+  };
   // campanas de Meta (ads)
   const [cargandoCamp, setCargandoCamp] = useState(false);
   const [campCargadas, setCampCargadas] = useState(false);
@@ -425,11 +440,15 @@ export function ListaProductos({
       // el GET lo trae como MensajeInicial (mayuscula); si no trae nada, []
       const legado = p?.MensajeInicial ?? p?.mensajeInicial;
       const versiones = (Array.isArray(p?.initialMessages) ? p.initialMessages : []).filter((m: any) => m && m.message);
-      if (!parsearMensajeInicial(legado).length && (versiones.length || p?.initialMessage)) {
-        // version nueva: se muestra la primera activa (o la A)
-        const activa = versiones.find((m: any) => m.enabled !== false) ?? versiones[0];
-        setInicial(parsearMensajeInicial(activa?.message ?? p?.initialMessage));
-        setInicialNuevo({ letras: versiones.map((m: any) => String(m.letter ?? "?")), legado: legado ?? null });
+      if (!parsearMensajeInicial(legado).length && versiones.length) {
+        // version nueva: se edita la primera activa (o la A)
+        const pasos = versiones.map((m: any) => parsearMensajeInicial(m.message));
+        const k = Math.max(0, versiones.findIndex((m: any) => m.enabled !== false));
+        setInicial(pasos[k] ?? []);
+        setInicialNuevo({ letras: versiones.map((m: any) => String(m.letter ?? "?")), legado: legado ?? null, versiones, pasos, actual: k });
+      } else if (!parsearMensajeInicial(legado).length && p?.initialMessage) {
+        setInicial(parsearMensajeInicial(p.initialMessage));
+        setInicialNuevo(null);
       } else {
         setInicial(parsearMensajeInicial(legado));
         setInicialNuevo(null);
@@ -515,11 +534,40 @@ export function ListaProductos({
       };
       for (const [k] of OPS) edicion[k] = ops[k] ? 1 : 0;
       const cuerpo = armarCuerpoProducto(ficha, edicion);
+      // mensajes iniciales nuevos (A/B): van en initialMessages, cada version
+      // con su `message` (JSON string, igual que llega en el GET)
+      let enviados: { i: number; message: string }[] = [];
+      if (inicialNuevo) {
+        const pasos = inicialNuevo.pasos.map((x, i) => (i === inicialNuevo.actual ? inicial : x));
+        const versiones = inicialNuevo.versiones.map((v, i) => ({ ...v, message: serializarMensajeInicial(pasos[i] ?? []) }));
+        enviados = versiones
+          .map((v, i) => ({ i, message: v.message as string }))
+          .filter(({ i, message }) => message !== serializarMensajeInicial(parsearMensajeInicial(inicialNuevo.versiones[i]?.message)));
+        if (enviados.length) cuerpo.initialMessages = versiones;
+      }
 
       const r: any = await productos.update(cuerpo);
       if (r?.ok === false || r?.error)
         throw new Error(r?.msg || (typeof r?.error === "string" ? r.error : "No se pudo guardar"));
       toast.success("Producto actualizado");
+      // ¿LucidSales guardo el mensaje inicial? se vuelve a leer y se compara
+      if (enviados.length) {
+        try {
+          const g: any = await productos.get(editando.id);
+          const prod = g?.producto ?? g?.product ?? g;
+          const ahora = Array.isArray(prod?.initialMessages) ? prod.initialMessages : [];
+          const quedo = enviados.every(
+            ({ i, message }) => serializarMensajeInicial(parsearMensajeInicial(ahora[i]?.message)) === message,
+          );
+          if (quedo) toast.success("Mensaje inicial guardado");
+          else
+            toast.error(
+              "LucidSales guardó el producto pero NO el mensaje inicial. Pásale a Claude lo que envía el panel oficial al guardarlo (pestaña Red → updateproducto → Carga útil).",
+            );
+        } catch {
+          /* no se pudo comprobar */
+        }
+      }
       // si se tocaron los bundles, se guardan tambien (otro endpoint)
       if (bundlesSucios) await guardarBundles();
       setEditando(null);
@@ -2029,11 +2077,26 @@ export function ListaProductos({
             </p>
 
             {inicialNuevo ? (
-              <div className="banner warn">
+              <div className="banner info">
                 Este producto usa los <strong>mensajes iniciales nuevos</strong> de LucidSales
-                {inicialNuevo.letras.length > 1 ? ` (versiones ${inicialNuevo.letras.join(", ")})` : ""}: aquí se ve la
-                versión {inicialNuevo.letras[0] ?? "A"}, pero los cambios todavía no se guardan desde Zunto. Edítalo en
-                el panel de LucidSales por ahora.
+                {inicialNuevo.letras.length > 1 ? ` (versiones ${inicialNuevo.letras.join(", ")})` : ""}: aquí se edita la
+                versión que elijas abajo. Al guardar el producto se mandan las versiones y Zunto comprueba que LucidSales
+                las haya guardado (si no, te avisa).
+                {inicialNuevo.letras.length > 1 ? (
+                  <div className="row gap" style={{ marginTop: 6, marginBottom: 0 }}>
+                    {inicialNuevo.letras.map((l, k) => (
+                      <button
+                        key={k}
+                        type="button"
+                        className={`btn sm${k === inicialNuevo.actual ? " primary" : ""}`}
+                        onClick={() => verVersion(k)}
+                      >
+                        Versión {l}
+                        {inicialNuevo.versiones[k]?.enabled === false ? " (apagada)" : ""}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ) : null}
             {inicial.length === 0 ? (
