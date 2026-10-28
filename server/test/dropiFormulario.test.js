@@ -437,3 +437,10 @@ test("variaciones: de la API de Dropi a la opcion del desplegable", async () => 
   assert.match(opcionDeVariante(["COLOR: rojo, TALLA: M", "COLOR: rojo, TALLA: L"], ["rojo"]).error, /varias/);
   assert.deepEqual(opcionDeVariante(["COLOR: rojo, TALLA: M", "COLOR: rojo, TALLA: L"], ["rojo", "L"]), { indice: 1 });
 });
+
+test("variacion por el nombre de Dropi (getVariantesDropi)", async () => {
+  const { opcionDeVariante } = await import("../dropiNavegador.js");
+  const ops = ["ARBOL COPO: árbol 90 cm", "ARBOL COPO: verde", "ARBOL COPO: blanco", "ARBOL COPO: luz navidad rgb 10 metros"];
+  assert.deepEqual(opcionDeVariante(ops, ["BLANCO"]), { indice: 2 });
+  assert.deepEqual(opcionDeVariante(ops, ["ÁRBOL 90 CM"]), { indice: 0 });
+});

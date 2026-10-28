@@ -1400,12 +1400,18 @@ test("producto con variantes: se sube con su variacion de Dropi", async () => {
     variantes: [{ nombre: "Copa" }, { nombre: "Tamaño" }],
     mixedvariantes: [{ items: ["Blanca", "150 cm"], sku: "aDdr" }],
     bundleVariantes: [{ variantes: [{ items: ["Blanca", "150 cm"], idVarianteDropi: "1837487" }] }],
+    idProductoDropi: 1960650,
   });
+  cliente.variantesDropi = async () => [
+    { id: "1837486", name: "VERDE" },
+    { id: "1837487", name: "BLANCO" },
+  ];
   const { s, ruta, subidos } = armar({ cliente });
   s.configurar({ automatico: true, dryRun: false });
   await s.tick({ forzar: true });
   assert.equal(subidos.length, 1);
   assert.equal(subidos[0].productos[0].varianteDropi, "1837487");
+  assert.equal(subidos[0].productos[0].varianteDropiNombre, "BLANCO");
   s.detener();
   fs.rmSync(ruta, { force: true });
 });

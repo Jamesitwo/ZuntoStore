@@ -164,6 +164,21 @@ export function crearClienteLucid(config, fetchImpl = globalThis.fetch) {
       return p;
     },
 
+    /**
+     * Variaciones del producto en Dropi (las que se eligen al crear la orden):
+     * GET /productos/getVariantesDropi/{idProductoDropi}
+     * -> [{id, name, stock}] (sin la opcion "Selecciona el producto")
+     */
+    async variantesDropi(idProductoDropi) {
+      const limpio = String(idProductoDropi ?? "").replace(/\D/g, "");
+      if (!limpio) throw new ErrorApi(400, "id de producto de Dropi invalido");
+      const r = await conAuth(undefined, (token) =>
+        llamar(`/productos/getVariantesDropi/${limpio}`, { method: "GET", headers: { "x-token": token } }),
+      );
+      const lista = Array.isArray(r.datos?.variantes) ? r.datos.variantes : [];
+      return lista.filter((v) => Number(v?.id) > 0).map((v) => ({ id: String(v.id), name: String(v.name ?? "").trim(), stock: v.stock ?? null }));
+    },
+
     /** POST /pedidos/update -> {ok, msg}. El body lo construye estado.js. */
     async actualizarPedido(body, idEmpresa) {
       const r = await conAuth(idEmpresa, (token) =>

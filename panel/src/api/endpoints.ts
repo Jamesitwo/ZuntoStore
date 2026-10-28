@@ -485,6 +485,13 @@ export const productos = {
   validateDropiId: (id: string | number) => api(`/productos/validateDropiId/${id}`),
 
   /**
+   * Variaciones del producto en Dropi (para vincular cada combinacion):
+   *   GET /productos/getVariantesDropi/{idProductoDropi}
+   *   -> {ok, variantes: [{id: 0, name: "Selecciona el producto"}, {id, name, stock}]}
+   */
+  variantesDropi: (idProductoDropi: string | number) => api(`/productos/getVariantesDropi/${idProductoDropi}`),
+
+  /**
    * Guardar los bundles del producto. **No pasa por updateproducto**: `bundle`
    * y `bundleVariantes` no estan entre sus 87 claves, el oficial usa este
    * endpoint aparte con los dos como JSON string (el `Precio` opcional es del

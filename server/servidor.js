@@ -1392,7 +1392,7 @@ export function crearManejador({
           tipoPago: resumen?.tipoPago,
           productos: cuerpo?.productos?.length
             ? cuerpo.productos
-            : [{ id: linea.id, cantidad: linea.cantidad, precio: linea.precio, ...(linea.varianteDropi ? { varianteDropi: linea.varianteDropi } : {}) }],
+            : [{ id: linea.id, cantidad: linea.cantidad, precio: linea.precio, ...(linea.varianteDropi ? { varianteDropi: linea.varianteDropi, varianteDropiNombre: linea.varianteDropiNombre ?? "" } : {}) }],
           soloPreparar: cuerpo?.dryRun === true,
         });
         // lo que mostro Dropi: id de la orden, ganancia y precio del envio

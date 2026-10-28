@@ -222,6 +222,27 @@ export function ListaProductos({
   // bundles (se guardan aparte: POST /productos/updatebundle)
   const [bundles, setBundles] = useState<any[]>([]);
   const [bundleVar, setBundleVar] = useState<any[]>([]);
+  // variaciones del producto en Dropi (para vincular cada combinacion)
+  const [varDropi, setVarDropi] = useState<{ id: string; name: string; stock: number | null }[]>([]);
+  const idProdDropi = String(ficha?.idProductoDropi ?? "").replace(/\D/g, "");
+  useEffect(() => {
+    setVarDropi([]);
+    if (!idProdDropi || idProdDropi === "0") return;
+    let cancel = false;
+    productos
+      .variantesDropi(idProdDropi)
+      .then((r: any) => {
+        if (cancel) return;
+        const lista = (Array.isArray(r?.variantes) ? r.variantes : [])
+          .filter((v: any) => Number(v?.id) > 0)
+          .map((v: any) => ({ id: String(v.id), name: String(v.name ?? "").trim(), stock: v.stock ?? null }));
+        setVarDropi(lista);
+      })
+      .catch(() => {});
+    return () => {
+      cancel = true;
+    };
+  }, [idProdDropi]);
   const [bundlesSucios, setBundlesSucios] = useState(false);
   const [guardandoBundles, setGuardandoBundles] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -1612,6 +1633,31 @@ export function ListaProductos({
                                   />
                                 </td>
                                 <td>
+                                  {varDropi.length ? (
+                                    <select
+                                      aria-label={`Variante de Dropi de la variante ${k + 1} del bundle ${i + 1}`}
+                                      className={idDropi ? "" : "variante-select variante-falta"}
+                                      value={idDropi}
+                                      onChange={(e) => {
+                                        const vd = varDropi.find((x) => x.id === e.target.value);
+                                        cambiaBundleVariante(i, k, {
+                                          idVarianteDropi: e.target.value || null,
+                                          ...(vd && vd.stock !== null ? { stock: vd.stock } : {}),
+                                        });
+                                      }}
+                                    >
+                                      <option value="">— sin vincular —</option>
+                                      {idDropi && !varDropi.some((x) => x.id === idDropi) ? (
+                                        <option value={idDropi}>{idDropi} (ya no está en Dropi)</option>
+                                      ) : null}
+                                      {varDropi.map((x) => (
+                                        <option key={x.id} value={x.id}>
+                                          {x.name} · {x.id}
+                                          {x.stock !== null ? ` · stock ${x.stock}` : ""}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : (
                                   <input
                                     inputMode="numeric"
                                     aria-label={`Variante de Dropi de la variante ${k + 1} del bundle ${i + 1}`}
@@ -1623,8 +1669,11 @@ export function ListaProductos({
                                     }
                                     style={{ maxWidth: 130 }}
                                   />
+                                  )}
                                 </td>
-                                <td className="muted small">{v?.stock ?? (idDropi ? "—" : "no está en Dropi")}</td>
+                                <td className="muted small">
+                                  {(varDropi.find((x) => x.id === idDropi)?.stock ?? v?.stock) ?? (idDropi ? "—" : "no está en Dropi")}
+                                </td>
                               </tr>
                             );
                           })}

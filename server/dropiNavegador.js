@@ -1455,7 +1455,11 @@ export function crearDropiNavegador(config = {}) {
       if (varianteDropi) await Promise.allSettled(lecturas);
       p.off("response", verVariaciones);
       if (hayVariacion || varianteDropi) {
-        const rVar = await elegirVariacion(p, selVariacion, { hayVariacion, varianteDropi, valores: variaciones.get(varianteDropi) });
+        // valores de la variacion: los de la API de Dropi o, si no llegaron, su
+        // nombre segun LucidSales (getVariantesDropi: "BLANCO")
+        const nombreVar = String(datos.productos?.[0]?.varianteDropiNombre ?? "").trim();
+        const valores = variaciones.get(varianteDropi) ?? (nombreVar ? [nombreVar] : undefined);
+        const rVar = await elegirVariacion(p, selVariacion, { hayVariacion, varianteDropi, valores });
         if (!rVar.ok) {
           return { ok: false, creado: false, varianteHumano: true, detalle: `No se envió a Dropi: ${rVar.detalle}. Lo sube una persona eligiendo la variación.` };
         }

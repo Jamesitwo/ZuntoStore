@@ -76,7 +76,25 @@ export async function variantesParaDropi(cliente, resumen) {
     const v = varianteDeProducto(prod, x.variante.id);
     if (!v) return { ok: false, detalle: `la variante ${x.variante.id} ya no existe en el producto` };
     if (!v.idVarianteDropi) return { ok: false, detalle: `la variante «${v.nombre}» no está vinculada a una variación de Dropi` };
-    productos.push({ ...x, variante: { ...x.variante, nombre: v.nombre }, varianteDropi: v.idVarianteDropi });
+    // el nombre de esa variacion en Dropi ("BLANCO"): con el se elige en el formulario
+    let nombreDropi = "";
+    if (prod?.idProductoDropi && cliente.variantesDropi) {
+      try {
+        const vs = await cliente.variantesDropi(prod.idProductoDropi);
+        nombreDropi = vs.find((y) => y.id === String(v.idVarianteDropi))?.name ?? "";
+        if (vs.length && !nombreDropi) {
+          return { ok: false, detalle: `la variante «${v.nombre}» apunta a la variación ${v.idVarianteDropi}, que ya no está en el producto de Dropi` };
+        }
+      } catch {
+        /* sin la lista, el formulario la busca con lo que diga la API de Dropi */
+      }
+    }
+    productos.push({
+      ...x,
+      variante: { ...x.variante, nombre: v.nombre },
+      varianteDropi: v.idVarianteDropi,
+      ...(nombreDropi ? { varianteDropiNombre: nombreDropi } : {}),
+    });
   }
   return { ok: true, productos };
 }
@@ -1059,7 +1077,7 @@ export function crearSubidaAutomatica({
                 cantidad: x.cantidad,
                 precio: x.precio,
                 // variacion de Dropi a elegir en el formulario (productos con variantes)
-                ...(x.varianteDropi ? { varianteDropi: x.varianteDropi } : {}),
+                ...(x.varianteDropi ? { varianteDropi: x.varianteDropi, varianteDropiNombre: x.varianteDropiNombre ?? "" } : {}),
               })),
               soloPreparar: c.dryRun === true,
             });
