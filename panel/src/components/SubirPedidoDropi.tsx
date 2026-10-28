@@ -168,6 +168,7 @@ const NOMBRES_CHECK: Record<string, string> = {
   entregaFutura: "Fecha de entrega",
   corregimiento: "Corregimiento",
   variante: "Variante",
+  forzado: "Sin validar",
   estado: "Estado del pedido",
   confirmacion: "Confirmación",
   duplicado: "Pedido repetido",
@@ -228,7 +229,7 @@ export function SubirPedidoDropi({
     }
   };
 
-  const subir = async (aceptarDuplicado = false) => {
+  const subir = async (aceptarDuplicado = false, forzar = false) => {
     setSubiendo(true);
     setErr(null);
     setSubida(null);
@@ -236,6 +237,7 @@ export function SubirPedidoDropi({
       const { status, datos } = await postAgente(`${url}/subir`, {
         via: "navegador",
         ...(aceptarDuplicado ? { aceptarDuplicado: true } : {}),
+        ...(forzar ? { forzar: true } : {}),
       });
 
       if (status === 0) throw new Error(datos?.msg || "No se pudo conectar con el servidor");
@@ -350,7 +352,27 @@ export function SubirPedidoDropi({
         <button className="btn primary" onClick={() => void subir()} disabled={subiendo}>
           {subiendo ? "Subiendo..." : "Subir a Dropi (seguro)"}
         </button>
+        <button
+          className="btn"
+          disabled={subiendo}
+          title="Ya revisaste y corregiste el pedido: se sube tal cual, sin la IA ni las validaciones"
+          onClick={() => {
+            if (
+              window.confirm(
+                "Subir SIN VALIDAR\n\nSe sube a Dropi tal como está el pedido ahora (producto, cantidad, precio, dirección, ciudad), con seguro.\n\nNO se revisa: el chat con la IA, la dirección en el mapa, si es un pedido repetido, la fecha de entrega ni el tope del flete.\n\nQueda registrado con tu usuario. ¿Ya lo revisaste y lo quieres subir?",
+              )
+            ) {
+              void subir(false, true);
+            }
+          }}
+        >
+          ⚡ Subir sin validar
+        </button>
       </div>
+      <p className="campo-ayuda" style={{ marginTop: 4 }}>
+        «Subir sin validar» es para cuando ya corregiste el pedido: lo sube tal cual (con seguro) sin pasar por la IA ni las
+        validaciones. Queda registrado quién lo hizo.
+      </p>
 
       {validando ? <Spinner label="El agente está leyendo el chat..." /> : null}
 

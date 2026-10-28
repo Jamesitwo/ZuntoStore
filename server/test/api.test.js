@@ -1689,3 +1689,9 @@ test("apikey: una integracion (x-api-key) no puede administrar la clave", async 
   const r = await post("/api/apikey/generar", {});
   assert.equal(r.status, 403);
 });
+
+test("subir sin validar: nunca con la clave de API (solo una persona del panel)", async () => {
+  const r = await llamar(puerto, "POST", "/api/pedidos/10/subir", { cuerpo: { via: "navegador", forzar: true } });
+  assert.equal(r.status, 403, r.datos?.msg);
+  assert.match(r.datos.msg, /solo lo puede hacer una persona/);
+});

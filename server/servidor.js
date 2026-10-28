@@ -1058,6 +1058,17 @@ export function crearManejador({
         return;
       }
 
+      // "Subir sin validar": una PERSONA del panel ya corrigio el pedido y lo
+      // sube tal cual (sin IA, sin mapa, sin tope de flete, sin repetidos).
+      // Nunca desde una integracion ni la subida automatica.
+      const forzar = cuerpo?.forzar === true;
+      if (forzar) {
+        if (!req.__acceso || req.__acceso.interna || !usuarioDe(req)) {
+          throw new ErrorApi(403, "Subir sin validar solo lo puede hacer una persona desde el panel");
+        }
+        if (cuerpo?.via !== "navegador") throw new ErrorApi(400, "Subir sin validar solo funciona por el navegador de Dropi");
+      }
+
       // desde aqui es un intento nuevo: su resultado va al historial del pedido
       res.__intento = {
         pedido: id,
@@ -1065,6 +1076,7 @@ export function crearManejador({
         origen: "manual",
         usuario: usuarioDe(req),
         dryRun: cuerpo?.dryRun === true,
+        ...(forzar ? { forzado: true } : {}),
       };
       const pedidoLucid = await cliente.obtenerPedido(id, tiendaDe(req));
       res.__notificacionLucidBot.pedido = pedidoLucid;
@@ -1075,7 +1087,7 @@ export function crearManejador({
       // encendida la opcion (y Dropi ofrece UNA oficina)
       const oficina = recogeEnOficina(resumen?.direccion, resumen?.referencias);
       const oficinaAuto = oficina === "Inter Rapidísimo" && subida.oficinaInterActiva?.() === true;
-      if (oficina && !oficinaAuto) {
+      if (oficina && !oficinaAuto && !forzar) {
         delete res.__notificacionLucidBot;
         json(res, 409, {
           ok: false,
@@ -1106,6 +1118,18 @@ export function crearManejador({
         }
         resumen.productos = rv.productos;
       }
+      let r;
+      if (forzar) {
+        // sin IA ni validaciones: lo que dice el pedido es lo que se sube
+        r = { accion: "subir", problemas: [], extraido: {}, validacion: { ok: true, checks: [] }, direccionEnvio: null };
+        if (res.__intento) {
+          res.__intento.analisis = {
+            accion: "subir",
+            checks: [{ campo: "forzado", ok: true, detalle: `subido sin validar por ${usuarioDe(req)}: lo corrigió una persona` }],
+          };
+        }
+        console.log(`[dropi] pedido #${resumen.idPedido || id}: SUBIDA SIN VALIDAR por ${usuarioDe(req)}`);
+      } else {
       // La conversación se consulta en LucidBot al momento de subir; solo se
       // usa el registro local antiguo si aún no está configurado el campo API.
       const chat = await conversacionActual(id, pedidoLucid);
@@ -1149,7 +1173,7 @@ export function crearManejador({
       // una persona sube un pedido con entrega programada: ella decide que ya
       // toca, la fecha pedida por el cliente no frena
       const progManual = programados?.get?.(id) ?? null;
-      const r = await ejecutarAgente({
+      r = await ejecutarAgente({
         resumen,
         mensajes,
         extraer,
@@ -1183,6 +1207,8 @@ export function crearManejador({
           subido: false,
         });
         return;
+      }
+
       }
 
       // la direccion que se envia es la validada (normalizada/corregida)
@@ -1276,7 +1302,7 @@ export function crearManejador({
         }
 
         // calificacion de la direccion en el mapa (mismo minimo que la automatica)
-        if (!oficinaAuto) {
+        if (!oficinaAuto && !forzar) {
           let ev = null;
           try {
             ev = await subida.evaluarDireccion?.({
@@ -1330,6 +1356,8 @@ export function crearManejador({
         };
         const transportadoras =
           cuerpo?.transportadoraId && !plan.oficinaInter ? [Number(cuerpo.transportadoraId)] : plan.transportadoras;
+        // sin validar: sin tope de flete (la persona ya decidio subirlo)
+        if (forzar) plan.maxEnvio = null;
         if (res.__intento) {
           if (oficinaDetectada) {
             res.__intento.oficina = { como: "detectada", nombre: oficinaDetectada.nombre ?? null, direccion: oficinaDetectada.direccion ?? null };
@@ -1361,7 +1389,8 @@ export function crearManejador({
           oficinaObjetivo: oficinaDetectada ? oficinaDetectada.direccion || oficinaDetectada.nombre : oficinaAuto ? resumen?.direccion : null,
           tienda: tiendaDropi,
           conRecaudo: cuerpo?.conRecaudo,
-          seguro: cuerpo?.insurance ?? config.DROPI_SEGURO,
+          // sin validar: siempre con seguro
+          seguro: forzar ? true : (cuerpo?.insurance ?? config.DROPI_SEGURO),
           tipoPago: resumen?.tipoPago,
           productos: cuerpo?.productos?.length
             ? cuerpo.productos
