@@ -35,7 +35,9 @@ export function SubirMedia({
       for (const [n, a] of lista.entries()) {
         setSubiendo(lista.length > 1 ? `${n + 1}/${lista.length}` : "…");
         const r = await biblioteca.subir(a, idShop);
-        const nuevas = urlsDeRespuesta(r);
+        // respuesta: {ok: true, files: ["https://r2.sales.lucidsales.co/…"]}
+        const files = Array.isArray((r as any)?.files) ? urlsDeRespuesta((r as any).files) : [];
+        const nuevas = files.length ? files : urlsDeRespuesta(r);
         if (!nuevas.length) {
           throw new Error(`LucidSales no devolvió la url de «${a.name}» (respuesta: ${JSON.stringify(r).slice(0, 160)})`);
         }

@@ -412,7 +412,7 @@ export async function oficinasInter(
 /**
  * Biblioteca de archivos (multimedia de productos):
  *   POST /biblioteca/uploadS3File  form-data {files: (binario), idShop}
- * La respuesta trae la(s) url(s) publicas del archivo subido.
+ * -> {ok: true, files: ["https://r2.sales.lucidsales.co/{idShop}/{uuid}.jpeg"]}
  */
 export const biblioteca = {
   subir: (archivo: File, idShop: number | string) => {
