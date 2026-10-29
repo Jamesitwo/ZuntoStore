@@ -5436,3 +5436,21 @@ tr.fila-marcada > td { background: color-mix(in srgb, var(--primary, #7c3aed) 9%
   background: color-mix(in srgb, var(--primary, #7c3aed) 7%, var(--surface, #fff));
 }
 .barra-masiva select, .barra-masiva input { min-width: 0; flex: 1 1 160px; max-width: 260px; }
+
+/* confirmacion de "Subir sin validar" */
+.forzado { display: grid; gap: 12px; }
+.forzado-intro { margin: 0; font-size: 14px; line-height: 1.5; }
+.forzado-bloque { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.forzado-titulo { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
+.forzado-bloque ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13.5px; }
+.forzado-bloque li { display: flex; gap: 8px; align-items: baseline; }
+.forzado-bloque li::before { flex: none; font-weight: 700; width: 14px; text-align: center; }
+.forzado-bloque.ok { background: color-mix(in srgb, #2563eb 6%, transparent); border-color: color-mix(in srgb, #2563eb 25%, transparent); }
+.forzado-bloque.ok .forzado-titulo { color: #1d4ed8; }
+.forzado-bloque.ok li::before { content: "→"; color: #2563eb; }
+.forzado-bloque.no { background: color-mix(in srgb, var(--warn, #d97706) 8%, transparent); border-color: color-mix(in srgb, var(--warn, #d97706) 30%, transparent); }
+.forzado-bloque.no .forzado-titulo { color: #b45309; }
+.forzado-bloque.no li::before { content: "✕"; color: var(--warn, #d97706); }
+.forzado-bloque.si { background: color-mix(in srgb, #16a34a 7%, transparent); border-color: color-mix(in srgb, #16a34a 28%, transparent); }
+.forzado-bloque.si .forzado-titulo { color: #15803d; }
+.forzado-bloque.si li::before { content: "✓"; color: #16a34a; }

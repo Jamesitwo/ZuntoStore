@@ -5,6 +5,7 @@ import { AnalisisPedido } from "./AnalisisPedido";
 import { IntentosSubida } from "./IntentosSubida";
 import { useToast } from "./Toast";
 import { ErrorBanner, Spinner } from "./ui";
+import { Modal } from "./Modal";
 
 /**
  * Agente de Dropi en el detalle del pedido: valida el chat del pedido contra
@@ -189,6 +190,7 @@ export function SubirPedidoDropi({
   const [validando, setValidando] = useState(false);
   const [resultado, setResultado] = useState<any>(null);
   const [subiendo, setSubiendo] = useState(false);
+  const [confirmarForzado, setConfirmarForzado] = useState(false);
   const [subida, setSubida] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
   const [recargaVeredicto, setRecargaVeredicto] = useState(0);
@@ -357,19 +359,69 @@ export function SubirPedidoDropi({
           className="btn"
           disabled={subiendo}
           title="Ya revisaste y corregiste el pedido: se sube tal cual, sin la IA ni las validaciones"
-          onClick={() => {
-            if (
-              window.confirm(
-                "Subir SIN VALIDAR\n\nSe sube a Dropi tal como está el pedido ahora (producto, cantidad, precio, dirección, ciudad), con seguro.\n\nNO se revisa: el chat con la IA, la dirección en el mapa, si es un pedido repetido ni la fecha de entrega. El tope del flete SÍ se respeta.\n\nQueda registrado con tu usuario. ¿Ya lo revisaste y lo quieres subir?",
-              )
-            ) {
-              void subir(false, true);
-            }
-          }}
+          onClick={() => setConfirmarForzado(true)}
         >
           ⚡ Subir sin validar
         </button>
       </div>
+      <Modal
+        open={confirmarForzado}
+        title="⚡ Subir sin validar"
+        onClose={() => setConfirmarForzado(false)}
+        footer={
+          <>
+            <button type="button" className="btn ghost" onClick={() => setConfirmarForzado(false)}>
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="btn primary"
+              autoFocus
+              onClick={() => {
+                setConfirmarForzado(false);
+                void subir(false, true);
+              }}
+            >
+              Sí, subirlo a Dropi
+            </button>
+          </>
+        }
+      >
+        <div className="forzado">
+          <p className="forzado-intro">
+            Se sube a Dropi <strong>tal como está el pedido ahora</strong>, con seguro. Úsalo solo si ya lo revisaste y
+            corregiste.
+          </p>
+          <div className="forzado-bloque ok">
+            <div className="forzado-titulo">Se envía tal cual</div>
+            <ul>
+              <li>Producto, cantidad y precio</li>
+              <li>Dirección, ciudad y departamento</li>
+              <li>Con seguro</li>
+            </ul>
+          </div>
+          <div className="forzado-bloque no">
+            <div className="forzado-titulo">No se revisa</div>
+            <ul>
+              <li>El chat con la IA</li>
+              <li>La dirección en el mapa</li>
+              <li>Si es un pedido repetido</li>
+              <li>La fecha de entrega</li>
+            </ul>
+          </div>
+          <div className="forzado-bloque si">
+            <div className="forzado-titulo">Sí se respeta</div>
+            <ul>
+              <li>El tope del flete</li>
+              <li>Que no se haya subido antes</li>
+            </ul>
+          </div>
+          <p className="muted small" style={{ margin: 0 }}>
+            Queda registrado con tu usuario en el historial del pedido.
+          </p>
+        </div>
+      </Modal>
+
       <p className="campo-ayuda" style={{ marginTop: 4 }}>
         «Subir sin validar» es para cuando ya corregiste el pedido: lo sube tal cual (con seguro) sin pasar por la IA ni las
         validaciones. Queda registrado quién lo hizo.
