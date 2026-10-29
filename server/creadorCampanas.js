@@ -18,6 +18,7 @@ import { slugDe } from "./anunciosTenant.js";
 import { EXCLUSIONES_ZUNTO, crearMetaCampanas, mensajeBienvenida } from "./metaCampanas.js";
 import { escribirJsonSeguro, leerJsonSeguro } from "./secretos.js";
 import { crearClienteTopView, DEFECTOS_TOPVIEW } from "./topview.js";
+import { crearClienteTopViewMcp, descubrirOAuth, MCP_TOPVIEW, pedirToken, registrarCliente, urlAutorizacion } from "./topviewMcp.js";
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -347,9 +348,97 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
     return p;
   }
 
+  // --------------------------------------------- TopView: cuenta o API key
+
+  /** Clientes OAuth registrados en TopView (uno por servidor + redirect). */
+  const rutaClientes = path.join(raiz, "oauth-clientes.json");
+  /** estado OAuth -> lo que hace falta a la vuelta (10 min, un solo uso) */
+  const pendientes = new Map();
+  const mcps = new Map();
+
+  function leerClientes() {
+    try {
+      return leerJsonSeguro(rutaClientes) ?? {};
+    } catch {
+      return {};
+    }
+  }
+
+  /** Token vigente de la cuenta de TopView (lo renueva si vencio). */
+  async function tokenCuenta(slug) {
+    const a = leerAjustes(slug);
+    const c = a.topviewCuenta;
+    if (!c?.access) throw new Error("Conecta tu cuenta de TopView (Creador IA > Ajustes)");
+    if (!c.expira || c.expira - Date.now() > 60000 || !c.refresh) return c.access;
+    const nuevo = await pedirToken({
+      tokenUrl: c.tokenUrl,
+      cliente: { clientId: c.clientId, clientSecret: c.clientSecret ?? null },
+      params: { grant_type: "refresh_token", refresh_token: c.refresh, resource: c.recurso ?? MCP_TOPVIEW },
+      fetcher,
+    });
+    const fresco = leerAjustes(slug);
+    fresco.topviewCuenta = { ...c, ...nuevo };
+    escribirJsonSeguro(rutaAjustes(slug), fresco);
+    return nuevo.access;
+  }
+
+  /** Cliente de TopView del usuario: su cuenta (creditos del plan) o la API key. */
   function topviewDe(slug) {
     const a = leerAjustes(slug);
+    if (a.topviewCuenta?.access && a.topviewModo !== "api") {
+      let c = mcps.get(slug);
+      if (!c) {
+        c = crearClienteTopViewMcp({ obtenerToken: () => tokenCuenta(slug), fetcher });
+        mcps.set(slug, c);
+      }
+      return c;
+    }
     return crearClienteTopView({ apiKey: a.topviewKey, uid: a.topviewUid, fetcher });
+  }
+
+  /** Paso 1 de "Conectar TopView": registra a Zunto (una vez) y arma la URL. */
+  async function iniciarTopView(slug, redirect) {
+    const d = await descubrirOAuth({ fetcher });
+    const clave = `${d.issuer}|${redirect}`;
+    const clientes = leerClientes();
+    let cliente = clientes[clave];
+    if (!cliente) {
+      cliente = await registrarCliente({ registro: d.registro, redirect, fetcher });
+      clientes[clave] = cliente;
+      fs.mkdirSync(raiz, { recursive: true });
+      escribirJsonSeguro(rutaClientes, clientes);
+    }
+    const { url, estado, verificador } = urlAutorizacion({ descubierto: d, cliente, redirect });
+    for (const [k, v] of pendientes) if (Date.now() - v.desde > 10 * 60 * 1000) pendientes.delete(k);
+    pendientes.set(estado, { slug, verificador, redirect, cliente, tokenUrl: d.token, recurso: d.recurso, desde: Date.now() });
+    return { url };
+  }
+
+  /** Paso 2: TopView devuelve el codigo; se cambia por el acceso y se guarda. */
+  async function completarTopView(estado, codigo) {
+    const p = pendientes.get(String(estado ?? ""));
+    if (!p || Date.now() - p.desde > 10 * 60 * 1000) throw new Error("La conexión con TopView venció: inténtalo de nuevo");
+    pendientes.delete(String(estado));
+    if (!codigo) throw new Error("TopView no autorizó la conexión");
+    const t = await pedirToken({
+      tokenUrl: p.tokenUrl,
+      cliente: p.cliente,
+      params: { grant_type: "authorization_code", code: String(codigo), redirect_uri: p.redirect, code_verifier: p.verificador, resource: p.recurso },
+      fetcher,
+    });
+    const a = leerAjustes(p.slug);
+    a.topviewCuenta = { ...t, clientId: p.cliente.clientId, clientSecret: p.cliente.clientSecret ?? null, tokenUrl: p.tokenUrl, recurso: p.recurso, conectado: ahora() };
+    a.topviewModo = "cuenta";
+    escribirJsonSeguro(rutaAjustes(p.slug), a);
+    mcps.delete(p.slug);
+    // prueba: que el conector responda con esa cuenta
+    let creditos = null;
+    try {
+      creditos = await topviewDe(p.slug).creditos();
+    } catch (e) {
+      log.warn?.("[creador] TopView conectado pero sin respuesta:", e?.message ?? e);
+    }
+    return { creditos };
   }
 
   function metaDe(usuario) {
@@ -621,7 +710,13 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
         const a = leerAjustes(slug);
         const c = credencialMeta?.(usuario) ?? null;
         return {
-          topview: { configurada: Boolean(a.topviewKey && a.topviewUid), key: enmascarar(a.topviewKey ?? ""), uid: a.topviewUid ?? "" },
+          topview: {
+            configurada: Boolean((a.topviewCuenta?.access && a.topviewModo !== "api") || (a.topviewKey && a.topviewUid)),
+            modo: a.topviewCuenta?.access && a.topviewModo !== "api" ? "cuenta" : a.topviewKey && a.topviewUid ? "api" : null,
+            cuenta: a.topviewCuenta?.access ? { conectado: a.topviewCuenta.conectado ?? null } : null,
+            key: enmascarar(a.topviewKey ?? ""),
+            uid: a.topviewUid ?? "",
+          },
           cuentaId: a.cuentaId ?? "",
           paginaId: a.paginaId ?? "",
           paginaNombre: a.paginaNombre ?? "",
@@ -649,6 +744,11 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
           delete a.topviewKey;
           delete a.topviewUid;
         }
+        if (cambios.desconectarTopview) {
+          delete a.topviewCuenta;
+          mcps.delete(slug);
+        }
+        if (cambios.topviewModo === "api" || cambios.topviewModo === "cuenta") a.topviewModo = cambios.topviewModo;
         for (const k of ["cuentaId", "paginaId", "paginaNombre", "fotoModelo", "marca"]) {
           if (typeof cambios[k] === "string") a[k] = cambios[k].trim().slice(0, 500);
         }
@@ -664,6 +764,12 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
         if (cambios.iaProveedor === "claude" || cambios.iaProveedor === "zunto") a.iaProveedor = cambios.iaProveedor;
         escribirJsonSeguro(rutaAjustes(slug), a);
         return this.ajustes();
+      },
+
+      /** "Conectar TopView": URL de autorizacion de TopView para este usuario. */
+      conectarTopView(redirect) {
+        if (!/^https?:\/\//.test(String(redirect ?? ""))) throw new Error("No se pudo armar la dirección de regreso");
+        return iniciarTopView(slug, redirect);
       },
 
       /** Prueba la llave de Claude. */
@@ -951,5 +1057,5 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
     };
   }
 
-  return { para, arrancar, detener, revisarTareas, _montarCampana: montarCampana };
+  return { para, arrancar, detener, revisarTareas, completarTopView, _montarCampana: montarCampana };
 }

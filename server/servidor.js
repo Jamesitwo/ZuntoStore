@@ -404,6 +404,8 @@ export function crearManejador({
     [/^\/api\/asignacion\/(config|probar)$/, "8"],
     [/^\/api\/asignacion(\/|$)/, "2"],
     [/^\/api\/anuncios(\/|$)/, "4"],
+    // la vuelta de TopView (OAuth) llega sin sesion: la valida el `state`
+    [/^\/api\/creador\/topview\/callback$/, null],
     [/^\/api\/creador(\/|$)/, "4"],
     // configuracion sensible: subida, IA, Lucid Bot, sesion de Dropi, credenciales
     [/^\/api\/(subida|llm|lucidbot|dropi|credenciales|mapas|apikey)(\/|$)/, "8"],
@@ -2335,6 +2337,24 @@ export function crearManejador({
       return;
     }
 
+    // ---- GET /api/creador/topview/callback?code&state (vuelta de TopView) ----
+    if (req.method === "GET" && ruta === "/api/creador/topview/callback") {
+      const u = new URL(req.url ?? "/", "http://localhost");
+      let destino = "/creador?topview=ok";
+      try {
+        if (!creador) throw new Error("El creador no está montado");
+        const err = u.searchParams.get("error");
+        if (err) throw new Error(u.searchParams.get("error_description") || `TopView respondió: ${err}`);
+        const r = await creador.completarTopView(u.searchParams.get("state"), u.searchParams.get("code"));
+        if (r?.creditos !== null && r?.creditos !== undefined) destino += `&creditos=${encodeURIComponent(r.creditos)}`;
+      } catch (e) {
+        destino = `/creador?topview=error&msg=${encodeURIComponent(String(e?.message ?? e).slice(0, 300))}`;
+      }
+      res.writeHead(302, { location: destino, "cache-control": "no-store" });
+      res.end();
+      return;
+    }
+
     // ---- Creador de campanas IA (/api/creador/...) ----
     if (ruta.startsWith("/api/creador/")) {
       autorizar(req);
@@ -2360,6 +2380,15 @@ export function crearManejador({
       }
       if (req.method === "GET" && ruta === "/api/creador/creditos") return responder(() => c.creditos());
       if (req.method === "POST" && ruta === "/api/creador/probar-ia") return responder(() => c.probarIA());
+      if (req.method === "POST" && ruta === "/api/creador/topview/conectar") {
+        // la vuelta tiene que llegar a ESTE dominio (zunto.store o localhost)
+        const host = String(req.headers["x-forwarded-host"] ?? req.headers.host ?? "").split(",")[0].trim();
+        const proto = String(req.headers["x-forwarded-proto"] ?? "").split(",")[0].trim() || (/^(localhost|127\.)/.test(host) ? "http" : "https");
+        const cuerpo = await leerCuerpo(req);
+        // en desarrollo el panel va por otro puerto (Vite): se acepta su origen solo si es localhost
+        const origen = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(String(cuerpo?.origen ?? "")) ? cuerpo.origen : `${proto}://${host}`;
+        return responder(() => c.conectarTopView(`${origen}/api/creador/topview/callback`));
+      }
       if (req.method === "GET" && ruta === "/api/creador/paginas") return responder(() => c.paginas());
       if (req.method === "GET" && ruta === "/api/creador/proyectos") return responder(() => ({ proyectos: c.lista() }));
       if (req.method === "POST" && ruta === "/api/creador/proyectos") {

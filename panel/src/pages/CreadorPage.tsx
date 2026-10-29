@@ -86,6 +86,23 @@ function InicioCreador() {
     void cargar();
   }, [cargar]);
 
+  // vuelta de "Conectar TopView" (/creador?topview=ok|error)
+  const toastInicio = useToast();
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const r = q.get("topview");
+    if (!r) return;
+    if (r === "ok") {
+      const cr = q.get("creditos");
+      toastInicio.success(`Cuenta de TopView conectada${cr ? `: ${cr} créditos disponibles` : ""}`);
+    } else {
+      setError(`No se pudo conectar TopView: ${q.get("msg") ?? "error desconocido"}`);
+    }
+    setPestana("ajustes");
+    window.history.replaceState(null, "", "/creador");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const listo = ajustes?.topview.configurada && ajustes?.meta.conectada;
 
   return (
@@ -105,9 +122,9 @@ function InicioCreador() {
           ) : null}
           {!ajustes.topview.configurada ? (
             <>
-              Falta la API key de TopView:{" "}
+              Falta conectar TopView:{" "}
               <button type="button" className="btn-link" onClick={() => setPestana("ajustes")}>
-                configúrala en Ajustes
+                conéctalo en Ajustes
               </button>
               .
             </>
@@ -473,6 +490,35 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
     }
   };
 
+  const [conectando, setConectando] = useState(false);
+  const conectarCuenta = async () => {
+    setConectando(true);
+    setError(null);
+    try {
+      const r = await creador.conectarTopView();
+      window.location.href = r.url;
+    } catch (e) {
+      setConectando(false);
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const desconectarCuenta = async () => {
+    try {
+      onCambio(await creador.guardarAjustes({ desconectarTopview: true }));
+      setCreditos(null);
+      toast.success("Cuenta de TopView desconectada");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const cambiarModo = async (modo: "api" | "cuenta") => {
+    try {
+      onCambio(await creador.guardarAjustes({ topviewModo: modo }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const probar = async () => {
     setCreditos("…");
     try {
@@ -558,12 +604,53 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
       <div className="card">
         <h3 className="card-title">TopView</h3>
         <p className="muted small">
+          Imágenes con {ajustes.modelos.imagen} (~{ajustes.costos.imagen} créditos) y videos con {ajustes.modelos.video} (~
+          {ajustes.costos.video} créditos cada uno).
+        </p>
+        {ajustes.topview.cuenta ? (
+          <div className="creador-conexion ok">
+            <div>
+              <strong>✓ Cuenta de TopView conectada</strong>
+              <span className="muted small">
+                Usa los créditos de tu plan{ajustes.topview.cuenta.conectado ? ` · desde ${fecha(ajustes.topview.cuenta.conectado)}` : ""}
+                {ajustes.topview.modo === "api" ? " · ahora en pausa: estás usando la API key" : ""}
+              </span>
+            </div>
+            <div className="row gap">
+              <button type="button" className="btn ghost" onClick={() => void probar()}>
+                Ver créditos
+              </button>
+              <button type="button" className="btn ghost" disabled={conectando} onClick={() => void conectarCuenta()}>
+                Reconectar
+              </button>
+              <button type="button" className="btn ghost" onClick={() => void desconectarCuenta()}>
+                Desconectar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="creador-conexion">
+            <div>
+              <strong>Conecta tu cuenta de TopView</strong>
+              <span className="muted small">
+                Inicias sesión en TopView y autorizas a Zunto, igual que con el conector de Claude. Usa los créditos de tu plan, no los
+                de la API.
+              </span>
+            </div>
+            <button type="button" className="btn primary" disabled={conectando} onClick={() => void conectarCuenta()}>
+              {conectando ? "Abriendo TopView…" : "Conectar TopView"}
+            </button>
+          </div>
+        )}
+        {creditos ? <span className="badge ok">{creditos}</span> : null}
+        <details className="creador-api" open={ajustes.topview.modo === "api" && !ajustes.topview.cuenta}>
+          <summary>O usar una API key de TopView (créditos de la API, aparte del plan)</summary>
+        <p className="muted small">
           La API key y el UID salen de{" "}
           <a href="https://www.topview.ai/api-settings" target="_blank" rel="noreferrer">
             topview.ai → API settings
           </a>
-          . Se guardan cifradas y solo para tu usuario. Imágenes con {ajustes.modelos.imagen} (~{ajustes.costos.imagen} créditos) y
-          videos con {ajustes.modelos.video} (~{ajustes.costos.video} créditos cada uno).
+          . Se guardan cifradas y solo para tu usuario.
         </p>
         <div className="form-grid">
           <Campo id="tv-key" label="API key" ayuda={ajustes.topview.key ? `Guardada: ${ajustes.topview.key}. Déjala vacía para no cambiarla.` : undefined}>
@@ -573,12 +660,24 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
             <input id="tv-uid" value={uid} onChange={(e) => setUid(e.target.value)} />
           </Campo>
         </div>
-        <div className="row gap">
-          <button type="button" className="btn ghost" disabled={!ajustes.topview.configurada} onClick={() => void probar()}>
-            Probar conexión
-          </button>
-          {creditos ? <span className="badge ok">{creditos}</span> : null}
-        </div>
+        {ajustes.topview.cuenta && ajustes.topview.key ? (
+          <label className="check-linea">
+            <input
+              type="checkbox"
+              checked={ajustes.topview.modo === "api"}
+              onChange={(e) => void cambiarModo(e.target.checked ? "api" : "cuenta")}
+            />
+            Generar con la API key en vez de la cuenta
+          </label>
+        ) : null}
+        {!ajustes.topview.cuenta ? (
+          <div className="row gap">
+            <button type="button" className="btn ghost" disabled={!ajustes.topview.configurada} onClick={() => void probar()}>
+              Probar API key
+            </button>
+          </div>
+        ) : null}
+        </details>
       </div>
 
       <div className="card">

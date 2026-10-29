@@ -84,7 +84,14 @@ export interface ResumenProyecto {
 }
 
 export interface AjustesCreador {
-  topview: { configurada: boolean; key: string; uid: string };
+  topview: {
+    configurada: boolean;
+    /** "cuenta": por el conector con los créditos del plan · "api": API key */
+    modo: "cuenta" | "api" | null;
+    cuenta: { conectado: string | null } | null;
+    key: string;
+    uid: string;
+  };
   cuentaId: string;
   paginaId: string;
   paginaNombre: string;
@@ -110,6 +117,8 @@ export const creador = {
   guardarAjustes: (cambios: Record<string, unknown>) =>
     backend<AjustesCreador & { ok: boolean }>(`${P}/ajustes`, { method: "POST", body: cambios }),
   probarIA: () => backend<{ ok: boolean; msg: string }>(`${P}/probar-ia`, { method: "POST", body: {} }),
+  conectarTopView: () =>
+    backend<{ ok: boolean; url: string }>(`${P}/topview/conectar`, { method: "POST", body: { origen: window.location.origin } }),
   creditos: () => backend<{ ok: boolean; creditos: number | null }>(`${P}/creditos`),
   paginas: () => backend<{ ok: boolean; paginas: Array<{ id: string; nombre: string }> }>(`${P}/paginas`),
   lista: () => backend<{ ok: boolean; proyectos: ResumenProyecto[] }>(`${P}/proyectos`),

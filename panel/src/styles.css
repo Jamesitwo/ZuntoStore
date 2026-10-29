@@ -5536,3 +5536,10 @@ tr.fila-marcada > td { background: color-mix(in srgb, var(--primary, #7c3aed) 9%
 .creador-porque { margin: 0; font-size: 12px; line-height: 1.4; }
 .creador-estilo { display: inline-block; padding: 1px 8px; border-radius: 999px; background: #f3e8ff; color: var(--primary); font-weight: 600; margin-right: 2px; }
 @media (max-width: 640px) { .creador-niveles { grid-template-columns: 1fr; } }
+.creador-conexion { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: #faf8ff; margin: 6px 0 10px; }
+.creador-conexion > div:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 260px; }
+.creador-conexion.ok { background: #f0fdf4; border-color: #bbf7d0; }
+.creador-conexion.ok strong { color: #15803d; }
+.creador-api { margin-top: 10px; border-top: 1px solid var(--line-soft, #eee); padding-top: 8px; }
+.creador-api summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.creador-api[open] summary { margin-bottom: 8px; }
