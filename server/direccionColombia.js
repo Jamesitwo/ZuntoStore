@@ -114,7 +114,13 @@ export function parsearDireccion(direccion) {
   return null;
 }
 
-function parsearDesdeElInicio(direccion) {
+function parsearDesdeElInicio(original) {
+  const direccion = String(original ?? "")
+    // "78Asur" = 78A Sur
+    .replace(/(\d\s*[a-zA-Z]?)(sur|este)\b/gi, "$1 $2")
+    // letra del cruce pegada a la placa tambien despues de "No"/"número":
+    // "número 50f34" = número 50F 34
+    .replace(/((?:\bn[o°º]\.?|\bnro\.?|\bn[uú]mero|\bnum\.?)\s*\d{1,3}\s*[a-zA-Z])(\d{1,3})\b/i, "$1 $2");
   const t = normalizarTextoDir(direccion)
     .replace(/\s*#\s*/g, " # ")
     // letra del cruce pegada a la placa: "# 82 C19" / "# 82c19" = cruce 82C, placa 19
@@ -158,7 +164,9 @@ function restoConMismaRegla(original, re) {
     .trim()
     .replace(/\s*#\s*/g, " # ")
     .replace(/(#\s*\d{1,3}\s*[a-zA-Z])(\d{1,3})\b/, "$1 $2");
-  const bajo = orig.toLowerCase();
+  // minusculas y sin tildes, letra por letra (mismo largo que el original)
+  const SIN = { á: "a", é: "e", í: "i", ó: "o", ú: "u", ü: "u", ñ: "n", à: "a", è: "e", ì: "i", ò: "o", ù: "u" };
+  const bajo = orig.toLowerCase().replace(/[áéíóúüñàèìòù]/g, (c) => SIN[c] ?? c);
   if (bajo.length !== orig.length) return null;
   const m = bajo.match(re);
   if (!m) return null;

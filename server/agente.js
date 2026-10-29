@@ -189,6 +189,8 @@ export function coincideDireccion(chat, pedido, { referencias = "" } = {}) {
   if (!tokens(pedido).length) {
     return { ok: false, razon: "el pedido no tiene direccion para comparar" };
   }
+  // el mismo texto: coincide (aunque no se entienda su formato)
+  if (tokens(chat).join(" ") === tokens(pedido).join(" ")) return { ok: true, razon: "" };
   // misma calle y numeros (aunque una traiga ciudad o barrio de mas): coincide
   const kChat = claveCalle(chat);
   if (kChat && kChat === claveCalle(pedido)) return { ok: true, razon: "" };

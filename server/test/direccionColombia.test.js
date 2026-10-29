@@ -225,3 +225,11 @@ test("solo espacios con tres numeros: via, cruce y placa", () => {
   // Bis con letra conserva el espacio
   assert.equal(validarDireccion("Calle 4 Bis B # 10-20").normalizada, "Calle 4 Bis B # 10-20");
 });
+
+test("pegados: «78Asur» y «número 50f34»", () => {
+  assert.equal(
+    validarDireccion("Calle 78Asur número 50f34 (a 7 minutos caminando de la estación del metro)").normalizada,
+    "Calle 78A Sur # 50F-34, (a 7 minutos caminando de la estación del metro)",
+  );
+  assert.equal(claveCalle("Calle 78Asur número 50f34"), claveCalle("Calle 78A Sur # 50F-34"));
+});
