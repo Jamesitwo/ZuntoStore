@@ -66,7 +66,7 @@ import { crearPedidosPorEnvio } from "./pedidosPorEnvio.js";
 import { crearApiKeys } from "./apiKeys.js";
 import { cifradoActivo } from "./secretos.js";
 import { crearVerificadorSesion, tienePermiso, tieneTienda } from "./sesionPanel.js";
-import { direccionConReferencias, recogeEnOficina } from "./direccionColombia.js";
+import { direccionConReferencias, recogeEnOficina, validarDireccion } from "./direccionColombia.js";
 
 const LIMITE_CUERPO = 256 * 1024; // 256 KB
 const VERSION = "1.0.0";
@@ -1336,6 +1336,17 @@ export function crearManejador({
           if (ev) {
             resumen.direccion = ev.direccion;
             r.validacion = { ...r.validacion, checks: [...(r.validacion?.checks ?? []), ev.check] };
+          }
+          // numero pegado que el mapa no separo: no se sube con el numero mal
+          if (r.direccionEnvio?.numeroPegado && !validarDireccion(resumen.direccion).ok) {
+            json(res, 409, {
+              ok: false,
+              id,
+              accion: "frenar",
+              motivos: [{ campo: "direccionValida", detalle: `el número de la dirección viene pegado («${resumen.direccion}») y el mapa no confirmó cómo se separa: corrígela en el pedido` }],
+              subido: false,
+            });
+            return;
           }
         }
 

@@ -10,6 +10,7 @@
 // Todo lo de comparacion es puro y sin red: se puede probar sin LLM ni APIs.
 
 import { diasHasta, fechaDeExtraccion } from "./fechaEntrega.js";
+import { candidatosNumeroPegado } from "./validadorDireccion.js";
 import { claveCalle, recogeEnOficina, validarDireccion } from "./direccionColombia.js";
 
 /** Separa los acentos y baja a minusculas: "Medellin" == "medellín". */
@@ -213,6 +214,17 @@ export function validarPedido(resumen, extraido, { oficina = null } = {}) {
   const dirEnvio = oficina
     ? { ok: true, detalle: `recoge en oficina de ${oficina}: no lleva calle, la oficina se elige en Dropi`, normalizada: null }
     : validarDireccion(resumen?.direccion, extraido?.direccionEnvio ?? null, { referencias: resumen?.referencias ?? "" });
+  // numero pegado ("Cra 110AA #3021"): no se adivina aqui; el mapa decide
+  // como se separa en el paso siguiente (si no lo confirma, no se sube)
+  if (!oficina && !dirEnvio.ok) {
+    const cands = candidatosNumeroPegado(resumen?.direccion);
+    if (cands.length) {
+      dirEnvio.ok = true;
+      dirEnvio.numeroPegado = true;
+      dirEnvio.normalizada = null;
+      dirEnvio.detalle = `el número viene pegado: el mapa decide cómo se separa (se prueba ${cands.map((c) => `«${c}»`).join(" y ")})`;
+    }
+  }
 
   const lineas = Array.isArray(resumen?.productos) ? resumen.productos : [];
   const unaLinea = lineas.length === 1;

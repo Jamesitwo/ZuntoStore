@@ -342,3 +342,16 @@ test("direccion: el chat trae nombre, barrio, ciudad y telefono de mas; el barri
   // otra manzana tampoco
   assert.equal(coincideDireccion(chat, "Manzana C casa 9 etapa 3", { referencias: "El Bunde" }).ok, false);
 });
+
+test("numero pegado («#3021»): no se frena aqui, el mapa decide como se separa", async () => {
+  const r = await ejecutarAgente({
+    resumen: { ...RESUMEN, direccion: "Carrera 110AA #3021, Primer piso, Barrio Nuevo" },
+    mensajes: [],
+    extraer: async () => ({ ...EXTRAIDO_BIEN, direccion: "Carrera 110AA #3021, Primer piso, Barrio Nuevo" }),
+  });
+  const ch = r.validacion.checks.find((c) => c.campo === "direccionValida");
+  assert.equal(ch.ok, true);
+  assert.match(ch.detalle, /número viene pegado.*Cra 110AA # 30-21/);
+  assert.equal(r.direccionEnvio.numeroPegado, true);
+  assert.equal(r.direccionInvalida, false);
+});

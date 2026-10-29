@@ -19,7 +19,7 @@ import { ErrorApi } from "./errores.js";
 import { ejecutarAgente, parsearPrecio, resumenDePedido, textoVariantes } from "./agente.js";
 import { varianteDeProducto } from "./variantes.js";
 import { cambiarEstado } from "./estado.js";
-import { direccionConReferencias, recogeEnOficina } from "./direccionColombia.js";
+import { direccionConReferencias, recogeEnOficina, validarDireccion } from "./direccionColombia.js";
 import { oficinaQueCoincide } from "./oficinasInter.js";
 import { DIRECCION_OFICINA_INTER } from "./dropiNavegador.js";
 
@@ -180,6 +180,16 @@ export async function evaluarDireccion({ validador, minimo, direccion, referenci
   if (!nota) return null; // oficina: no aplica
   const validacion = resumirValidacion(r, min);
   const enlace = r.mapa?.mapa ? ` · ${r.mapa.mapa}` : "";
+  // numero pegado que ni el mapa pudo separar: no se sube con el numero mal
+  if (r.formato && r.formato.ok === false) {
+    return {
+      ok: false,
+      calificacion: nota.puntos,
+      direccion,
+      validacion,
+      check: { campo: "direccionMapa", ok: false, detalle: `calificación ${nota.puntos}/100: ${r.resumen ?? r.formato?.detalle ?? "la dirección no tiene un formato válido"}` },
+    };
+  }
   if (!nota.verificada) {
     return {
       ok: true,
@@ -195,7 +205,8 @@ export async function evaluarDireccion({ validador, minimo, direccion, referenci
   }
   const ok = nota.puntos >= min;
   // la direccion que Google confirmo (p. ej. numero pegado ya separado)
-  const final = ok && r.sugerida && r.mapa?.veredicto === "exacta" ? r.sugerida : direccion;
+  const separada = ok && r.formato?.ok && r.formato.normalizada && !validarDireccion(direccion).ok ? r.formato.normalizada : null;
+  const final = separada ?? (ok && r.sugerida && r.mapa?.veredicto === "exacta" ? r.sugerida : direccion);
   return {
     ok,
     calificacion: nota.puntos,
@@ -997,6 +1008,15 @@ export function crearSubidaAutomatica({
                 continue;
               }
               direccionEnvio = ev.direccion;
+            }
+            // numero pegado: si el mapa no lo separo (o no se miro), no se sube
+            if (r2.direccionEnvio?.numeroPegado && !validarDireccion(direccionEnvio).ok) {
+              const det = `el número de la dirección viene pegado («${direccionEnvio}») y el mapa no confirmó cómo se separa: corrígela en el pedido (p. ej. «# 30-21»)`;
+              marcarP("direccion-invalida", det);
+              invalidas.push({ id, detalle: det, contacto: { ...contacto } });
+              frenados++;
+              detalle.push({ id, accion: "direccion-invalida" });
+              continue;
             }
           }
 

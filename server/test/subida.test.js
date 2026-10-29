@@ -1493,3 +1493,39 @@ test("limite de dias en 0: sin limite", async () => {
   s.detener();
   fs.rmSync(ruta, { force: true });
 });
+
+test("numero pegado sin mapa que lo confirme: no se sube", async () => {
+  const conPegado = { ...COMPLETO, Direccion: "Carrera 92 #7802" };
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: conPegado }],
+    extraido: { producto: "Taladro Inalambrico 68V", cantidad: 1, precioAcordado: 105690, direccion: "Carrera 92 #7802", clienteConfirmo: true, entregaFutura: false, incertidumbre: [] },
+  });
+  s.configurar({ automatico: true, dryRun: false });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 0);
+  assert.equal(s.estadoPedido(1).accion, "direccion-invalida");
+  assert.match(s.estadoPedido(1).detalle, /viene pegado/);
+  s.detener();
+  fs.rmSync(ruta, { force: true });
+});
+
+test("evaluarDireccion: numero pegado que el mapa separo se envia separado", async () => {
+  const { evaluarDireccion } = await import("../subidaAutomatica.js");
+  const validador = {
+    async validar() {
+      return {
+        formato: { ok: true, normalizada: "Cra 110AA # 30-21, Barrio Nuevo" },
+        mapa: { veredicto: "aproximada" },
+        calificacion: { puntos: 75, verificada: true },
+        resumen: "número separado",
+        avisos: [],
+      };
+    },
+  };
+  const r = await evaluarDireccion({ validador, minimo: 50, direccion: "Carrera 110AA #3021, Barrio Nuevo", ciudad: "Bogotá" });
+  assert.equal(r.ok, true);
+  assert.equal(r.direccion, "Cra 110AA # 30-21, Barrio Nuevo");
+  // sin poder separarlo: no
+  const malo = { async validar() { return { formato: { ok: false, detalle: "número pegado" }, calificacion: { puntos: 10, verificada: false }, resumen: "no se pudo", avisos: [] }; } };
+  assert.equal((await evaluarDireccion({ validador: malo, minimo: 50, direccion: "Carrera 110AA #3021" })).ok, false);
+});
