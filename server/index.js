@@ -9,6 +9,7 @@ import { cargarConfig, faltantesDeConfig } from "./config.js";
 import { crearClienteInter } from "./interrapidisimo.js";
 import { crearRegistroAnuncios } from "./anunciosTenant.js";
 import { crearPanelEstatico } from "./panelEstatico.js";
+import { crearCreadorCampanas } from "./creadorCampanas.js";
 import { configDeCuenta, crearRegistroCuentas } from "./cuentas.js";
 import { crearServiciosCuenta, crearTurnoDropi } from "./serviciosCuenta.js";
 import { crearServidorCuentas } from "./servidorCuentas.js";
@@ -62,6 +63,12 @@ const anuncios = crearRegistroAnuncios({
   rutaCompartida: config.ANUNCIOS_CONFIG,
   lucid: null,
 });
+// creador de campanas IA: TopView + Meta, por usuario (usa su token de Anuncios)
+const creador = crearCreadorCampanas({
+  baseDir: config.ANUNCIOS_DIR,
+  credencialMeta: (usuario) => anuncios.credencial(usuario),
+});
+creador.arrancar();
 // el panel (build de Vite) en el mismo servicio, si PANEL_DIR lo trae
 const panel = crearPanelEstatico({ dir: config.PANEL_DIR, lucidOrigen: new URL(config.LUCID_BASE).origin });
 if (panel) console.log(`[panel] sirviendo el panel desde ${panel.dir}`);
@@ -71,7 +78,7 @@ const multi = crearServidorCuentas({
   registro,
   crearServicios: (cuenta) =>
     crearServiciosCuenta({ cuenta, config: configDeCuenta(config, cuenta), inter, turnoDropi }),
-  comunes: { inter, anuncios, panel },
+  comunes: { inter, anuncios, panel, creador },
 });
 const server = multi.server;
 const principal = multi.de(registro.get(1)).servicios;

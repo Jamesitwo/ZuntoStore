@@ -137,6 +137,8 @@ export function crearManejador({
   programados = null,
   // etiquetas de pedidos (crearEtiquetas)
   etiquetas = null,
+  // creador de campanas IA (crearCreadorCampanas), comun a todas las cuentas
+  creador = null,
 }) {
   // clave de integraciones: la de la variable API_KEY y/o la generada en el panel
   const claves = apiKeys ?? crearApiKeys({ claveEnv: config.API_KEY });
@@ -402,6 +404,7 @@ export function crearManejador({
     [/^\/api\/asignacion\/(config|probar)$/, "8"],
     [/^\/api\/asignacion(\/|$)/, "2"],
     [/^\/api\/anuncios(\/|$)/, "4"],
+    [/^\/api\/creador(\/|$)/, "4"],
     // configuracion sensible: subida, IA, Lucid Bot, sesion de Dropi, credenciales
     [/^\/api\/(subida|llm|lucidbot|dropi|credenciales|mapas|apikey)(\/|$)/, "8"],
   ];
@@ -2330,6 +2333,54 @@ export function crearManejador({
         throw new ErrorApi(400, e.message);
       }
       return;
+    }
+
+    // ---- Creador de campanas IA (/api/creador/...) ----
+    if (ruta.startsWith("/api/creador/")) {
+      autorizar(req);
+      if (!creador) throw new ErrorApi(503, "El creador de campañas no está montado en este servidor");
+      const usuario = usuarioDe(req);
+      if (!usuario) throw new ErrorApi(401, "El creador de campañas es por usuario: entra con tu usuario del panel");
+      const c = creador.para(usuario, {
+        llm: { base: config.LLM_BASE, modelo: config.LLM_MODELO, apiKey: config.LLM_API_KEY },
+      });
+      const m = ruta.match(/^\/api\/creador\/proyectos\/([a-z0-9_]+)(?:\/(planear|generar|campana|activar|creativos))?$/i);
+      const responder = async (fn) => {
+        try {
+          json(res, 200, { ok: true, ...(await fn()) });
+        } catch (e) {
+          if (e instanceof ErrorApi) throw e;
+          throw new ErrorApi(400, e?.message ?? String(e));
+        }
+      };
+      if (req.method === "GET" && ruta === "/api/creador/ajustes") return responder(() => c.ajustes());
+      if (req.method === "POST" && ruta === "/api/creador/ajustes") {
+        const cuerpo = await leerCuerpo(req);
+        return responder(() => c.guardarAjustes(cuerpo ?? {}));
+      }
+      if (req.method === "GET" && ruta === "/api/creador/creditos") return responder(() => c.creditos());
+      if (req.method === "GET" && ruta === "/api/creador/paginas") return responder(() => c.paginas());
+      if (req.method === "GET" && ruta === "/api/creador/proyectos") return responder(() => ({ proyectos: c.lista() }));
+      if (req.method === "POST" && ruta === "/api/creador/proyectos") {
+        const cuerpo = await leerCuerpo(req);
+        return responder(() => ({ proyecto: c.crear(cuerpo ?? {}) }));
+      }
+      if (m) {
+        const [, id, accion] = m;
+        if (!accion && req.method === "GET") return responder(() => ({ proyecto: c.get(id) }));
+        if (!accion && req.method === "DELETE") return responder(() => c.borrar(id));
+        if (req.method === "POST") {
+          const cuerpo = await leerCuerpo(req);
+          if (!accion) return responder(() => ({ proyecto: c.editar(id, cuerpo ?? {}) }));
+          if (accion === "planear") return responder(() => ({ proyecto: c.planear(id) }));
+          if (accion === "creativos") return responder(() => ({ proyecto: c.agregarCreativo(id, cuerpo?.tipo) }));
+          if (accion === "generar") return responder(async () => ({ proyecto: await c.generar(id, { ids: cuerpo?.ids ?? null }) }));
+          if (accion === "campana") return responder(() => ({ proyecto: c.crearCampana(id) }));
+          if (accion === "activar") {
+            return responder(async () => ({ proyecto: await c.activar(id, { pausar: Boolean(cuerpo?.pausar) }) }));
+          }
+        }
+      }
     }
 
     json(res, 404, { ok: false, msg: `Ruta no encontrada: ${req.method} ${ruta}` });

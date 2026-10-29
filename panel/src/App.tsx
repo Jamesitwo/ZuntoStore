@@ -12,6 +12,7 @@ import { ProductosPage } from "./pages/ProductosPage";
 import { ClientesPage } from "./pages/ClientesPage";
 import { MetricasPage } from "./pages/MetricasPage";
 import { AnunciosPage } from "./pages/AnunciosPage";
+import { CreadorPage } from "./pages/CreadorPage";
 import { AjustesPage } from "./pages/AjustesPage";
 
 /**
@@ -105,6 +106,22 @@ export default function App() {
           element={
             <Permitido seccion="rentabilidad" muestra="Rentabilidad de anuncios">
               <AnunciosPage />
+            </Permitido>
+          }
+        />
+        <Route
+          path="/creador"
+          element={
+            <Permitido seccion="rentabilidad" muestra="Creador IA">
+              <CreadorPage />
+            </Permitido>
+          }
+        />
+        <Route
+          path="/creador/:id"
+          element={
+            <Permitido seccion="rentabilidad" muestra="Creador IA">
+              <CreadorPage />
             </Permitido>
           }
         />

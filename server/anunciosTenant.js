@@ -371,5 +371,27 @@ export function crearRegistroAnuncios({
     };
   }
 
-  return { para, estado, conectar, guardarCuentas, desconectar, slugDe, _instancias: instancias };
+  /**
+   * Token de Meta de este usuario (para crear campanas desde el Creador IA).
+   * Solo el suyo: sin cuenta propia conectada devuelve null.
+   */
+  function credencial(usuario) {
+    const slug = slugDe(usuario);
+    if (!slug || !fs.existsSync(rutaPersonal(slug))) return null;
+    const cfg = leerJson(rutaPersonal(slug), null);
+    if (!cfg?.token) return null;
+    return {
+      token: cfg.token,
+      version: cfg.version || compartido().version || "v25.0",
+      cuentas: (Array.isArray(cfg.candidatas) && cfg.candidatas.length ? cfg.candidatas : cfg.cuentas ?? []).map((c) => ({
+        id: String(c.id),
+        nombre: c.nombre ?? String(c.id),
+        moneda: c.moneda ?? "COP",
+        activa: c.activa !== false,
+      })),
+      dir: dirPersonal(slug),
+    };
+  }
+
+  return { para, estado, conectar, guardarCuentas, desconectar, credencial, slugDe, _instancias: instancias };
 }
