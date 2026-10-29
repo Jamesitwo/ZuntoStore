@@ -155,7 +155,7 @@ export function coincidePrecio(precioChat, resumen, tolerancia = 0.01) {
 }
 
 /** ¿La direccion del chat se parece a la del pedido? (contencion de palabras) */
-export function coincideDireccion(chat, pedido) {
+export function coincideDireccion(chat, pedido, { referencias = "" } = {}) {
   if (!tokens(chat).length) {
     return { ok: false, razon: "no se entendio la direccion del chat" };
   }
@@ -165,16 +165,39 @@ export function coincideDireccion(chat, pedido) {
   // misma calle y numeros (aunque una traiga ciudad o barrio de mas): coincide
   const kChat = claveCalle(chat);
   if (kChat && kChat === claveCalle(pedido)) return { ok: true, razon: "" };
-  const c = cobertura(chat, pedido);
-  const numerosChat = tokens(chat).filter((t) => /^\d+[a-z]?$/.test(t));
-  const numerosPedido = tokens(pedido).filter((t) => /^\d+[a-z]?$/.test(t));
+  // el pedido con sus referencias (barrio, conjunto...) es lo que se envia
+  const objetivo = `${pedido} ${referencias ?? ""}`;
+  // el chat suele traer de mas (nombre, ciudad, telefono): se mira tambien al
+  // reves, si TODO lo del pedido esta en el chat
+  const c = cobertura(chat, objetivo);
+  const alReves = cobertura(objetivo, chat);
+  // numeros de la direccion (no telefonos ni cedulas)
+  // (con los de un digito: "casa 9")
+  const numeros = (v) => new Set(normalizarTexto(v).match(/\b\d{1,5}[a-z]?\b/g) ?? []);
+  const numerosChat = numeros(chat);
+  const numerosPedido = numeros(objetivo);
   const numerosCoinciden =
-    numerosChat.length > 0 &&
-    numerosChat.length === numerosPedido.length &&
-    numerosChat.every((n) => numerosPedido.includes(n));
-  return c.valor >= 0.75 && numerosCoinciden
+    numerosChat.size > 0 &&
+    numerosChat.size === numerosPedido.size &&
+    [...numerosChat].every((n) => numerosPedido.has(n));
+  // letras de manzana, bloque, torre... ("Manzana B" no es "Manzana C")
+  const letras = (v) => {
+    const m = new Map();
+    for (const [, k, l] of normalizarTexto(v).matchAll(/\b(manzana|manz|mza|mz|bloque|bl|torre|tr|interior|int|etapa)\.?\s+([a-z])\b/g)) {
+      const g = /^m/.test(k) ? "mz" : /^b/.test(k) ? "bl" : /^t/.test(k) ? "tr" : /^i/.test(k) ? "int" : "et";
+      m.set(g, l);
+    }
+    return m;
+  };
+  const lChat = letras(chat);
+  const lPedido = letras(objetivo);
+  const letrasCoinciden = [...lChat].every(([g, l]) => !lPedido.has(g) || lPedido.get(g) === l);
+  return numerosCoinciden && letrasCoinciden && (c.valor >= 0.75 || alReves.valor >= 0.9)
     ? { ok: true, razon: "" }
-    : { ok: false, razon: `chat "${chat}" vs pedido "${pedido}" (coincidencia ${Math.round(c.valor * 100)}%)` };
+    : {
+        ok: false,
+        razon: `chat "${chat}" vs pedido "${[pedido, referencias].filter(Boolean).join(", ")}" (coincidencia ${Math.round(Math.max(c.valor, alReves.valor) * 100)}%)`,
+      };
 }
 
 /**
@@ -236,7 +259,7 @@ export function validarPedido(resumen, extraido, { oficina = null } = {}) {
     ? recogeEnOficina(extraido?.direccion) === oficina
       ? { ok: true, razon: "" }
       : { ok: false, razon: `el pedido dice recoger en oficina de ${oficina} pero en el chat la dirección es "${extraido?.direccion ?? "sin dato"}"` }
-    : coincideDireccion(extraido?.direccion, resumen?.direccion);
+    : coincideDireccion(extraido?.direccion, resumen?.direccion, { referencias: resumen?.referencias ?? "" });
   checks.push({
     campo: "direccion",
     ok: dir.ok,

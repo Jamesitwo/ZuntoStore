@@ -332,3 +332,13 @@ test("producto con variantes: precio y cantidad salen de la variante", () => {
   ]);
   assert.equal(textoVariantes(r), "2 x Copa: Blanca; Tamaño: 150 cm");
 });
+
+test("direccion: el chat trae nombre, barrio, ciudad y telefono de mas; el barrio esta en las referencias", () => {
+  const chat = "Luis Arturo Arango manzana B casa 9 etapa 3 barrio el bunde Ibagué tolima, tel . 3151151258";
+  assert.equal(coincideDireccion(chat, "Manzana B casa 9 etapa 3", { referencias: "El Bunde" }).ok, true);
+  assert.equal(coincideDireccion(chat, "Manzana B casa 9 etapa 3").ok, true);
+  // otro numero de casa no coincide
+  assert.equal(coincideDireccion(chat, "Manzana B casa 8 etapa 3", { referencias: "El Bunde" }).ok, false);
+  // otra manzana tampoco
+  assert.equal(coincideDireccion(chat, "Manzana C casa 9 etapa 3", { referencias: "El Bunde" }).ok, false);
+});
