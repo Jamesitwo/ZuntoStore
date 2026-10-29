@@ -174,3 +174,44 @@ test("utilidades: presupuesto en unidades de Meta, plan y prompt", () => {
   assert.match(pu, /\$199\.900/);
   assert.match(pu, /<<<Image3>>>/);
 });
+
+test("con API key de Claude el plan lo escribe Claude mirando las fotos", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "creador-"));
+  const pedidos = [];
+  let primera = true;
+  const fetcher = async (url, op = {}) => {
+    const u = String(url);
+    if (u === "https://api.anthropic.com/v1/messages") {
+      const body = JSON.parse(op.body);
+      pedidos.push({ body, headers: op.headers });
+      const conFoto = body.messages[0].content.some((b) => b.type === "image");
+      // la primera vez Anthropic no puede abrir la foto: se repite sin ella
+      if (conFoto && primera) {
+        primera = false;
+        return { ok: false, status: 400, json: async () => ({ error: { message: "Unable to download the image url" } }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ stop_reason: "end_turn", content: [{ type: "text", text: "```json\n" + JSON.stringify(PLAN) + "\n```" }] }) };
+    }
+    throw new Error(`no esperado ${u}`);
+  };
+  const creador = crearCreadorCampanas({ baseDir: dir, credencialMeta: () => null, fetcher, log: { warn() {} } });
+  const c = creador.para("ana@zunto.co", { llm: null });
+  c.guardarAjustes({ claudeKey: "sk-ant-secreta-123456", claudeModelo: "claude-opus-5-5" });
+  const aj = c.ajustes();
+  assert.equal(aj.ia.proveedor, "claude");
+  assert.ok(!JSON.stringify(aj).includes("secreta"));
+  const p = c.crear({ producto: { nombre: "Taladro", precio: 199900 }, fotos: ["https://fotos.test/1.jpg"], imagenes: 1, videos: 1 });
+  c.planear(p.id);
+  await espera(() => c.get(p.id).estado === "plan" || c.get(p.id).errorPlan);
+  const fin = c.get(p.id);
+  assert.equal(fin.errorPlan, undefined);
+  assert.equal(fin.creativos.length, 2);
+  assert.match(fin.ia, /Opus/);
+  assert.equal(pedidos.length, 2);
+  assert.equal(pedidos[0].body.model, "claude-opus-5-5");
+  assert.equal(pedidos[0].headers["x-api-key"], "sk-ant-secreta-123456");
+  assert.ok(pedidos[0].body.messages[0].content.some((b) => b.type === "image" && b.source.url === "https://fotos.test/1.jpg"));
+  assert.ok(!pedidos[1].body.messages[0].content.some((b) => b.type === "image"));
+  assert.match(pedidos[0].body.system, /ZUNTO/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

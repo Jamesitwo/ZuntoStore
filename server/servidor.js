@@ -2359,6 +2359,7 @@ export function crearManejador({
         return responder(() => c.guardarAjustes(cuerpo ?? {}));
       }
       if (req.method === "GET" && ruta === "/api/creador/creditos") return responder(() => c.creditos());
+      if (req.method === "POST" && ruta === "/api/creador/probar-ia") return responder(() => c.probarIA());
       if (req.method === "GET" && ruta === "/api/creador/paginas") return responder(() => c.paginas());
       if (req.method === "GET" && ruta === "/api/creador/proyectos") return responder(() => ({ proyectos: c.lista() }));
       if (req.method === "POST" && ruta === "/api/creador/proyectos") {

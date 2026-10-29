@@ -105,6 +105,102 @@ export function promptUsuario(p, { conPersonaje = false } = {}) {
     .join("\n");
 }
 
+/** Modelos de Claude que se pueden elegir (el primero es el de por defecto). */
+export const MODELOS_CLAUDE = [
+  { id: "claude-sonnet-5-5", nombre: "Claude Sonnet 5.5 · recomendado" },
+  { id: "claude-opus-5-5", nombre: "Claude Opus 5.5 · el más fino" },
+  { id: "claude-haiku-5-5", nombre: "Claude Haiku 5.5 · económico" },
+];
+
+/** Saca el JSON de la respuesta (aunque venga envuelto en ```json). */
+export function jsonDeTexto(c) {
+  const t = String(c ?? "");
+  try {
+    return JSON.parse(t);
+  } catch {
+    const m = t.match(/\{[\s\S]*\}/);
+    if (m) {
+      try {
+        return JSON.parse(m[0]);
+      } catch {
+        /* sigue */
+      }
+    }
+  }
+  throw new Error("La IA no devolvió un JSON válido");
+}
+
+/**
+ * Plan con Claude (API de Anthropic). Claude VE las fotos del producto: asi
+ * describe la anatomia real pieza por pieza en los prompts (lo que mas evita
+ * que TopView lo deforme). Si Anthropic no puede abrir las fotos, se repite
+ * sin ellas.
+ */
+export async function pedirPlanClaude({ apiKey, modelo, sistema, usuario, fotos = [], fetcher = globalThis.fetch, timeoutMs = 300000 }) {
+  if (!apiKey) throw new Error("No hay API key de Claude (Creador IA > Ajustes)");
+  const llamar = async (conFotos) => {
+    const contenido = [
+      ...(conFotos
+        ? fotos.slice(0, 7).flatMap((url, i) => [
+            { type: "text", text: `Foto Image${i + 1}:` },
+            { type: "image", source: { type: "url", url } },
+          ])
+        : []),
+      {
+        type: "text",
+        text: `${usuario}\n\n${conFotos && fotos.length ? "Mira las fotos con cuidado: describe el producto tal como se ve (piezas, colores, textos, tamaño). " : ""}Responde SOLO con el JSON, sin texto antes ni después.`,
+      },
+    ];
+    let r;
+    try {
+      r = await fetcher("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({
+          model: modelo || MODELOS_CLAUDE[0].id,
+          max_tokens: 16000,
+          system: sistema,
+          messages: [{ role: "user", content: contenido }],
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (e) {
+      throw new Error(e?.name === "TimeoutError" ? "Claude tardó demasiado en responder" : `No se pudo llamar a Claude: ${e?.message ?? e}`);
+    }
+    const d = await r.json().catch(() => null);
+    if (!r.ok) {
+      const msg = d?.error?.message ?? `HTTP ${r.status}`;
+      const err = new Error(
+        `Claude respondió ${r.status}${r.status === 401 ? " (API key inválida)" : r.status === 429 ? " (límite de uso)" : r.status === 400 && /credit/i.test(msg) ? " (sin saldo)" : ""}: ${String(msg).slice(0, 200)}`,
+      );
+      err.status = r.status;
+      err.porFoto = r.status === 400 && /image|url|media/i.test(msg);
+      throw err;
+    }
+    if (d?.stop_reason === "max_tokens") throw new Error("Claude se quedó sin espacio para responder: pide menos creativos");
+    return jsonDeTexto((d?.content ?? []).filter((b) => b?.type === "text").map((b) => b.text).join(""));
+  };
+  try {
+    return await llamar(fotos.length > 0);
+  } catch (e) {
+    if (e?.porFoto) return llamar(false);
+    throw e;
+  }
+}
+
+/** Prueba la llave de Claude con una peticion minima. */
+export async function probarClaude({ apiKey, modelo, fetcher = globalThis.fetch }) {
+  const r = await fetcher("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({ model: modelo || MODELOS_CLAUDE[0].id, max_tokens: 16, messages: [{ role: "user", content: "Responde: ok" }] }),
+    signal: AbortSignal.timeout(30000),
+  });
+  const d = await r.json().catch(() => null);
+  if (!r.ok) throw new Error(`Claude respondió ${r.status}: ${String(d?.error?.message ?? "").slice(0, 200)}`);
+  return true;
+}
+
 /** Llama a la IA (API compatible con OpenAI) y devuelve el JSON. */
 export async function pedirPlanIA({ base, modelo, apiKey, sistema, usuario, fetcher = globalThis.fetch, timeoutMs = 180000 }) {
   if (!apiKey) throw new Error("No hay API key de la IA (Ajustes > Subida a Dropi > IA que lee los chats)");
@@ -132,20 +228,7 @@ export async function pedirPlanIA({ base, modelo, apiKey, sistema, usuario, fetc
     throw new Error(`La IA respondió ${r.status}${r.status === 401 ? " (API key inválida)" : r.status === 429 ? " (sin saldo o límite)" : ""}: ${t.slice(0, 160)}`);
   }
   const d = await r.json().catch(() => null);
-  const c = String(d?.choices?.[0]?.message?.content ?? "");
-  try {
-    return JSON.parse(c);
-  } catch {
-    const m = c.match(/\{[\s\S]*\}/);
-    if (m) {
-      try {
-        return JSON.parse(m[0]);
-      } catch {
-        /* sigue */
-      }
-    }
-  }
-  throw new Error("La IA no devolvió un JSON válido");
+  return jsonDeTexto(d?.choices?.[0]?.message?.content ?? "");
 }
 
 const txt = (v, max = 4000) => String(v ?? "").trim().slice(0, max);
@@ -196,6 +279,9 @@ export function normalizarPlan(crudo, cantidades) {
  * @param {typeof fetch} [o.fetcher]
  * @param {number} [o.cadaMs]                consulta de tareas de TopView
  */
+/** Que IA escribe el plan: Claude si hay llave (salvo que elijan la de Zunto). */
+const iaDe = (a) => (a.iaProveedor === "zunto" ? "zunto" : a.claudeKey ? "claude" : a.iaProveedor === "claude" ? "claude" : "zunto");
+
 export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = globalThis.fetch, cadaMs = 15000, log = console, esperaVideoMs = 5000 }) {
   const raiz = path.join(baseDir, "creador");
   const dirDe = (slug) => path.join(raiz, slug);
@@ -504,6 +590,12 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
           meta: { conectada: Boolean(c?.token), cuentas: c?.cuentas ?? [] },
           costos: COSTO_CREDITOS,
           modelos: { imagen: DEFECTOS_TOPVIEW.imagen.model, video: DEFECTOS_TOPVIEW.video.model },
+          ia: {
+            proveedor: iaDe(a),
+            claude: { configurada: Boolean(a.claudeKey), key: enmascarar(a.claudeKey ?? ""), modelo: a.claudeModelo || MODELOS_CLAUDE[0].id },
+            modelosClaude: MODELOS_CLAUDE,
+            zunto: { configurada: Boolean(llm?.apiKey), modelo: llm?.modelo ?? "" },
+          },
         };
       },
 
@@ -524,8 +616,20 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
           a.presupuesto = Math.round(n);
         }
         if (cambios.contraEntrega !== undefined) a.contraEntrega = Boolean(cambios.contraEntrega);
+        if (typeof cambios.claudeKey === "string" && cambios.claudeKey.trim()) a.claudeKey = cambios.claudeKey.trim();
+        if (cambios.borrarClaude) delete a.claudeKey;
+        if (typeof cambios.claudeModelo === "string" && MODELOS_CLAUDE.some((m) => m.id === cambios.claudeModelo)) a.claudeModelo = cambios.claudeModelo;
+        if (cambios.iaProveedor === "claude" || cambios.iaProveedor === "zunto") a.iaProveedor = cambios.iaProveedor;
         escribirJsonSeguro(rutaAjustes(slug), a);
         return this.ajustes();
+      },
+
+      /** Prueba la llave de Claude. */
+      async probarIA() {
+        const a = leerAjustes(slug);
+        if (!a.claudeKey) throw new Error("Primero guarda la API key de Claude");
+        await probarClaude({ apiKey: a.claudeKey, modelo: a.claudeModelo, fetcher });
+        return { msg: "Claude responde bien" };
       },
 
       /** Prueba la llave de TopView y devuelve los creditos. */
@@ -617,24 +721,36 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
         const clave = `${slug}/${id}`;
         if (ocupados.has(clave)) throw new Error("Este proyecto ya está trabajando: espera un momento");
         const p = proyecto(id);
-        if (!llm?.apiKey) throw new Error("No hay API key de la IA (Ajustes > Subida a Dropi > IA que lee los chats)");
         if (p.creativos?.some((c) => c.estado === "generando")) throw new Error("Hay creativos generándose: espera a que terminen");
         const a = leerAjustes(slug);
+        const conClaude = iaDe(a) === "claude";
+        if (conClaude && !a.claudeKey) throw new Error("Falta la API key de Claude (Creador IA > Ajustes)");
+        if (!conClaude && !llm?.apiKey) throw new Error("No hay API key de la IA (Ajustes > Subida a Dropi > IA que lee los chats)");
         p.planeando = ahora();
         delete p.errorPlan;
         guardarP(slug, p);
         ocupados.add(clave);
         void (async () => {
           try {
-            const crudo = await pedirPlanIA({
-              ...llm,
-              fetcher,
-              sistema: promptSistema({ marca: a.marca || "ZUNTO", contraEntrega: Boolean(a.contraEntrega) }),
-              usuario: promptUsuario(p, { conPersonaje: p.conPersonaje && Boolean(a.fotoModelo) }),
-            });
+            const conPersonaje = p.conPersonaje && Boolean(a.fotoModelo);
+            const sistema = promptSistema({ marca: a.marca || "ZUNTO", contraEntrega: Boolean(a.contraEntrega) });
+            const usuarioIA = promptUsuario(p, { conPersonaje });
+            const crudo = conClaude
+              ? await pedirPlanClaude({
+                  apiKey: a.claudeKey,
+                  modelo: a.claudeModelo,
+                  fetcher,
+                  sistema,
+                  usuario: usuarioIA,
+                  fotos: [...p.fotos, ...(conPersonaje ? [a.fotoModelo] : [])],
+                })
+              : await pedirPlanIA({ ...llm, fetcher, sistema, usuario: usuarioIA });
             const plan = normalizarPlan(crudo, p.cantidades);
             const fresco = proyecto(id);
-            Object.assign(fresco, plan, { estado: "plan" });
+            Object.assign(fresco, plan, {
+              estado: "plan",
+              ia: conClaude ? (MODELOS_CLAUDE.find((m) => m.id === (a.claudeModelo || MODELOS_CLAUDE[0].id))?.nombre.split(" · ")[0] ?? "Claude") : `IA de Zunto (${llm?.modelo ?? ""})`,
+            });
             delete fresco.planeando;
             guardarP(slug, fresco);
           } catch (e) {

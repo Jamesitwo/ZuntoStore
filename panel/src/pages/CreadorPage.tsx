@@ -395,6 +395,10 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
   const toast = useToast();
   const [key, setKey] = useState("");
   const [uid, setUid] = useState(ajustes.topview.uid);
+  const [iaProveedor, setIaProveedor] = useState(ajustes.ia.proveedor);
+  const [claudeKey, setClaudeKey] = useState("");
+  const [claudeModelo, setClaudeModelo] = useState(ajustes.ia.claude.modelo);
+  const [pruebaIA, setPruebaIA] = useState<string | null>(null);
   const [cuentaId, setCuentaId] = useState(ajustes.cuentaId);
   const [paginaId, setPaginaId] = useState(ajustes.paginaId);
   const [paginas, setPaginas] = useState<Array<{ id: string; nombre: string }>>(
@@ -422,6 +426,9 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
     try {
       const a = await creador.guardarAjustes({
         ...(key.trim() ? { topviewKey: key.trim() } : {}),
+        ...(claudeKey.trim() ? { claudeKey: claudeKey.trim() } : {}),
+        claudeModelo,
+        iaProveedor,
         topviewUid: uid,
         cuentaId,
         paginaId,
@@ -433,6 +440,7 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
       });
       onCambio(a);
       setKey("");
+      setClaudeKey("");
       toast.success("Ajustes guardados");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -452,8 +460,77 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
     }
   };
 
+  const probarIA = async () => {
+    setPruebaIA("…");
+    try {
+      setPruebaIA((await creador.probarIA()).msg);
+    } catch (e) {
+      setPruebaIA(null);
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   return (
     <div className="creador-ajustes">
+      <div className="card">
+        <h3 className="card-title">IA que escribe los prompts y copys</h3>
+        <p className="muted small">
+          Con Claude, la IA <strong>mira las fotos del producto</strong> antes de escribir: describe sus piezas tal como son y TopView
+          lo deforma menos. La API key sale de{" "}
+          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">
+            console.anthropic.com → API keys
+          </a>{" "}
+          (se paga aparte de claude.ai) y se guarda cifrada solo para tu usuario.
+        </p>
+        <div className="form-grid">
+          <Campo id="ia-prov" label="Usar">
+            <select id="ia-prov" value={iaProveedor} onChange={(e) => setIaProveedor(e.target.value as "claude" | "zunto")}>
+              <option value="claude">Claude (Anthropic)</option>
+              <option value="zunto">
+                La IA de Zunto{ajustes.ia.zunto.modelo ? ` (${ajustes.ia.zunto.modelo})` : ""}
+              </option>
+            </select>
+          </Campo>
+          {iaProveedor === "claude" ? (
+            <>
+              <Campo
+                id="ia-key"
+                label="API key de Claude"
+                ayuda={ajustes.ia.claude.key ? `Guardada: ${ajustes.ia.claude.key}. Déjala vacía para no cambiarla.` : undefined}
+              >
+                <input
+                  id="ia-key"
+                  type="password"
+                  autoComplete="off"
+                  value={claudeKey}
+                  onChange={(e) => setClaudeKey(e.target.value)}
+                  placeholder={ajustes.ia.claude.key ? "••••••••" : "sk-ant-…"}
+                />
+              </Campo>
+              <Campo id="ia-modelo" label="Modelo">
+                <select id="ia-modelo" value={claudeModelo} onChange={(e) => setClaudeModelo(e.target.value)}>
+                  {ajustes.ia.modelosClaude.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.nombre}
+                    </option>
+                  ))}
+                </select>
+              </Campo>
+            </>
+          ) : null}
+        </div>
+        {iaProveedor === "claude" ? (
+          <div className="row gap">
+            <button type="button" className="btn ghost" disabled={!ajustes.ia.claude.configurada} onClick={() => void probarIA()}>
+              Probar Claude
+            </button>
+            {pruebaIA ? <span className="badge ok">{pruebaIA}</span> : null}
+          </div>
+        ) : !ajustes.ia.zunto.configurada ? (
+          <div className="banner warn">La IA de Zunto no tiene API key (Ajustes → Subida a Dropi → IA que lee los chats).</div>
+        ) : null}
+      </div>
+
       <div className="card">
         <h3 className="card-title">TopView</h3>
         <p className="muted small">
@@ -671,6 +748,7 @@ function DetalleProyecto({ id }: { id: string }) {
           </button>
         </div>
       ) : null}
+      {p.ia && p.creativos.length ? <p className="muted small">Plan escrito por {p.ia}.</p> : null}
       {p.faltan?.length ? (
         <div className="banner warn">
           <strong>La IA no inventó estos datos (agrégalos al copy si los tienes):</strong> {p.faltan.join(" · ")}

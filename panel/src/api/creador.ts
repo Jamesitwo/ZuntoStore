@@ -41,6 +41,8 @@ export interface Proyecto {
   mensajePredefinido?: string;
   faltan?: string[];
   planeando?: string;
+  /** IA que escribio el plan */
+  ia?: string;
   errorPlan?: string;
   ocupado?: boolean;
   campana: null | {
@@ -78,6 +80,12 @@ export interface AjustesCreador {
   meta: { conectada: boolean; cuentas: Array<{ id: string; nombre: string; moneda: string; activa: boolean }> };
   costos: { imagen: number; video: number };
   modelos: { imagen: string; video: string };
+  ia: {
+    proveedor: "claude" | "zunto";
+    claude: { configurada: boolean; key: string; modelo: string };
+    modelosClaude: Array<{ id: string; nombre: string }>;
+    zunto: { configurada: boolean; modelo: string };
+  };
 }
 
 const P = "/api/creador";
@@ -86,6 +94,7 @@ export const creador = {
   ajustes: () => backend<AjustesCreador & { ok: boolean }>(`${P}/ajustes`),
   guardarAjustes: (cambios: Record<string, unknown>) =>
     backend<AjustesCreador & { ok: boolean }>(`${P}/ajustes`, { method: "POST", body: cambios }),
+  probarIA: () => backend<{ ok: boolean; msg: string }>(`${P}/probar-ia`, { method: "POST", body: {} }),
   creditos: () => backend<{ ok: boolean; creditos: number | null }>(`${P}/creditos`),
   paginas: () => backend<{ ok: boolean; paginas: Array<{ id: string; nombre: string }> }>(`${P}/paginas`),
   lista: () => backend<{ ok: boolean; proyectos: ResumenProyecto[] }>(`${P}/proyectos`),
