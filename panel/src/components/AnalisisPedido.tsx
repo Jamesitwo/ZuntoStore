@@ -3,7 +3,9 @@
 // lo que la IA leyo. Se usa en la tabla de la subida y en el detalle del pedido.
 
 export const NOMBRES_CHEQUEO: Record<string, string> = {
-  productos: "Líneas del pedido",
+  productos: "Productos del pedido",
+  precioLineas: "Precio por producto",
+  variante: "Variante",
   producto: "Producto",
   cantidad: "Cantidad",
   precio: "Precio",

@@ -229,6 +229,76 @@ export function coincideDireccion(chat, pedido, { referencias = "" } = {}) {
       };
 }
 
+/** Productos distintos por pedido que se suben (una orden de Dropi por cada uno). */
+export const MAX_LINEAS = 5;
+
+/**
+ * Pedido con varios productos: cada linea tiene que estar en lo que pidio el
+ * cliente (uno a uno), con la misma cantidad y, si el chat da el precio de
+ * ese producto, el mismo precio (unitario o total de la linea).
+ */
+export function compararLineas(lineas, extraido) {
+  const delChat = Array.isArray(extraido?.productos) ? [...extraido.productos] : [];
+  const usados = new Set();
+  const faltan = [];
+  const cantidadesMal = [];
+  const preciosMal = [];
+  const parejas = [];
+  for (const [i, l] of lineas.entries()) {
+    const nombreLinea = l.variante?.nombre ? `${l.nombre} (${l.variante.nombre})` : l.nombre;
+    let k = -1;
+    for (const [j, c] of delChat.entries()) {
+      if (usados.has(j)) continue;
+      if (coincideProducto(c.producto, [l]).ok) {
+        k = j;
+        break;
+      }
+    }
+    if (k < 0) {
+      faltan.push(nombreLinea || `línea ${i + 1}`);
+      continue;
+    }
+    usados.add(k);
+    const c = delChat[k];
+    parejas.push(`"${c.producto}" -> ${nombreLinea}`);
+    if (Number(c.cantidad) !== Number(l.cantidad)) {
+      cantidadesMal.push(`${nombreLinea}: chat ${c.cantidad}, pedido ${l.cantidad}`);
+    }
+    if (c.precio !== null && c.precio !== undefined) {
+      const unit = parsearPrecio(l.precio);
+      const total = unit !== null ? unit * (Number(l.cantidad) || 1) : null;
+      const cerca = (a, b) => a !== null && b !== null && b > 0 && Math.abs(a - b) / b <= 0.01;
+      if (!cerca(Number(c.precio), unit) && !cerca(Number(c.precio), total)) {
+        preciosMal.push(`${nombreLinea}: chat ${c.precio}, pedido ${unit ?? "sin precio"}${Number(l.cantidad) > 1 ? ` c/u (${total})` : ""}`);
+      }
+    }
+  }
+  const sobran = delChat.filter((_, j) => !usados.has(j)).map((c) => c.producto);
+  const sinLista = delChat.length === 0;
+  return {
+    productos: {
+      ok: !sinLista && !faltan.length && !sobran.length,
+      detalle: sinLista
+        ? "la IA no leyó la lista de productos del chat"
+        : faltan.length || sobran.length
+          ? [faltan.length ? `en el chat no aparece: ${faltan.join(", ")}` : "", sobran.length ? `el chat pide además: ${sobran.join(", ")}` : ""].filter(Boolean).join("; ")
+          : `todos coinciden: ${parejas.join(" · ")}`,
+    },
+    cantidades: {
+      ok: !sinLista && !faltan.length && !cantidadesMal.length,
+      detalle: cantidadesMal.length ? cantidadesMal.join("; ") : faltan.length || sinLista ? "no se pudo comparar" : "coinciden en todos los productos",
+    },
+    precios: {
+      ok: !sinLista && !faltan.length && !preciosMal.length,
+      detalle: preciosMal.length
+        ? `no coincide el precio de: ${preciosMal.join("; ")}`
+        : faltan.length || sinLista
+          ? "no se pudo comparar"
+          : "el precio de cada producto coincide (o el chat no lo dio por separado)",
+    },
+  };
+}
+
 /**
  * Valida el pedido contra lo extraido del chat.
  * Devuelve {ok, checks:[{campo, ok, detalle}]} con TODO evaluado (no corta en
@@ -256,35 +326,48 @@ export function validarPedido(resumen, extraido, { oficina = null } = {}) {
 
   const lineas = Array.isArray(resumen?.productos) ? resumen.productos : [];
   const unaLinea = lineas.length === 1;
+  const varias = lineas.length > 1 && lineas.length <= MAX_LINEAS;
   checks.push({
     campo: "productos",
-    ok: unaLinea,
+    ok: unaLinea || varias,
     detalle: unaLinea
-      ? "el flujo del navegador admite una sola línea de producto"
-      : `el flujo del navegador admite una línea; el pedido trae ${lineas.length}`,
+      ? "un producto: una orden en Dropi"
+      : varias
+        ? `${lineas.length} productos: se sube una orden de Dropi por cada uno, uno después del otro`
+        : lineas.length
+          ? `el pedido trae ${lineas.length} productos (máximo ${MAX_LINEAS})`
+          : "el pedido no trae productos",
   });
 
-  const prod = coincideProducto(extraido?.producto, resumen?.productos ?? []);
-  checks.push({
-    campo: "producto",
-    ok: prod.ok,
-    detalle: prod.ok
-      ? `chat "${extraido?.producto}" -> pedido "${prod.nombre}"`
-      : prod.razon,
-  });
+  if (varias) {
+    // cada linea del pedido tiene que estar en el chat: producto, cantidad y precio
+    const r = compararLineas(lineas, extraido);
+    checks.push({ campo: "producto", ok: r.productos.ok, detalle: r.productos.detalle });
+    checks.push({ campo: "cantidad", ok: r.cantidades.ok, detalle: r.cantidades.detalle });
+    checks.push({ campo: "precioLineas", ok: r.precios.ok, detalle: r.precios.detalle });
+  } else {
+    const prod = coincideProducto(extraido?.producto, resumen?.productos ?? []);
+    checks.push({
+      campo: "producto",
+      ok: prod.ok,
+      detalle: prod.ok
+        ? `chat "${extraido?.producto}" -> pedido "${prod.nombre}"`
+        : prod.razon,
+    });
 
-  const cantidadPedido = unaLinea ? Number(lineas[0]?.cantidad) : NaN;
-  const cantidadChat = Number(extraido?.cantidad);
-  const cantidadOk =
-    unaLinea && Number.isInteger(cantidadPedido) && cantidadPedido > 0 &&
-    Number.isInteger(cantidadChat) && cantidadChat === cantidadPedido;
-  checks.push({
-    campo: "cantidad",
-    ok: cantidadOk,
-    detalle: cantidadOk
-      ? `coincide: ${cantidadPedido} unidad(es)`
-      : `chat: ${Number.isFinite(cantidadChat) ? cantidadChat : "sin dato"}; pedido: ${Number.isFinite(cantidadPedido) ? cantidadPedido : "sin dato"}`,
-  });
+    const cantidadPedido = unaLinea ? Number(lineas[0]?.cantidad) : NaN;
+    const cantidadChat = Number(extraido?.cantidad);
+    const cantidadOk =
+      unaLinea && Number.isInteger(cantidadPedido) && cantidadPedido > 0 &&
+      Number.isInteger(cantidadChat) && cantidadChat === cantidadPedido;
+    checks.push({
+      campo: "cantidad",
+      ok: cantidadOk,
+      detalle: cantidadOk
+        ? `coincide: ${cantidadPedido} unidad(es)`
+        : `chat: ${Number.isFinite(cantidadChat) ? cantidadChat : "sin dato"}; pedido: ${Number.isFinite(cantidadPedido) ? cantidadPedido : "sin dato"}`,
+    });
+  }
 
   const precio = coincidePrecio(extraido?.precioAcordado, resumen);
   checks.push({
@@ -387,8 +470,17 @@ export async function ejecutarAgente({ resumen, mensajes, extraer, oficina = nul
   // el cliente tiene otro pedido reciente, dice si el chat muestra una
   // segunda compra (el codigo decide)
   const hayOtros = Array.isArray(otrosPedidos) && otrosPedidos.length > 0;
+  const lineasPedido = Array.isArray(resumen?.productos) ? resumen.productos : [];
   const extraido = await extraer(mensajes, {
     direccionPedido: resumen?.direccion ?? "",
+    // con varios productos la IA devuelve la lista de lo que pidio el cliente
+    ...(lineasPedido.length > 1
+      ? {
+          productosPedido: lineasPedido
+            .map((l) => `${l.cantidad} x ${l.nombre}${l.variante?.nombre ? ` (${l.variante.nombre})` : ""} a ${l.precio}`)
+            .join("; "),
+        }
+      : {}),
     ...(hayOtros ? { otrosPedidos: textoOtrosPedidos(otrosPedidos) } : {}),
   });
   const fechaSolicitadaEnChat = (Array.isArray(mensajes) ? mensajes : [])

@@ -1276,7 +1276,62 @@ export function crearDropiNavegador(config = {}) {
      *              direccion, departamento, ciudad, transportadoraId, seguro,
      *              tienda (nombre exacto de la tienda en Dropi), soloPreparar }
      */
+    /**
+     * Sube el pedido. Con varios productos se crea UNA orden de Dropi por
+     * producto, una despues de la otra; si una falla se para ahi y se dice
+     * cuales ya quedaron (datos.yaSubidas: {indice: idDropi} las salta al
+     * reintentar, para no duplicarlas).
+     */
     async subirPedido(datos = {}) {
+      const lineas = Array.isArray(datos.productos) ? datos.productos : [];
+      if (lineas.length <= 1) return this.subirUna(datos);
+      const ya = datos.yaSubidas && typeof datos.yaSubidas === "object" ? datos.yaSubidas : {};
+      const ordenes = [];
+      const hechas = () => ordenes.filter((o) => o.ok && (o.creado || o.preparado));
+      for (const [i, l] of lineas.entries()) {
+        if (ya[String(i)] !== undefined) {
+          ordenes.push({ indice: i, ok: true, creado: true, idDropi: ya[String(i)], previa: true, detalle: "ya estaba en Dropi" });
+          continue;
+        }
+        const r = await this.subirUna({ ...datos, productoUrl: l.productoUrl ?? datos.productoUrl, productos: [l] });
+        ordenes.push({ indice: i, ...r });
+        if (!(r.ok && (r.creado || r.preparado))) {
+          const listas = hechas();
+          return {
+            ...r,
+            ordenes,
+            parcial: listas.some((o) => o.creado),
+            detalle:
+              `${r.detalle ?? "No se envió a Dropi"} (producto ${i + 1} de ${lineas.length})` +
+              (listas.length
+                ? `. Ya quedaron en Dropi: ${listas.map((o) => `producto ${o.indice + 1}${o.idDropi ? ` (orden ${o.idDropi})` : ""}`).join(", ")}`
+                : ""),
+          };
+        }
+      }
+      const nuevas = ordenes.filter((o) => !o.previa);
+      const suma = (k) => {
+        const vals = nuevas.map((o) => o.resumenDropi?.[k]).filter((v) => typeof v === "number");
+        return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+      };
+      const ultima = nuevas[nuevas.length - 1] ?? {};
+      return {
+        ok: true,
+        creado: ordenes.every((o) => o.creado),
+        preparado: ordenes.some((o) => o.preparado),
+        seguro: nuevas.every((o) => o.seguro),
+        seguroEncontrado: nuevas.every((o) => o.seguroEncontrado !== false),
+        idDropi: ordenes.map((o) => o.idDropi).filter(Boolean).join(", ") || null,
+        resumenDropi: { ganancia: suma("ganancia"), envio: suma("envio") },
+        envio: ultima.envio,
+        ubicacion: ultima.ubicacion,
+        tienda: ultima.tienda,
+        ordenes,
+        detalle: ordenes.map((o) => `producto ${o.indice + 1}: ${o.detalle}`).join(" · "),
+      };
+    },
+
+    async subirUna(datos = {}) {
       if (subidaEnCurso) {
         return { ok: false, creado: false, ocupado: true, detalle: "Ya hay otra subida a Dropi en curso en este servidor; espera su resultado antes de reintentar." };
       }

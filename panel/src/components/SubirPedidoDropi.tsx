@@ -159,7 +159,8 @@ function VeredictoAutomatico({ id, recarga }: { id: number | string; recarga: nu
 }
 
 const NOMBRES_CHECK: Record<string, string> = {
-  productos: "Cantidad de líneas",
+  productos: "Productos del pedido",
+  precioLineas: "Precio por producto",
   producto: "Producto",
   cantidad: "Cantidad",
   precio: "Precio",

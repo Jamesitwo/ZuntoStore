@@ -59,7 +59,7 @@ import { crearConfigLLM } from "./llmConfig.js";
 import { ejecutarAgente, resumenDePedido, textoVariantes } from "./agente.js";
 import { crearClienteDropi, armarPedidoDropi } from "./dropi.js";
 import { crearDropiNavegador, DIRECCION_OFICINA_INTER } from "./dropiNavegador.js";
-import { crearSubidaAutomatica, otrosPedidosDelCliente, resumirAnalisis, variantesParaDropi } from "./subidaAutomatica.js";
+import { completarNombres, crearSubidaAutomatica, otrosPedidosDelCliente, resumirAnalisis, variantesParaDropi } from "./subidaAutomatica.js";
 import { faltantesDeConfig } from "./config.js";
 import { crearEstadosEnvio } from "./estadosEnvio.js";
 import { crearPedidosPorEnvio } from "./pedidosPorEnvio.js";
@@ -1256,6 +1256,7 @@ export function crearManejador({
       // una persona sube un pedido con entrega programada: ella decide que ya
       // toca, la fecha pedida por el cliente no frena
       const progManual = programados?.get?.(id) ?? null;
+      await completarNombres(cliente, resumen);
       r = await ejecutarAgente({
         resumen,
         mensajes,
@@ -1353,26 +1354,44 @@ export function crearManejador({
           return;
         }
 
-        let productoUrl = cuerpo?.productoUrl ?? null;
         let motivoProducto = "el producto no tiene link de Dropi (revisa el Google Sheets)";
-        if (!productoUrl && resumen?.productos?.[0]?.id) {
+        const varias = (resumen?.productos ?? []).length > 1;
+        // link de Dropi de cada producto (con varios: una orden por producto)
+        const urlDe = async (lineaP, i) => {
+          if (!lineaP?.id) return null;
+          const cual = varias ? ` (producto ${i + 1}: ${lineaP.nombre || lineaP.id})` : "";
           if (resolverProductoDropi) {
             try {
-              productoUrl = await resolverProductoDropi(resumen.productos[0].id);
+              return await resolverProductoDropi(lineaP.id);
             } catch (e) {
-              motivoProducto = `sin link de Dropi: ${e?.message ?? e}`;
+              motivoProducto = `sin link de Dropi${cual}: ${e?.message ?? e}`;
               console.warn("[dropi] no se pudo resolver el producto en Dropi:", e?.message ?? e);
-            }
-          } else {
-            // sin resolver montado: se intenta por el idProductoDropi directo
-            try {
-              const prod = await cliente.obtenerProducto(resumen.productos[0].id);
-              productoUrl = prod?.idProductoDropi || null;
-            } catch (e) {
-              console.warn("[dropi] no se pudo resolver el id de Dropi del producto:", e?.message ?? e);
+              return null;
             }
           }
+          // sin resolver montado: se intenta por el idProductoDropi directo
+          try {
+            const prod = await cliente.obtenerProducto(lineaP.id);
+            return prod?.idProductoDropi || null;
+          } catch (e) {
+            console.warn("[dropi] no se pudo resolver el id de Dropi del producto:", e?.message ?? e);
+            return null;
+          }
+        };
+        const urlsLineas = [];
+        if (!cuerpo?.productos?.length && varias) {
+          for (const [i, lp] of resumen.productos.entries()) {
+            const u = await urlDe(lp, i);
+            if (!u) {
+              urlsLineas.length = 0;
+              if (!/sin link/.test(motivoProducto)) motivoProducto = `el producto ${i + 1} (${lp.nombre || lp.id}) no tiene link de Dropi (revisa el Google Sheets)`;
+              break;
+            }
+            urlsLineas.push(u);
+          }
         }
+        let productoUrl = cuerpo?.productoUrl ?? (varias && !cuerpo?.productos?.length ? urlsLineas[0] ?? null : null);
+        if (!productoUrl && !varias && resumen?.productos?.[0]?.id) productoUrl = await urlDe(resumen.productos[0], 0);
         if (!productoUrl) {
           json(res, 409, {
             ok: false,
@@ -1486,9 +1505,22 @@ export function crearManejador({
           tipoPago: resumen?.tipoPago,
           productos: cuerpo?.productos?.length
             ? cuerpo.productos
-            : [{ id: linea.id, cantidad: linea.cantidad, precio: linea.precio, ...(linea.varianteDropi ? { varianteDropi: linea.varianteDropi, varianteDropiNombre: linea.varianteDropiNombre ?? "" } : {}) }],
+            : (varias ? resumen.productos : [linea]).map((lp, i) => ({
+                id: lp.id,
+                cantidad: lp.cantidad,
+                precio: lp.precio,
+                ...(varias ? { productoUrl: urlsLineas[i] } : {}),
+                ...(lp.varianteDropi ? { varianteDropi: lp.varianteDropi, varianteDropiNombre: lp.varianteDropiNombre ?? "" } : {}),
+              })),
+          // las ordenes que ya quedaron en un intento anterior no se repiten
+          ...(cuerpo?.dryRun !== true && varias ? { yaSubidas: subida.lineasSubidas?.(id) ?? undefined } : {}),
           soloPreparar: cuerpo?.dryRun === true,
         });
+        if (cuerpo?.dryRun !== true && Array.isArray(rNav?.ordenes)) {
+          const nuevas = rNav.ordenes.filter((o) => o.creado && !o.previa);
+          if (rNav.ok) subida.guardarLineasSubidas?.(id, null);
+          else if (nuevas.length) subida.guardarLineasSubidas?.(id, Object.fromEntries(nuevas.map((o) => [String(o.indice), o.idDropi ?? "sin-id"])));
+        }
         // lo que mostro Dropi: id de la orden, ganancia y precio del envio
         const dropiManual =
           rNav?.idDropi || rNav?.resumenDropi

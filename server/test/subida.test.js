@@ -1550,3 +1550,74 @@ test("la subida etiqueta el pedido con el motivo y se la quita al subirlo", asyn
   s.detener();
   fs.rmSync(ruta, { force: true });
 });
+
+test("pedido con dos productos: una orden por producto y al reintentar no repite la que ya quedo", async () => {
+  const dos = {
+    ...COMPLETO,
+    Total: "190.590",
+    Json: JSON.stringify([
+      { product_id: "2291039", name: "Taladro Inalambrico 68V", price: "84.900", quantity: 1 },
+      { product_id: "777", name: "Pulidora Angular", price: "84.900", quantity: 1 },
+    ]),
+  };
+  let llamada = 0;
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: dos }],
+    extraido: {
+      producto: "Taladro Inalambrico 68V y Pulidora Angular",
+      productos: [
+        { producto: "taladro inalambrico 68v", cantidad: 1, precio: 84900 },
+        { producto: "pulidora angular", cantidad: 1, precio: 84900 },
+      ],
+      cantidad: 2,
+      precioAcordado: 190590,
+      direccion: "Carrera 92 #78b-02",
+      clienteConfirmo: true,
+      entregaFutura: false,
+      incertidumbre: [],
+    },
+    respuestaDropi: (datos) => {
+      llamada++;
+      if (llamada === 1) {
+        return {
+          ok: false,
+          detalle: "Dropi no respondió (producto 2 de 2). Ya quedaron en Dropi: producto 1 (orden D1)",
+          parcial: true,
+          ordenes: [
+            { indice: 0, ok: true, creado: true, idDropi: "D1" },
+            { indice: 1, ok: false, detalle: "Dropi no respondió" },
+          ],
+        };
+      }
+      return {
+        ok: true,
+        creado: true,
+        seguro: true,
+        idDropi: "D1, D2",
+        ordenes: [
+          { indice: 0, ok: true, creado: true, idDropi: "D1", previa: true },
+          { indice: 1, ok: true, creado: true, idDropi: "D2" },
+        ],
+      };
+    },
+  });
+  s.configurar({ automatico: true, dryRun: false });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  assert.equal(subidos[0].productos.length, 2);
+  assert.deepEqual(
+    subidos[0].productos.map((p) => p.productoUrl),
+    ["https://dropi.test/2291039", "https://dropi.test/777"],
+  );
+  assert.equal(subidos[0].yaSubidas, undefined);
+  assert.deepEqual(s.lineasSubidas(1), { 0: "D1" });
+  const p1 = JSON.parse(fs.readFileSync(ruta, "utf8")).procesados["1"];
+  assert.match(p1.detalle, /Ya quedaron en Dropi/);
+
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 2, "se reintenta");
+  assert.deepEqual(subidos[1].yaSubidas, { 0: "D1" });
+  assert.equal(s.lineasSubidas(1), null, "subido completo: se borra lo parcial");
+  s.detener();
+  fs.rmSync(ruta, { force: true });
+});

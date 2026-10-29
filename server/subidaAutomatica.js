@@ -57,6 +57,26 @@ const RESOLUBLES = new Set(["requiere-revision", "direccion-invalida", "envio-ca
  */
 const DIAS_ENTREGA = 5;
 /**
+ * Con varios productos LucidSales no manda el nombre de cada linea (solo el
+ * product_id): se completa con el nombre del producto para compararlo con el chat.
+ */
+export async function completarNombres(cliente, resumen) {
+  const prods = resumen?.productos ?? [];
+  if (prods.length < 2) return;
+  const cache = new Map();
+  for (const x of prods) {
+    if (x.nombre || !x.id) continue;
+    try {
+      if (!cache.has(x.id)) cache.set(x.id, await cliente.obtenerProducto(x.id));
+      const p = cache.get(x.id);
+      x.nombre = String(p?.Nombre ?? p?.nombre ?? "").trim();
+    } catch {
+      /* sin nombre: el agente no lo podra emparejar y frena */
+    }
+  }
+}
+
+/**
  * Productos del pedido con la variacion de Dropi de cada variante
  * (varianteDropi). -> { ok, productos } | { ok: false, detalle }
  */
@@ -301,6 +321,7 @@ export function resumirAnalisis(r) {
       entregaFutura: e.entregaFutura ?? null,
       fechaEntregaSolicitada: corto(e.fechaEntregaSolicitada, 60),
       fechaEntregaISO: e.fechaEntregaISO || null,
+      ...(Array.isArray(e.productos) && e.productos.length > 1 ? { productos: e.productos.slice(0, 10) } : {}),
       incertidumbre: (e.incertidumbre ?? []).slice(0, 5).map((x) => corto(x, 160)),
       razonamiento: corto(e.razonamiento, 800),
     },
@@ -901,6 +922,7 @@ export function crearSubidaAutomatica({
           const otrosPedidos = c.duplicadosAprobados?.[id]
             ? []
             : otrosPedidosDelCliente(p, pedidos, { procesados: c.procesados });
+          await completarNombres(cliente, resumen);
           const r2 = await ejecutarAgente({ resumen, mensajes, extraer, oficina: oficinaAuto ? oficina : null, otrosPedidos, entregaProgramada, diasEntrega: confProg(c).diasAntes });
           analisisActual = resumirAnalisis(r2);
           // la IA no respondio (timeout, saldo, clave): error tecnico, no un
@@ -1053,17 +1075,27 @@ export function crearSubidaAutomatica({
 
           // el link navegable del producto en Dropi (sale del Google Sheets):
           //   id de LucidSales -> idProductoDropi -> dropiLink
-          const idProductoLucid = resumen?.productos?.[0]?.id;
+          //   (con varios productos, el de cada uno)
           let productoUrl = null;
           let motivoProducto = "producto sin link de Dropi en el sheet";
-          if (resolverProductoDropi && idProductoLucid) {
-            try {
-              productoUrl = await resolverProductoDropi(idProductoLucid);
-            } catch (e) {
-              motivoProducto = `sin link de Dropi: ${e?.message ?? e}`;
-              log.warn?.("[subida] no se pudo resolver el producto en Dropi:", e?.message ?? e);
+          const urls = [];
+          for (const [i, linea] of (resumen?.productos ?? []).entries()) {
+            let u = null;
+            if (resolverProductoDropi && linea?.id) {
+              try {
+                u = await resolverProductoDropi(linea.id);
+              } catch (e) {
+                motivoProducto = `sin link de Dropi${(resumen?.productos ?? []).length > 1 ? ` (producto ${i + 1}: ${linea.nombre || linea.id})` : ""}: ${e?.message ?? e}`;
+                log.warn?.("[subida] no se pudo resolver el producto en Dropi:", e?.message ?? e);
+              }
             }
+            if (!u) {
+              urls.length = 0;
+              break;
+            }
+            urls.push(u);
           }
+          productoUrl = urls[0] ?? null;
           if (!productoUrl) {
             marcarP("error", motivoProducto);
             detalle.push({ id, accion: "error", detalle: motivoProducto });
@@ -1115,10 +1147,14 @@ export function crearSubidaAutomatica({
               tienda: tiendaDropi,
               seguro: true,
               tipoPago: resumen?.tipoPago,
-              productos: (resumen?.productos ?? []).map((x) => ({
+              // con varios productos: una orden por producto; las que ya
+              // quedaron en un intento anterior no se vuelven a crear
+              ...(!c.dryRun && c.lineasSubidas?.[id] ? { yaSubidas: c.lineasSubidas[id] } : {}),
+              productos: (resumen?.productos ?? []).map((x, i) => ({
                 id: x.id,
                 cantidad: x.cantidad,
                 precio: x.precio,
+                productoUrl: urls[i] ?? productoUrl,
                 // variacion de Dropi a elegir en el formulario (productos con variantes)
                 ...(x.varianteDropi ? { varianteDropi: x.varianteDropi, varianteDropiNombre: x.varianteDropiNombre ?? "" } : {}),
               })),
@@ -1130,6 +1166,17 @@ export function crearSubidaAutomatica({
             marcarP("error", detalleError);
             detalle.push({ id, accion: "error", detalle: detalleError });
             continue;
+          }
+
+          // varios productos: se anotan las ordenes que si quedaron creadas
+          if (!c.dryRun && Array.isArray(rNav?.ordenes)) {
+            const nuevas = rNav.ordenes.filter((o) => o.creado && !o.previa);
+            if (nuevas.length) {
+              c.lineasSubidas = c.lineasSubidas ?? {};
+              c.lineasSubidas[id] = { ...(c.lineasSubidas[id] ?? {}) };
+              for (const o of nuevas) c.lineasSubidas[id][String(o.indice)] = o.idDropi ?? "sin-id";
+              guardar(c);
+            }
           }
 
           // El navegador estaba ocupado con otra subida (p. ej. una manual):
@@ -1237,6 +1284,10 @@ export function crearSubidaAutomatica({
             }
           }
           marcarP(c.dryRun ? "preparado" : pendienteConfirmacion ? "subido-pendiente-confirmacion" : "subido", detalleFinal);
+          if (!c.dryRun && c.lineasSubidas?.[id]) {
+            delete c.lineasSubidas[id];
+            guardar(c);
+          }
           subidos++;
           detalle.push({ id, accion: c.dryRun ? "preparado" : "subido", seguro: rNav.seguro });
         }
@@ -1310,10 +1361,26 @@ export function crearSubidaAutomatica({
 
     tick,
 
+    /** Ordenes de Dropi ya creadas de un pedido con varios productos: { indice: idDropi } */
+    lineasSubidas(id) {
+      return leer().lineasSubidas?.[String(id)] ?? null;
+    },
+    /** Anota (se suman) o borra (null) las ordenes ya creadas de un pedido. */
+    guardarLineasSubidas(id, mapa) {
+      const c = leer();
+      const k = String(id);
+      c.lineasSubidas = c.lineasSubidas ?? {};
+      if (!mapa) {
+        if (!c.lineasSubidas[k]) return;
+        delete c.lineasSubidas[k];
+      } else c.lineasSubidas[k] = { ...(c.lineasSubidas[k] ?? {}), ...mapa };
+      guardar(c);
+    },
+
     /** Configuracion actual (sin el registro de procesados). */
     config() {
       const c = leer();
-      const { procesados, ...resto } = c;
+      const { procesados, lineasSubidas, ...resto } = c;
       return {
         ...resto,
         procesados: Object.keys(procesados ?? {}).length,

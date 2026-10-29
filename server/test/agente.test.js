@@ -366,3 +366,40 @@ test("producto con variante: el chat la nombra y coincide; si pide otra, no", ()
   // sin variante: el chat con datos de mas sigue coincidiendo
   assert.equal(coincideProducto("Taladro Inalambrico 68V Dewalt con 2 baterias y maletin", ["Taladro Inalambrico 68V"]).ok, true);
 });
+
+// ---------- varios productos ----------
+const DOS = {
+  ...RESUMEN,
+  total: "250000",
+  productos: [
+    { id: "1", nombre: "Taladro Inalambrico 68V", cantidad: 1, precio: 150000 },
+    { id: "2", nombre: "Pulidora Dewalt", cantidad: 2, precio: 50000 },
+  ],
+};
+const EXTRAIDO_DOS = {
+  ...EXTRAIDO_BIEN,
+  producto: "Taladro y pulidora",
+  precioAcordado: 250000,
+  productos: [
+    { producto: "taladro 68v", cantidad: 1, precio: 150000 },
+    { producto: "pulidora dewalt", cantidad: 2, precio: 100000 },
+  ],
+};
+
+test("varios productos: cada linea coincide con el chat (producto, cantidad y precio) -> subir", async () => {
+  const r = await ejecutarAgente({ resumen: DOS, mensajes: [], extraer: async () => EXTRAIDO_DOS });
+  assert.equal(r.accion, "subir", JSON.stringify(r.problemas));
+  assert.match(r.validacion.checks.find((c) => c.campo === "productos").detalle, /una orden de Dropi por cada uno/);
+});
+
+test("varios productos: si el chat no pide uno, o cambia la cantidad o el precio, frena", async () => {
+  const sinUno = await ejecutarAgente({ resumen: DOS, mensajes: [], extraer: async () => ({ ...EXTRAIDO_DOS, productos: [EXTRAIDO_DOS.productos[0]] }) });
+  assert.equal(sinUno.accion, "frenar");
+  assert.match(sinUno.problemas.find((p) => p.campo === "producto").detalle, /no aparece: Pulidora Dewalt/);
+  const otraCant = await ejecutarAgente({ resumen: DOS, mensajes: [], extraer: async () => ({ ...EXTRAIDO_DOS, productos: [EXTRAIDO_DOS.productos[0], { producto: "pulidora", cantidad: 1, precio: 50000 }] }) });
+  assert.deepEqual(otraCant.problemas.map((p) => p.campo), ["cantidad"]);
+  const otroPrecio = await ejecutarAgente({ resumen: DOS, mensajes: [], extraer: async () => ({ ...EXTRAIDO_DOS, productos: [EXTRAIDO_DOS.productos[0], { producto: "pulidora", cantidad: 2, precio: 80000 }] }) });
+  assert.deepEqual(otroPrecio.problemas.map((p) => p.campo), ["precioLineas"]);
+  const deMas = await ejecutarAgente({ resumen: DOS, mensajes: [], extraer: async () => ({ ...EXTRAIDO_DOS, productos: [...EXTRAIDO_DOS.productos, { producto: "lijadora", cantidad: 1, precio: null }] }) });
+  assert.match(deMas.problemas.find((p) => p.campo === "producto").detalle, /pide además: lijadora/);
+});
