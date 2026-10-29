@@ -444,3 +444,13 @@ test("variacion por el nombre de Dropi (getVariantesDropi)", async () => {
   assert.deepEqual(opcionDeVariante(ops, ["BLANCO"]), { indice: 2 });
   assert.deepEqual(opcionDeVariante(ops, ["ÁRBOL 90 CM"]), { indice: 0 });
 });
+
+test("ciudad con la marca del departamento suelta: «Cordoba N» es Córdoba de Nariño", () => {
+  const v = variantesUbicacion("Córdoba");
+  assert.equal(coincideUbicacion("Cordoba N", v, "Nariño"), true);
+  assert.equal(coincideUbicacion("Cordoba Q", v, "Nariño"), false);
+  assert.equal(coincideUbicacion("Cordoba Q", v, "Quindío"), true);
+  assert.equal(coincideUbicacion("Cordoba N", v, ""), false);
+  // sigue funcionando con parentesis
+  assert.equal(coincideUbicacion("Armenia (Q)", variantesUbicacion("Armenia"), "Quindío"), true);
+});

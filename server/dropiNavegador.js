@@ -184,7 +184,10 @@ const iniciales = (n) =>
  */
 export function coincideUbicacion(opcion, aceptadas, departamento = "") {
   if (aceptadas.includes(normalizarUbicacion(opcion))) return true;
-  const m = String(opcion ?? "").match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+  // la marca del departamento va entre parentesis ("Armenia (Q)") o suelta al
+  // final en mayuscula ("Cordoba N" = Cordoba de Narino)
+  const m =
+    String(opcion ?? "").match(/^(.*?)\s*\(([^)]+)\)\s*$/) ?? String(opcion ?? "").trim().match(/^(.*\S)\s+([A-Z]{1,3})\.?$/);
   if (!m || !aceptadas.includes(normalizarUbicacion(m[1]))) return false;
   const codigo = normalizarUbicacion(m[2]).replace(/ /g, "");
   if (!codigo || !departamento) return false;
