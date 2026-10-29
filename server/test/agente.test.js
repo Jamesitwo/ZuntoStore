@@ -355,3 +355,14 @@ test("numero pegado («#3021»): no se frena aqui, el mapa decide como se separa
   assert.equal(r.direccionEnvio.numeroPegado, true);
   assert.equal(r.direccionInvalida, false);
 });
+
+test("producto con variante: el chat la nombra y coincide; si pide otra, no", () => {
+  const cat = [{ nombre: "Arbol De Navidad Plegable", variante: { nombre: "Copa: Blanca; Tamaño: 150 cm" } }];
+  assert.equal(coincideProducto("Árbol De Navidad Plegable (Copa: Blanca - Tamaño: 150 cm)", cat).ok, true);
+  assert.equal(coincideProducto("arbol de navidad", cat).ok, true);
+  const otra = coincideProducto("Árbol De Navidad Plegable blanca de 90 cm", cat);
+  assert.equal(otra.ok, false);
+  assert.match(otra.razon, /variante/);
+  // sin variante: el chat con datos de mas sigue coincidiendo
+  assert.equal(coincideProducto("Taladro Inalambrico 68V Dewalt con 2 baterias y maletin", ["Taladro Inalambrico 68V"]).ok, true);
+});

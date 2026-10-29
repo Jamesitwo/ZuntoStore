@@ -104,31 +104,57 @@ function cobertura(chat, objetivo) {
  * escribe "el taladro ese" y el catalogo dice "Taladro Inalambrico 68V".
  */
 export function coincideProducto(chat, catalogo) {
-  // acepta ["Taladro"] o [{nombre:"Taladro", ...}] (como viene en resumen.productos)
-  const nombres = (Array.isArray(catalogo) ? catalogo : [catalogo])
-    .map((x) => (x && typeof x === "object" ? (x.nombre ?? x.name ?? x.producto ?? "") : x))
-    .filter(Boolean);
+  // acepta ["Taladro"] o [{nombre:"Taladro", variante?:{nombre}}] (como viene en resumen.productos)
+  const items = (Array.isArray(catalogo) ? catalogo : [catalogo])
+    .map((x) =>
+      x && typeof x === "object"
+        ? { nombre: String(x.nombre ?? x.name ?? x.producto ?? ""), variante: String(x.variante?.nombre ?? "") }
+        : { nombre: String(x ?? ""), variante: "" },
+    )
+    .filter((x) => x.nombre);
   if (!tokens(chat).length) {
     return { ok: false, razon: "no se entendio el producto del chat", nombre: "" };
   }
-  if (!nombres.length) {
+  if (!items.length) {
     return { ok: false, razon: "el pedido no trae productos para comparar", nombre: "" };
   }
 
   let mejor = null;
-  for (const nombre of nombres) {
-    const c = cobertura(chat, nombre);
-    if (c.valor >= 0.5) return { ok: true, razon: "", nombre: String(nombre) };
+  for (const { nombre, variante } of items) {
+    // con variante, sus valores tambien cuentan ("Arbol ... (Copa: Blanca - Tamaño: 150 cm)")
+    const completo = variante ? `${nombre} ${variante}` : nombre;
+    const c = cobertura(chat, completo);
+    // y al reves: todo el nombre del catalogo esta en el chat (el chat trae de mas)
+    const alReves = cobertura(nombre, chat);
+    if (c.valor >= 0.5 || (alReves.valor >= 0.99 && alReves.tokens >= 2)) {
+      const v = varianteDistinta(chat, variante);
+      if (v) return { ok: false, razon: v, nombre };
+      return { ok: true, razon: "", nombre: completo };
+    }
     if (!mejor || c.valor > mejor.valor) {
-      mejor = {
-        ok: false,
-        razon: `sin coincidencia con "${nombre}"`,
-        nombre: String(nombre),
-        valor: c.valor,
-      };
+      mejor = { ok: false, razon: `sin coincidencia con "${nombre}"`, nombre, valor: c.valor };
     }
   }
   return mejor;
+}
+
+/**
+ * ¿El chat pide OTRA variante? Si menciona algun valor de la variante del
+ * pedido ("blanca") pero no todos ("90 cm" en vez de "150 cm"), no es la misma.
+ * Si no menciona ninguno, no se puede saber: no frena.
+ */
+function varianteDistinta(chat, variante) {
+  if (!variante) return null;
+  const valores = variante
+    .split(";")
+    .map((x) => x.split(":").slice(1).join(":") || x)
+    .map((x) => normalizarTexto(x).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  if (!valores.length) return null;
+  const t = ` ${normalizarTexto(chat).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ")} `;
+  const estan = valores.filter((v) => t.includes(` ${v} `));
+  if (!estan.length || estan.length === valores.length) return null;
+  return `variante: en el chat no coincide con la del pedido (${variante})`;
 }
 
 /**
