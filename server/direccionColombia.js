@@ -62,6 +62,11 @@ const RE_DIR = new RegExp(
 const RE_DIR_SIN_NUMERAL = new RegExp(
   String.raw`^(.+?)\.?\s*` + NUM + String.raw`\s*(?:,\s*|\s+)` + NUM + String.raw`\s*[-–]\s*(\d{1,3})(?:\s+(sur|este))?\b\s*[,.]?\s*(.*)$`,
 );
+// Solo espacios ("Calle 40 AA Sur 36 30"): TRES grupos de numeros despues
+// del tipo de via = via, cruce y placa (con dos grupos seria ambiguo)
+const RE_DIR_ESPACIOS = new RegExp(
+  String.raw`^(.+?)\.?\s*` + NUM + String.raw`\s+` + NUM + String.raw`\s+(\d{1,3})(?:\s+(sur|este))?\b(?![a-z\d])\s*[,.]?\s*(.*)$`,
+);
 const RE_DIR_SIN_GUION = new RegExp(
   String.raw`^(.+?)\.?\s*` + NUM + SEP_NUM + NUM + String.raw`\s+(\d{1,3})(?:\s+(sur|este))?\b(?![a-z\d])\s*[,.]?\s*(.*)$`,
 );
@@ -70,7 +75,8 @@ function armarNumero(n, letra, bis, letra2, cardinal) {
   let s = String(n);
   if (letra) s += letra.toUpperCase();
   if (bis) s += " Bis";
-  if (letra2) s += ` ${letra2.toUpperCase()}`;
+  // "4 Bis B" lleva espacio; dos letras seguidas ("40 AA") van juntas
+  if (letra2) s += bis ? ` ${letra2.toUpperCase()}` : letra2.toUpperCase();
   if (cardinal) s += ` ${cardinal[0].toUpperCase()}${cardinal.slice(1)}`;
   return s;
 }
@@ -119,6 +125,8 @@ function parsearDesdeElInicio(direccion) {
   // sin "#": ultimo recurso (y el resto sale del texto normalizado)
   const sinNumeral = !m;
   if (!m) m = t.match(RE_DIR_SIN_NUMERAL);
+  const soloEspacios = !m;
+  if (!m) m = t.match(RE_DIR_ESPACIOS);
   if (!m) return null;
   const tipoVia = tipoViaCanonico(m[1]);
   if (!tipoVia) return null;
@@ -133,7 +141,7 @@ function parsearDesdeElInicio(direccion) {
   // guion no hay donde cortar el original: se usa el del texto normalizado)
   const resto = capitalizarResto(
     sinGuion || sinNumeral
-      ? restoConMismaRegla(String(direccion ?? ""), sinNumeral ? RE_DIR_SIN_NUMERAL : RE_DIR_SIN_GUION) ?? m[14]
+      ? restoConMismaRegla(String(direccion ?? ""), soloEspacios ? RE_DIR_ESPACIOS : sinNumeral ? RE_DIR_SIN_NUMERAL : RE_DIR_SIN_GUION) ?? m[14]
       : restoOriginal(String(direccion ?? "")),
   );
   const normalizada = `${tipoVia} ${via} # ${cruce}-${placa}${resto ? `, ${resto}` : ""}`;

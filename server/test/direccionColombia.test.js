@@ -171,8 +171,8 @@ test("«Car» es Carrera y sin «#» vale con coma o espacio si la placa trae gu
   assert.equal(validarDireccion("Car 5, 4-98 calle Bogotá").normalizada, "Cra 5 # 4-98, Calle Bogotá");
   assert.equal(validarDireccion("Cra 5 4-98").normalizada, "Cra 5 # 4-98");
   assert.equal(validarDireccion("Calle 45 12-30 barrio Centro").normalizada, "Calle 45 # 12-30, Barrio Centro");
-  // sin "#" y sin guion es ambiguo: no se acepta por reglas
-  assert.equal(validarDireccion("Calle 45 12 30").ok, false);
+  // sin "#" ni guion: tres numeros se leen como via, cruce y placa
+  assert.equal(validarDireccion("Calle 45 12 30").normalizada, "Calle 45 # 12-30");
   assert.equal(validarDireccion("Car 5").ok, false);
 });
 
@@ -214,4 +214,14 @@ test("la calle no tiene que ir al principio y con dos tipos seguidos vale el seg
   assert.equal(validarDireccion("Av Calle 80 # 20-10").normalizada, "Av. Calle 80 # 20-10");
   // una referencia no es la direccion
   assert.equal(validarDireccion("Cerca de la Cra 5 # 3-20").ok, false);
+});
+
+test("solo espacios con tres numeros: via, cruce y placa", () => {
+  assert.equal(validarDireccion("Calle 40 AA Sur 36 30, Apto 806").normalizada, "Calle 40AA Sur # 36-30, Apto 806");
+  assert.equal(validarDireccion("Cra 5 4 98 barrio centro").normalizada, "Cra 5 # 4-98, Barrio centro");
+  // con dos numeros sigue siendo ambiguo
+  assert.equal(validarDireccion("cra 21 1212").ok, false);
+  assert.equal(claveCalle("calle 40 AA sur 36 30 apto806"), claveCalle("Calle 40 AA Sur 36 30, Apto 806"));
+  // Bis con letra conserva el espacio
+  assert.equal(validarDireccion("Calle 4 Bis B # 10-20").normalizada, "Calle 4 Bis B # 10-20");
 });
