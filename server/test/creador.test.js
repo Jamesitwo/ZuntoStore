@@ -215,3 +215,18 @@ test("con API key de Claude el plan lo escribe Claude mirando las fotos", async 
   assert.match(pedidos[0].body.system, /ZUNTO/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("libertad creativa: nivel de riesgo, estilos variados y sin repetir los recientes", async () => {
+  const { dir, c } = armar();
+  const p = c.crear({ producto: { nombre: "Taladro", precio: 199900 }, fotos: ["https://fotos.test/1.jpg"], imagenes: 1, videos: 1, creatividad: "atrevida" });
+  assert.equal(p.creatividad, "atrevida");
+  c.planear(p.id);
+  await espera(() => c.get(p.id).estado === "plan");
+  // segunda vuelta: la IA recibe los estilos ya usados
+  const { promptSistema, promptUsuario } = await import("../creadorCampanas.js");
+  assert.match(promptSistema({ creatividad: "atrevida" }), /ATREVIDA/);
+  assert.match(promptSistema({}), /REGLAS FIJAS/);
+  assert.match(promptSistema({}), /LIBERTAD CREATIVA/);
+  assert.match(promptUsuario({ producto: { nombre: "x", precio: 1 }, fotos: [], cantidades: { imagenes: 1, videos: 0 } }, { recientes: ["flat lay", "UGC"] }), /no los repitas.*flat lay · UGC/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

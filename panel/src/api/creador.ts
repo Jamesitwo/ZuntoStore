@@ -8,6 +8,10 @@ export interface Creativo {
   id: string;
   tipo: "imagen" | "video";
   angulo: string;
+  /** estilo visual o formato que eligio la IA */
+  estilo?: string;
+  /** por que funciona para este producto */
+  porque?: string;
   prompt: string;
   copy: { texto: string; titulo: string; descripcion: string };
   incluir: boolean;
@@ -16,6 +20,14 @@ export interface Creativo {
   tarea?: { tipo: string; taskId: string; desde: string };
   resultado?: { url: string; portada?: string | null; creditos?: number | null; listo?: string };
 }
+
+export type Creatividad = "segura" | "equilibrada" | "atrevida";
+
+export const CREATIVIDADES: Array<{ id: Creatividad; nombre: string; ayuda: string }> = [
+  { id: "segura", nombre: "Segura", ayuda: "Formatos probados de e-commerce, con variedad de escenas" },
+  { id: "equilibrada", nombre: "Equilibrada", ayuda: "Mezcla lo que funciona con ideas frescas" },
+  { id: "atrevida", nombre: "Atrevida", ayuda: "Conceptos poco vistos y ganchos audaces" },
+];
 
 export interface PasoCampana {
   texto: string;
@@ -33,6 +45,9 @@ export interface Proyecto {
   conPersonaje: boolean;
   cantidades: { imagenes: number; videos: number };
   notas: string;
+  creatividad?: Creatividad;
+  /** la gran idea de la campaña */
+  concepto?: string;
   presupuesto: number;
   meta: { cuentaId: string; paginaId: string };
   creativos: Creativo[];

@@ -43,49 +43,67 @@ function fechaCorta(d = new Date()) {
 
 // ----------------------------------------------------------------- la IA
 
-/** Reglas para la IA (las mismas de la skill zunto-meta-creativos). */
-export function promptSistema({ marca = "ZUNTO", contraEntrega = false } = {}) {
+/** Cuanto se arriesga la IA con las ideas. */
+export const CREATIVIDAD = {
+  segura: "SEGURA: prioriza formatos probados de e-commerce; varía escenas y estilos, pero sin experimentos raros.",
+  equilibrada: "EQUILIBRADA: mezcla 1–2 formatos probados con ideas frescas y diferentes.",
+  atrevida: "ATREVIDA: sorpréndeme. Conceptos poco vistos, ganchos audaces, estéticas distintas a lo típico de dropshipping (sin romper las reglas fijas).",
+};
+
+/**
+ * Instrucciones de la IA: unas REGLAS FIJAS (marca, precio, WhatsApp,
+ * fidelidad del producto, Meta) y LIBERTAD CREATIVA para todo lo demas.
+ */
+export function promptSistema({ marca = "ZUNTO", contraEntrega = false, creatividad = "equilibrada" } = {}) {
   return `Eres el director creativo de ${marca}, una tienda online colombiana que vende por Meta Ads con destino WhatsApp.
-Escribes en español colombiano, tono directo y práctico. Devuelves SOLO un JSON.
+Actúas como un diseñador y estratega creativo de verdad: piensas en quién compra, por qué lo compra y qué lo haría detenerse a mirar en el feed. Escribes en español colombiano. Devuelves SOLO un JSON.
 
-REGLAS DE MARCA (en TODOS los creativos publicitarios):
-- Debe verse "${marca}" (en amarillo) y el precio en formato $199.900 (punto de miles, sin decimales).
-- CTA siempre a WhatsApp: "Escríbenos por WhatsApp", botón verde con ícono de WhatsApp en las imágenes de oferta.
-- "Envío GRATIS" y "Garantía" cuando apliquen.${contraEntrega ? ' Puedes decir "Pago contra entrega".' : ' NO digas "pago contra entrega".'}
-- Nunca inventes especificaciones (RPM, medidas, tiempos, cifras): usa solo lo que dan los datos del producto.
-- Si algo no viene en el kit pero aparece en uso, nunca lo listes como incluido.
+══════ REGLAS FIJAS (no se negocian) ══════
+1. Marca y precio: en cada creativo publicitario se ve "${marca}" (amarillo o en un color de alto contraste con el fondo) y el precio en formato $199.900 (punto de miles, sin decimales). Tú decides dónde y cómo (badge, sello, etiqueta, texto en pantalla…), pero que se lea.
+2. WhatsApp: el llamado a la acción siempre lleva a WhatsApp ("Escríbenos por WhatsApp", "Pídelo por WhatsApp"…). Tú eliges la forma (botón, sticker, franja, burbuja de chat…).
+3. "Envío GRATIS" y "Garantía" cuando apliquen.${contraEntrega ? ' Puedes decir "Pago contra entrega".' : ' NO digas "pago contra entrega".'}
+4. Nada inventado: ni especificaciones (RPM, medidas, tiempos, cifras), ni accesorios que no vienen, ni premios, ni testimonios con nombre real. Si algo aparece en uso pero no viene en el kit, nunca lo muestres como incluido.
+5. Fidelidad del producto (lo más importante): en cada prompt describe el producto pieza por pieza tal como se ve en las fotos (formas, colores, textos legibles, tamaño real comparado con algo cotidiano). Escribe siempre: "no deformar el producto ni el logo, no cambiar colores, no agregar piezas, botones ni pantallas, no copiar textos de las imágenes de referencia". Si es eléctrico con cable o inalámbrico, dilo. Si se pliega o se arma, describe el movimiento paso a paso ("no aparece de golpe").
+6. Meta: nada de escotes ni ropa reveladora (cuello cerrado), nada de antes/después de cuerpos, nada de promesas de salud, nada que imite noticias reales, marcas ajenas o famosos.
+7. Seguridad cuando aplique: herramientas con las dos manos, guarda puesta, gafas y guantes.
+8. Referencias de fotos: en prompts de IMAGEN las fotos son Image1, Image2…; en prompts de VIDEO son <<<Image1>>>, <<<Image2>>>…
+9. Voz de los videos: español colombiano con acento de Bogotá, cálido y seguro; nada de acento paisa, costeño, argentino, mexicano o de España; trato de "tú" (nunca voseo); números siempre en palabras ("ciento noventa y nueve mil novecientos"). Las marcas extranjeras se pronuncian como se dicen en Colombia (DeWalt = "DiWolt") pero se escriben bien en pantalla.
+10. Videos de 12 s en 9:16 (gancho en los primeros 2–3 s, cierre con precio + WhatsApp + ${marca}); imágenes en 4:5.
 
-PROMPTS DE IMAGEN (TopView, GPT Image, formato 4:5): las fotos reales del producto llegan como Image1, Image2...
-Estructura: Estilo → Escena → Producto (fidelidad estricta a Image1..., anatomía pieza por pieza con colores y tamaño real; "no deformar el logo, no cambiar colores, no agregar piezas, no copiar textos de las imágenes de referencia") → Composición (dónde va el producto, espacio para el título) → Texto sobre la imagen (título, subtítulo, badge de precio, ${marca}, franja/botón de WhatsApp) → Look (tipografía Montserrat Black, foto real).
-Ángulos por defecto, en este orden: 1) problema → solución / lifestyle de uso; 2) kit "Todo esto por $X" (valor percibido); 3) infografía de 4–5 beneficios; 4) oferta directa de alto contraste con botón de WhatsApp y urgencia. Si piden más, varía escenas.
+══════ LIBERTAD CREATIVA ══════
+Antes de escribir, analiza el producto: categoría, quién lo compra en Colombia (y quién lo regala), qué problema resuelve, qué deseo despierta, dónde se usa, si es de temporada, qué objeciones tiene el comprador (¿funciona?, ¿es frágil?, ¿llega bien?). Con eso define un CONCEPTO de campaña y elige, para ESTE producto, los formatos y estilos que mejor lo venden. No hay plantilla fija.
 
-PROMPTS DE VIDEO (TopView, Seedance, 12 s, 9:16): las fotos se nombran <<<Image1>>>, <<<Image2>>>...
-Estructura: ESCENA → GUION con tiempos (0–3 s gancho, 3–9 s demostración/beneficios, 9–12 s precio + CTA WhatsApp) → TEXTOS EN PANTALLA con segundo exacto (el último: "$PRECIO · ENVÍO GRATIS" amarillo grande + "ESCRÍBENOS POR WHATSAPP" y "${marca}") → AUDIO.
-Una sola acción de cámara por plano, movimientos lentos, sin giros rápidos del producto. Diálogo corto.
-VOZ: español colombiano con acento de Bogotá, dulce y seguro; no paisa, no costeño, no argentino, no mexicano, no de España. Trata de "tú" (nunca voseo). Números siempre en palabras.
-Si hay PERSONAJE (la última foto), descríbelo: "PERSONAJE <<<ImageN>>>: la misma mujer de la foto: mismo rostro, ojos, sonrisa, tono de piel y cabello" y ropa de cuello cerrado (Meta frena anuncios con escote).
-Seguridad cuando aplique (herramientas con las dos manos, gafas y guantes). Si el producto se pliega o se arma, describe el movimiento paso a paso ("no aparece de golpe").
-Ángulos de video por defecto: 1) UGC recomendación (la persona presenta y demuestra); 2) demostración satisfactoria / problema-solución; 3) unboxing "Esto es lo que te llega".
+Cada creativo debe ser distinto de los demás en al menos 3 de estas cosas: idea/ángulo, tipo de gancho, estilo visual, escena/locación, paleta de color, composición/encuadre, tono. Nada de 4 imágenes iguales con otro fondo.
 
-COPY (uno por creativo, repite el ángulo del creativo):
-- texto: gancho con emoji → beneficio → bullets con emojis → "💰 $PRECIO · 🚚 Envío GRATIS" → "👉 Escríbenos por WhatsApp...".
-- titulo: máximo 40 caracteres.
-- descripcion: corta.
+Repertorio para inspirarte (no es obligatorio usarlo, inventa otros):
+• Ángulos: problema → solución, antes/después del espacio u objeto, comparación con lo que usan hoy, "lo que nadie te cuenta", regalo perfecto, ahorro de tiempo/dinero, prueba de resistencia, un día con el producto, error común, curiosidad, lista "3 razones", urgencia real de temporada, estatus/orgullo de tenerlo, humor cotidiano colombiano.
+• Estilos de imagen: foto editorial de revista, flat lay cenital ordenado, macro de detalles y texturas, lifestyle en un lugar real colombiano (obra, taller, cocina de apartamento en Bogotá, finca, carro, oficina), split-screen comparativo, collage tipo historia de Instagram, captura de chat de WhatsApp, estilo póster minimalista con mucho aire, fondo de color sólido vibrante, bodegón con luz dramática, infografía limpia con llamadas, kit desplegado "todo esto por…", render 3D tipo producto premium, estilo "meme" respetuoso, nota adhesiva / escrito a mano.
+• Formatos de video: UGC a cámara, POV ("POV: por fin…"), ASMR / satisfactorio, tutorial de 3 pasos, prueba o reto, comparación lado a lado, mini historia con giro, unboxing, reacción, transformación del espacio, cámara lenta de detalles, "3 cosas que hace", cliente que escribe por WhatsApp.
+• Personaje (cuando hay foto de modelo): úsalo solo donde sume; descríbelo como "la misma persona de <<<ImageN>>>: mismo rostro, ojos, sonrisa, tono de piel y cabello" y viste acorde al producto y siempre de cuello cerrado (herramientas: polo negra con "${marca}" bordado en amarillo, gafas y guantes; hogar/temporada: ropa casual o navideña; belleza/moda: sobria). No uses la ropa de la foto de referencia.
 
+Nivel de riesgo creativo pedido: ${CREATIVIDAD[creatividad] ?? CREATIVIDAD.equilibrada}
+
+══════ CÓMO ESCRIBIR CADA PROMPT ══════
+Imagen: Estilo → Escena/locación → Producto (bloque de fidelidad, regla 5) → Composición (dónde va el producto, jerarquía, espacio para textos) → Textos sobre la imagen (exactos, entre comillas, cortos y legibles: titular, apoyo, precio, ${marca}, WhatsApp) → Look (luz, paleta, tipografía, acabado fotográfico realista).
+Video: CONCEPTO → ESCENA → GUION con tiempos (0–3 s gancho, desarrollo, últimos 3 s precio + WhatsApp + ${marca}) → TEXTOS EN PANTALLA con el segundo exacto → AUDIO (voz, música, sonidos) → reglas de cámara (una acción por plano, movimientos suaves, el producto sin giros bruscos).
+
+══════ COPY (uno por creativo) ══════
+Debe continuar la idea de su creativo (mismo gancho y tono). Varía la estructura entre creativos: pregunta, historia corta, lista, dato curioso, diálogo… Siempre termina con precio, envío gratis y la invitación a escribir por WhatsApp. "titulo" máximo 40 caracteres. "descripcion" corta.
+
+══════ ADEMÁS ══════
 FICHA: descripcion (beneficios + para quién + qué incluye + variantes), modoUso (pasos numerados + seguridad), caracteristicas ("• Campo: valor", solo datos confirmados), contenido ("1 X + 2 Y" y "Z no incluido" si aplica).
-
-BIENVENIDA de WhatsApp (para responderle al cliente):
-"¡Hola! 👋 Bienvenido(a) a ${marca} [emoji]\\n\\nGracias por escribirnos por [producto]\\n\\n✅ beneficio 1\\n✅ beneficio 2\\n✅ beneficio 3\\n📦 Incluye: ...\\n\\n💰 Precio: $X\\n🚚 Envío GRATIS a toda Colombia\\n🛡️ Garantía incluida\\n\\n[pregunta abierta]"
+BIENVENIDA de WhatsApp para responder al cliente: saludo de ${marca} con emoji del producto, 3 beneficios con ✅, 📦 qué incluye, 💰 precio, 🚚 envío gratis, 🛡️ garantía y una pregunta abierta que invite a seguir la conversación.
 
 JSON de salida:
-{"creativos":[{"tipo":"imagen"|"video","angulo":"nombre corto","prompt":"...","copy":{"texto":"...","titulo":"...","descripcion":"..."}}],
+{"concepto":"la gran idea de la campaña en 1–2 frases",
+ "creativos":[{"tipo":"imagen"|"video","angulo":"nombre corto","estilo":"estilo visual o formato en pocas palabras","porque":"por qué funciona para este producto (1 frase)","prompt":"...","copy":{"texto":"...","titulo":"...","descripcion":"..."}}],
  "ficha":{"descripcion":"...","modoUso":"...","caracteristicas":"...","contenido":"..."},
  "bienvenida":"...",
  "mensajePredefinido":"¡Hola! Quiero más información del [producto].",
  "faltan":["datos del producto que harían falta, sin inventarlos"]}`;
 }
 
-export function promptUsuario(p, { conPersonaje = false } = {}) {
+export function promptUsuario(p, { conPersonaje = false, recientes = [] } = {}) {
   const pr = p.producto ?? {};
   const fotos = p.fotos?.length ?? 0;
   return [
@@ -94,11 +112,14 @@ export function promptUsuario(p, { conPersonaje = false } = {}) {
     pr.descripcion ? `Descripción: ${pr.descripcion}` : "",
     pr.contenido ? `Contenido del paquete: ${pr.contenido}` : "",
     pr.variantes ? `Variantes: ${pr.variantes}` : "",
-    p.notas ? `Indicaciones del usuario: ${p.notas}` : "",
+    p.notas ? `Indicaciones del usuario (tienen prioridad sobre tu criterio, salvo las reglas fijas): ${p.notas}` : "",
     `Fotos del producto: ${fotos} (Image1 a Image${fotos}).`,
     conPersonaje
-      ? `En los videos hay personaje: es la foto Image${fotos + 1} (en el prompt de video: <<<Image${fotos + 1}>>>).`
-      : "Sin personaje: los videos muestran solo el producto (manos si hace falta).",
+      ? `Hay foto de modelo: es Image${fotos + 1} (en video <<<Image${fotos + 1}>>>). Úsala en los videos donde sume.`
+      : "No hay modelo: si un video necesita persona, que sean solo manos o una persona de espaldas/sin rostro definido.",
+    recientes.length
+      ? `Estilos que ya usamos en campañas recientes (no los repitas, busca otros): ${recientes.join(" · ")}`
+      : "",
     `Genera ${p.cantidades.imagenes} creativos de imagen y ${p.cantidades.videos} de video, en ese orden.`,
   ]
     .filter(Boolean)
@@ -244,6 +265,8 @@ export function normalizarPlan(crudo, cantidades) {
         id: `${tipo === "imagen" ? "img" : "vid"}${i + 1}`,
         tipo,
         angulo: txt(c?.angulo, 80) || `${tipo === "imagen" ? "Imagen" : "Video"} ${i + 1}`,
+        estilo: txt(c?.estilo, 80),
+        porque: txt(c?.porque, 240),
         prompt: txt(c?.prompt, 7000),
         copy: {
           texto: txt(c?.copy?.texto, 2000),
@@ -257,6 +280,7 @@ export function normalizarPlan(crudo, cantidades) {
   if (!creativos.length) throw new Error("La IA no devolvió creativos");
   const f = crudo?.ficha ?? {};
   return {
+    concepto: txt(crudo?.concepto, 400),
     creativos,
     ficha: {
       descripcion: txt(f.descripcion),
@@ -567,6 +591,24 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
   function para(usuario, { llm = null } = {}) {
     const slug = slugOError(usuario);
 
+    /** Estilos de los ultimos proyectos (incluido este si se vuelve a planear): la IA no los repite. */
+    function estilosRecientes(max = 24) {
+      let archivos = [];
+      try {
+        archivos = fs.readdirSync(dirProyectos(slug)).filter((f) => f.endsWith(".json"));
+      } catch {
+        return [];
+      }
+      const ps = archivos
+        .map((f) => leerP(slug, f.replace(/\.json$/, "")))
+        .filter((x) => x?.creativos?.length)
+        .sort((x, y) => String(y.actualizado).localeCompare(String(x.actualizado)))
+        .slice(0, 8);
+      const out = [];
+      for (const x of ps) for (const c of x.creativos) if (c.estilo && !out.includes(c.estilo)) out.push(c.estilo);
+      return out.slice(0, max);
+    }
+
     function proyecto(id) {
       const p = leerP(slug, id);
       if (!p) throw new Error("Ese proyecto no existe");
@@ -704,6 +746,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
             videos: Math.max(0, Math.min(MAX_VIDEOS, Number(datos.videos ?? 3) || 0)),
           },
           notas: txt(datos.notas, 1000),
+          creatividad: CREATIVIDAD[datos.creatividad] ? datos.creatividad : "equilibrada",
           presupuesto: Number(datos.presupuesto) > 0 ? Math.round(Number(datos.presupuesto)) : Number(a.presupuesto) || PRESUPUESTO_DEFECTO,
           meta: { cuentaId: datos.cuentaId || a.cuentaId || "", paginaId: datos.paginaId || a.paginaId || "" },
           creativos: [],
@@ -722,6 +765,9 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
         if (ocupados.has(clave)) throw new Error("Este proyecto ya está trabajando: espera un momento");
         const p = proyecto(id);
         if (p.creativos?.some((c) => c.estado === "generando")) throw new Error("Hay creativos generándose: espera a que terminen");
+        if (p.campana?.estado === "creada" || p.campana?.estado === "activa" || p.campana?.estado === "creando") {
+          throw new Error("La campaña ya está en Meta: crea un proyecto nuevo para otras ideas");
+        }
         const a = leerAjustes(slug);
         const conClaude = iaDe(a) === "claude";
         if (conClaude && !a.claudeKey) throw new Error("Falta la API key de Claude (Creador IA > Ajustes)");
@@ -733,8 +779,8 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
         void (async () => {
           try {
             const conPersonaje = p.conPersonaje && Boolean(a.fotoModelo);
-            const sistema = promptSistema({ marca: a.marca || "ZUNTO", contraEntrega: Boolean(a.contraEntrega) });
-            const usuarioIA = promptUsuario(p, { conPersonaje });
+            const sistema = promptSistema({ marca: a.marca || "ZUNTO", contraEntrega: Boolean(a.contraEntrega), creatividad: p.creatividad });
+            const usuarioIA = promptUsuario(p, { conPersonaje, recientes: estilosRecientes() });
             const crudo = conClaude
               ? await pedirPlanClaude({
                   apiKey: a.claudeKey,
@@ -790,6 +836,8 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
             if (typeof cambios.ficha[k] === "string") p.ficha = { ...(p.ficha ?? {}), [k]: txt(cambios.ficha[k]) };
           }
         }
+        if (CREATIVIDAD[cambios.creatividad]) p.creatividad = cambios.creatividad;
+        if (typeof cambios.notas === "string") p.notas = txt(cambios.notas, 1000);
         if (typeof cambios.bienvenida === "string") p.bienvenida = txt(cambios.bienvenida, 1500);
         if (typeof cambios.mensajePredefinido === "string") p.mensajePredefinido = txt(cambios.mensajePredefinido, 300);
         if (cambios.presupuesto !== undefined) {

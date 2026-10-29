@@ -8,7 +8,7 @@
 // dinero (créditos de TopView, activar la campaña).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { creador, pesos, type AjustesCreador, type Creativo, type Proyecto, type ResumenProyecto } from "../api/creador";
+import { creador, CREATIVIDADES, pesos, type Creatividad, type AjustesCreador, type Creativo, type Proyecto, type ResumenProyecto } from "../api/creador";
 import { productos } from "../api/endpoints";
 import { useAuth } from "../auth/AuthContext";
 import { Combo, type OpcionCombo } from "../components/Combo";
@@ -210,6 +210,7 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
   const [imagenes, setImagenes] = useState(4);
   const [videos, setVideos] = useState(3);
   const [conPersonaje, setConPersonaje] = useState(Boolean(ajustes.fotoModelo));
+  const [creatividad, setCreatividad] = useState<Creatividad>("equilibrada");
   const [presupuesto, setPresupuesto] = useState(String(ajustes.presupuesto));
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -272,6 +273,7 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
         imagenes,
         videos,
         conPersonaje,
+        creatividad,
         presupuesto: Number(presupuesto),
         notas: form.notas,
       });
@@ -366,6 +368,28 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
         <input type="checkbox" checked={conPersonaje} disabled={!ajustes.fotoModelo} onChange={(e) => setConPersonaje(e.target.checked)} />
         Videos con la modelo {ajustes.fotoModelo ? "" : "(sube su foto en Ajustes)"}
       </label>
+      <div className="field">
+        <label>Libertad creativa</label>
+        <div className="creador-niveles" role="radiogroup" aria-label="Libertad creativa">
+          {CREATIVIDADES.map((n) => (
+            <button
+              key={n.id}
+              type="button"
+              role="radio"
+              aria-checked={creatividad === n.id}
+              className={`creador-nivel${creatividad === n.id ? " activo" : ""}`}
+              onClick={() => setCreatividad(n.id)}
+            >
+              <strong>{n.nombre}</strong>
+              <span>{n.ayuda}</span>
+            </button>
+          ))}
+        </div>
+        <p className="campo-ayuda">
+          La IA analiza el producto y decide los estilos que mejor lo venden; siempre respeta marca, precio, WhatsApp y la forma real
+          del producto, y no repite los estilos de tus campañas recientes.
+        </p>
+      </div>
       <Campo id="cr-notas" label="Indicaciones para la IA (opcional)">
         <textarea
           id="cr-notas"
@@ -631,7 +655,7 @@ function DetalleProyecto({ id }: { id: string }) {
   const [ajustes, setAjustes] = useState<AjustesCreador | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [trabajando, setTrabajando] = useState<string | null>(null);
-  const [confirmar, setConfirmar] = useState<null | "generar" | "campana" | "activar" | "borrar">(null);
+  const [confirmar, setConfirmar] = useState<null | "generar" | "campana" | "activar" | "borrar" | "replanear">(null);
   const [creditos, setCreditos] = useState<number | null>(null);
   const [editando, setEditando] = useState<Creativo | null>(null);
 
@@ -748,7 +772,25 @@ function DetalleProyecto({ id }: { id: string }) {
           </button>
         </div>
       ) : null}
-      {p.ia && p.creativos.length ? <p className="muted small">Plan escrito por {p.ia}.</p> : null}
+      {p.concepto && p.creativos.length ? (
+        <div className="card creador-concepto">
+          <span className="creador-concepto-etiqueta">Concepto</span>
+          <p>{p.concepto}</p>
+          <div className="row gap creador-concepto-pie">
+            <span className="muted small">
+              {p.ia ? `Plan escrito por ${p.ia}` : ""}
+              {p.creatividad ? ` · libertad ${CREATIVIDADES.find((n) => n.id === p.creatividad)?.nombre.toLowerCase() ?? ""}` : ""}
+            </span>
+            {!campanaHecha && !generando && !p.planeando ? (
+              <button type="button" className="btn ghost sm" onClick={() => setConfirmar("replanear")}>
+                ↻ Otras ideas
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : p.ia && p.creativos.length ? (
+        <p className="muted small">Plan escrito por {p.ia}.</p>
+      ) : null}
       {p.faltan?.length ? (
         <div className="banner warn">
           <strong>La IA no inventó estos datos (agrégalos al copy si los tienes):</strong> {p.faltan.join(" · ")}
@@ -1040,6 +1082,55 @@ function DetalleProyecto({ id }: { id: string }) {
       </Modal>
 
       <Modal
+        open={confirmar === "replanear"}
+        title="Pedir otras ideas"
+        onClose={() => setConfirmar(null)}
+        footer={
+          <>
+            <button type="button" className="btn ghost" onClick={() => setConfirmar(null)}>
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => {
+                setConfirmar(null);
+                void accion("plan", async () => {
+                  await creador.editar(id, { creatividad: p.creatividad ?? "equilibrada", notas: p.notas });
+                  return creador.planear(id);
+                });
+              }}
+            >
+              Pedir otras ideas
+            </button>
+          </>
+        }
+      >
+        <p>
+          La IA escribe un plan nuevo con estilos distintos a los de ahora. <strong>Se reemplazan los creativos y copys actuales</strong>{" "}
+          (los ya generados en TopView siguen en tu cuenta de TopView).
+        </p>
+        <div className="creador-niveles" role="radiogroup" aria-label="Libertad creativa">
+          {CREATIVIDADES.map((n) => (
+            <button
+              key={n.id}
+              type="button"
+              role="radio"
+              aria-checked={(p.creatividad ?? "equilibrada") === n.id}
+              className={`creador-nivel${(p.creatividad ?? "equilibrada") === n.id ? " activo" : ""}`}
+              onClick={() => setP({ ...p, creatividad: n.id })}
+            >
+              <strong>{n.nombre}</strong>
+              <span>{n.ayuda}</span>
+            </button>
+          ))}
+        </div>
+        <Campo id="rp-notas" label="Indicaciones (opcional)">
+          <textarea id="rp-notas" rows={2} value={p.notas ?? ""} onChange={(e) => setP({ ...p, notas: e.target.value })} placeholder="Ej.: más humor, algo navideño, sin modelo" />
+        </Campo>
+      </Modal>
+
+      <Modal
         open={confirmar === "borrar"}
         title="Borrar proyecto"
         onClose={() => setConfirmar(null)}
@@ -1168,6 +1259,12 @@ function TarjetaCreativo({
         </label>
         <span className="badge">{c.tipo === "video" ? "Video" : "Imagen"}</span>
       </div>
+      {c.estilo || c.porque ? (
+        <p className="creador-porque">
+          {c.estilo ? <span className="creador-estilo">{c.estilo}</span> : null}
+          {c.porque ? <span className="muted"> {c.porque}</span> : null}
+        </p>
+      ) : null}
       <div className="row gap creador-mini-acciones">
         <button type="button" className="btn ghost sm" onClick={onPrompt}>
           Prompt

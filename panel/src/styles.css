@@ -5524,3 +5524,15 @@ tr.fila-marcada > td { background: color-mix(in srgb, var(--primary, #7c3aed) 9%
   .creador-medio.video { max-height: 520px; }
   .creador-page .page-header { flex-direction: column; align-items: flex-start; }
 }
+.creador-niveles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.creador-nivel { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); cursor: pointer; font: inherit; }
+.creador-nivel span { font-size: 12px; color: var(--muted); }
+.creador-nivel.activo { border-color: var(--primary); background: #faf5ff; box-shadow: var(--focus-ring, none); }
+.creador-nivel.activo strong { color: var(--primary); }
+.creador-concepto { border-left: 4px solid var(--primary); }
+.creador-concepto p { margin: 4px 0 8px; font-size: 15px; line-height: 1.45; }
+.creador-concepto-etiqueta { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--primary); }
+.creador-concepto-pie { justify-content: space-between; align-items: center; flex-wrap: wrap; }
+.creador-porque { margin: 0; font-size: 12px; line-height: 1.4; }
+.creador-estilo { display: inline-block; padding: 1px 8px; border-radius: 999px; background: #f3e8ff; color: var(--primary); font-weight: 600; margin-right: 2px; }
+@media (max-width: 640px) { .creador-niveles { grid-template-columns: 1fr; } }
