@@ -60,6 +60,7 @@ function normalizaConfig(c: any): {
   cadaSegundos: number;
   transportadoraId: number;
   maxIntentos: number;
+  maxDiasPedido: number;
   tiendas: string[];
   estados: number[];
   tiendasDropi: Record<string, string>;
@@ -96,6 +97,7 @@ function normalizaConfig(c: any): {
       ? Math.max(0, Math.min(100, Number(c.minCalificacionDireccion)))
       : 70,
     maxIntentos: Math.max(1, Math.min(Number(c?.maxIntentos) || 2, 10)),
+    maxDiasPedido: Number.isFinite(Number(c?.maxDiasPedido)) ? Math.max(0, Math.min(365, Math.floor(Number(c.maxDiasPedido)))) : 5,
     tiendas: (Array.isArray(c?.tiendas) ? c.tiendas : []).map(String) as string[],
     estados: (Array.isArray(c?.estados) ? c.estados : []).map(Number) as number[],
     tiendasDropi:
@@ -951,6 +953,21 @@ export function SubidaDropi() {
                 max={10}
                 value={form.maxIntentos}
                 onChange={(e) => setForm((f) => ({ ...f, maxIntentos: Number(e.target.value) }))}
+              />
+            </Campo>
+
+            <Campo
+              id="sub-dias"
+              label="Antigüedad máxima del pedido (días)"
+              ayuda="Los pedidos con más días que esto no se suben solos: quedan como «pedido antiguo» y, si hay que enviarlos, se suben desde el pedido. 0 = sin límite. Las entregas programadas no cuentan."
+            >
+              <input
+                id="sub-dias"
+                type="number"
+                min={0}
+                max={365}
+                value={form.maxDiasPedido}
+                onChange={(e) => setForm((f) => ({ ...f, maxDiasPedido: Math.max(0, Math.min(365, Math.floor(Number(e.target.value) || 0))) }))}
               />
             </Campo>
 

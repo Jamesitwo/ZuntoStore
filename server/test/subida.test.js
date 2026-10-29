@@ -1462,3 +1462,34 @@ test("Dropi no deja elegir la variacion: lo sube una persona sin reintentar", as
   s.detener();
   fs.rmSync(ruta, { force: true });
 });
+
+test("pedido mas viejo que el limite de dias: no se sube solo; con mas dias si", async () => {
+  let llamadasLLM = 0;
+  const hace = (d) => new Date(Date.now() - d * 86400_000).toISOString();
+  const { s, ruta, subidos } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, Fecha: hace(30), completo: COMPLETO }],
+    alExtraer: () => llamadasLLM++,
+  });
+  s.configurar({ automatico: true, dryRun: false, maxDiasPedido: 5 });
+  await s.tick({ forzar: true });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 0);
+  assert.equal(llamadasLLM, 0);
+  assert.equal(s.estadoPedido(1).accion, "pedido-antiguo");
+  assert.match(s.estadoPedido(1).detalle, /30 días \(el límite es 5\)/);
+  s.configurar({ maxDiasPedido: 45 });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  s.detener();
+  fs.rmSync(ruta, { force: true });
+});
+
+test("limite de dias en 0: sin limite", async () => {
+  const hace = (d) => new Date(Date.now() - d * 86400_000).toISOString();
+  const { s, ruta, subidos } = armar({ pedidos: [{ id: 1, EstadoPedido: 0, Fecha: hace(90), completo: COMPLETO }] });
+  s.configurar({ automatico: true, dryRun: false, maxDiasPedido: 0 });
+  await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1);
+  s.detener();
+  fs.rmSync(ruta, { force: true });
+});

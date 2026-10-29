@@ -400,6 +400,8 @@ export function crearSubidaAutomatica({
     programados: { diasAntes: DIAS_ENTREGA, subirSolo: true },
     // intentos fallidos antes de dejar el pedido para revision manual
     maxIntentos: 2,
+    // pedidos con mas de estos dias no se suben solos (0 = sin limite)
+    maxDiasPedido: 5,
     // tienda de LucidSales (idEmpresa) -> nombre exacto de la tienda en Dropi
     tiendasDropi: {},
     procesados: {},
@@ -779,6 +781,19 @@ export function crearSubidaAutomatica({
           }
           if (FINALES.has(anterior?.accion)) continue;
           if (estados.length && !estados.includes(Number(p?.EstadoPedido))) continue;
+          // pedido viejo: no se sube solo (salvo una entrega programada, que
+          // es vieja a proposito). Si se sube el limite, se vuelve a mirar.
+          const maxDias = Number(c.maxDiasPedido ?? DEFECTO.maxDiasPedido) || 0;
+          const creado = Date.parse(p?.Fecha ?? p?.CreatedAt ?? "");
+          if (maxDias > 0 && !entregaProgramada && Number.isFinite(creado)) {
+            const dias = Math.floor((Date.now() - creado) / 86400_000);
+            if (dias > maxDias) {
+              if (anterior?.accion !== "pedido-antiguo") {
+                marcarP("pedido-antiguo", `el pedido tiene ${dias} días (el límite es ${maxDias}): no se sube solo; si hay que enviarlo, súbelo desde el pedido`);
+              }
+              continue;
+            }
+          }
           omitidos++;
 
           // 1) pedido canónico y conversación más reciente en LucidBot.
@@ -1331,7 +1346,8 @@ export function crearSubidaAutomatica({
       if ("programados" in patch && patch.programados && typeof patch.programados === "object") {
         c.programados = confProg({ programados: { ...confProg(c), ...patch.programados } });
       }
-            if ("maxIntentos" in patch) c.maxIntentos = Math.max(1, Math.min(Number(patch.maxIntentos) || 2, 10));
+      if ("maxDiasPedido" in patch) c.maxDiasPedido = Math.max(0, Math.min(Math.floor(Number(patch.maxDiasPedido) || 0), 365));
+      if ("maxIntentos" in patch) c.maxIntentos = Math.max(1, Math.min(Number(patch.maxIntentos) || 2, 10));
       if ("tiendasDropi" in patch && patch.tiendasDropi && typeof patch.tiendasDropi === "object") {
         const limpio = {};
         for (const [k, v] of Object.entries(patch.tiendasDropi)) {
