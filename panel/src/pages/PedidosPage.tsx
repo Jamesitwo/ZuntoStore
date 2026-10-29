@@ -126,6 +126,11 @@ export function PedidosPage() {
   // Accion rapida: pedido y estado destino del modal de cambio
   const [cambio, setCambio] = useState<{ pedido: PedidoLight; nuevo: number } | null>(null);
   const [guardandoId, setGuardandoId] = useState<number | null>(null);
+  // cambio de estado masivo: pedidos marcados (ids) y el progreso
+  const [marcados, setMarcados] = useState<Set<string>>(new Set());
+  const [estadoMasivo, setEstadoMasivo] = useState<string>("");
+  const [motivoMasivo, setMotivoMasivo] = useState("");
+  const [masivo, setMasivo] = useState<{ hechos: number; total: number } | null>(null);
 
   // Etiquetas (funcion propia, local): filtro + modales
   const [filtroEtiqueta, setFiltroEtiqueta] = useState("");
@@ -263,6 +268,7 @@ export function PedidosPage() {
         let filas = Array.isArray(res?.pedidos) ? res.pedidos : [];
         if (telActivo) filas = filas.filter((p: any) => claveTelefono(p?.Movil) === telDeUrl);
         setRows(filas);
+        setMarcados(new Set());
         setTotal(Number(res?.totalRecords) || 0);
         setNumPages(Number(res?.numPages) || 0);
         // deja la lista a mano para moverse entre pedidos desde el detalle
@@ -422,6 +428,57 @@ export function PedidosPage() {
       toast.error(errMsg(err));
     } finally {
       setGuardandoId(null);
+    }
+  };
+
+  /** Marcar / desmarcar un pedido para el cambio masivo. */
+  const marcar = (id: string, si: boolean) =>
+    setMarcados((m) => {
+      const n = new Set(m);
+      if (si) n.add(id);
+      else n.delete(id);
+      return n;
+    });
+
+  /** Cambia el estado de todos los pedidos marcados (de a 3 a la vez). */
+  const aplicarMasivo = async () => {
+    const nuevo = Number(estadoMasivo);
+    const ids = [...marcados];
+    if (!ids.length || estadoMasivo === "") return;
+    if (nuevo === 1 && !motivoMasivo.trim()) {
+      toast.error("Escribe el motivo de la cancelación");
+      return;
+    }
+    if (!window.confirm(`¿Cambiar ${ids.length} pedido(s) a «${ESTADOS_PEDIDO[nuevo]}»?`)) return;
+    setMasivo({ hechos: 0, total: ids.length });
+    const fallidos: string[] = [];
+    const ok: string[] = [];
+    let i = 0;
+    const trabajar = async () => {
+      while (i < ids.length) {
+        const id = ids[i++];
+        const fila = rows.find((r) => String(r.id ?? r.idPedido) === id);
+        try {
+          if (Number(fila?.EstadoPedido ?? -1) !== nuevo) {
+            await cambiarEstadoPedido(id, nuevo, nuevo === 1 ? motivoMasivo.trim() : undefined);
+          }
+          ok.push(id);
+        } catch (err) {
+          fallidos.push(`#${fila?.idPedido ?? id}: ${errMsg(err)}`);
+        } finally {
+          setMasivo((m) => (m ? { ...m, hechos: m.hechos + 1 } : m));
+        }
+      }
+    };
+    await Promise.all([trabajar(), trabajar(), trabajar()]);
+    setRows((arr) => arr.map((r) => (ok.includes(String(r.id ?? r.idPedido)) ? { ...r, EstadoPedido: nuevo } : r)));
+    setMasivo(null);
+    setMarcados(new Set(fallidos.length ? ids.filter((x) => !ok.includes(x)) : []));
+    if (ok.length) toast.success(`${ok.length} pedido(s) pasaron a «${ESTADOS_PEDIDO[nuevo]}»`);
+    if (fallidos.length) toast.error(`${fallidos.length} no se pudieron cambiar (quedan marcados): ${fallidos.slice(0, 3).join(" · ")}`);
+    if (!fallidos.length) {
+      setEstadoMasivo("");
+      setMotivoMasivo("");
     }
   };
 
@@ -891,11 +948,49 @@ export function PedidosPage() {
                 este numero (los demas suelen ser homónimos).
               </p>
             )}
+            {marcados.size > 0 ? (
+              <div className="barra-masiva" role="region" aria-label="Cambio de estado masivo">
+                <strong>{marcados.size} marcado(s)</strong>
+                <select aria-label="Nuevo estado" value={estadoMasivo} onChange={(e) => setEstadoMasivo(e.target.value)} disabled={!!masivo}>
+                  <option value="">Cambiar estado a…</option>
+                  {Object.entries(ESTADOS_PEDIDO).map(([code, label]) => (
+                    <option key={code} value={code}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                {estadoMasivo === "1" ? (
+                  <input
+                    aria-label="Motivo de la cancelación"
+                    placeholder="Motivo de la cancelación"
+                    value={motivoMasivo}
+                    onChange={(e) => setMotivoMasivo(e.target.value)}
+                    disabled={!!masivo}
+                  />
+                ) : null}
+                <button type="button" className="btn primary sm" disabled={estadoMasivo === "" || !!masivo} onClick={() => void aplicarMasivo()}>
+                  {masivo ? `Cambiando ${masivo.hechos}/${masivo.total}…` : "Aplicar"}
+                </button>
+                <button type="button" className="btn sm" disabled={!!masivo} onClick={() => setMarcados(new Set())}>
+                  Quitar selección
+                </button>
+              </div>
+            ) : null}
             <LeyendaEstados />
             <div className="table-wrap pedidos-tabla">
               <table className="table">
                 <thead>
                   <tr>
+                    <th className="col-marca">
+                      <input
+                        type="checkbox"
+                        aria-label="Marcar todos los pedidos de esta página"
+                        checked={rowsVisibles.length > 0 && rowsVisibles.every((p) => marcados.has(String(p.id ?? p.idPedido)))}
+                        onChange={(e) =>
+                          setMarcados(e.target.checked ? new Set(rowsVisibles.map((p) => String(p.id ?? p.idPedido))) : new Set())
+                        }
+                      />
+                    </th>
                     <th># Pedido</th>
                     <th>Cliente</th>
                     <th className="wrap">Producto</th>
@@ -915,7 +1010,15 @@ export function PedidosPage() {
                     const mias = et.etiquetasDe(p.id ?? p.idPedido);
                     const asignado = asig[String(p.id ?? p.idPedido)];
                     return (
-                      <tr key={p.id ?? p.idPedido} className={`fila-estado ${claseEstado(p.EstadoPedido ?? 0)}${claseProgramado(programados.porId[String(p.id ?? p.idPedido)])}`}>
+                      <tr key={p.id ?? p.idPedido} className={`fila-estado ${claseEstado(p.EstadoPedido ?? 0)}${claseProgramado(programados.porId[String(p.id ?? p.idPedido)])}${marcados.has(String(p.id ?? p.idPedido)) ? " fila-marcada" : ""}`}>
+                        <td className="col-marca">
+                          <input
+                            type="checkbox"
+                            aria-label={`Marcar pedido #${p.idPedido ?? p.id}`}
+                            checked={marcados.has(String(p.id ?? p.idPedido))}
+                            onChange={(e) => marcar(String(p.id ?? p.idPedido), e.target.checked)}
+                          />
+                        </td>
                         <td>
                           <Link to={`/pedidos/${p.id ?? p.idPedido}`}>
                             <strong>#{p.idPedido ?? p.id}</strong>
@@ -1062,6 +1165,13 @@ export function PedidosPage() {
                 return (
                   <li key={id} className={`pedido-movil fila-estado ${claseEstado(p.EstadoPedido ?? 0)}${claseProgramado(programados.porId[String(id)])}`}>
                     <div className="pedido-movil-top">
+                      <input
+                        type="checkbox"
+                        className="pedido-movil-marca"
+                        aria-label={`Marcar pedido #${p.idPedido ?? p.id}`}
+                        checked={marcados.has(String(id))}
+                        onChange={(e) => marcar(String(id), e.target.checked)}
+                      />
                       <Link to={`/pedidos/${id}`} className="link-plain pedido-movil-cliente">
                         <strong>{nombre}</strong>
                         <span className="muted small">#{p.idPedido ?? p.id}</span>

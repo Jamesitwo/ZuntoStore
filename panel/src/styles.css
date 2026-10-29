@@ -5422,3 +5422,17 @@ input.variante-falta { border-color: var(--warn); }
   .producto-editor-form .table.campo-detalle { min-width: 0 !important; width: 100%; table-layout: fixed; }
   .producto-editor-form .table.campo-detalle td, .producto-editor-form .table.campo-detalle th { overflow-wrap: anywhere; }
 }
+
+/* cambio de estado masivo en la lista de pedidos */
+.col-marca { width: 34px; text-align: center; }
+.col-marca input, .pedido-movil-marca { width: 17px; height: 17px; cursor: pointer; accent-color: var(--primary, #7c3aed); }
+.pedido-movil-marca { flex: none; margin-right: 8px; }
+tr.fila-marcada > td { background: color-mix(in srgb, var(--primary, #7c3aed) 9%, transparent) !important; }
+.barra-masiva {
+  position: sticky; top: 0; z-index: 3;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin: 0 0 10px; padding: 10px 12px;
+  border: 1px solid var(--primary, #7c3aed); border-radius: 10px;
+  background: color-mix(in srgb, var(--primary, #7c3aed) 7%, var(--surface, #fff));
+}
+.barra-masiva select, .barra-masiva input { min-width: 0; flex: 1 1 160px; max-width: 260px; }
