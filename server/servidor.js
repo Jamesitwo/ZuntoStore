@@ -135,6 +135,8 @@ export function crearManejador({
   auditoria = null,
   // entregas programadas (pedidos para una fecha futura)
   programados = null,
+  // etiquetas de pedidos (crearEtiquetas)
+  etiquetas = null,
 }) {
   // clave de integraciones: la de la variable API_KEY y/o la generada en el panel
   const claves = apiKeys ?? crearApiKeys({ claveEnv: config.API_KEY });
@@ -315,6 +317,12 @@ export function crearManejador({
     return /^\d{1,12}$/.test(t) ? t : undefined;
   }
 
+  // tienda de cada pedido que se sube a mano (para la etiqueta del motivo)
+  const tiendaDePedidoSubido = new Map();
+  function registrarConTienda(id, accion, detalle, extra = {}) {
+    return subida.registrarResultado?.(id, accion, detalle, { tienda: tiendaDePedidoSubido.get(String(id)) ?? null, ...extra });
+  }
+
   /** Quien hace la peticion: el email del panel (x-usuario). */
   function usuarioDe(req) {
     // panel: el usuario VERIFICADO (no se cree a la cabecera)
@@ -385,6 +393,7 @@ export function crearManejador({
     [/^\/api\/pedidos\/[^/]+\/direccion(\/validar)?$/, "2"],
     [/^\/api\/subida\/pedido\/[^/]+(\/intentos|\/aprobar-duplicado|\/resuelto)?$/, "2"],
     [/^\/api\/historial$/, "2"],
+    [/^\/api\/etiquetas(\/|$)/, "2"],
     [/^\/api\/programados\/config$/, "8"],
     [/^\/api\/programados(\/|$)/, "2"],
     [/^\/api\/envios\/ultimos$/, "8"],
@@ -769,6 +778,79 @@ export function crearManejador({
       return;
     }
 
+    // ---- etiquetas de pedidos (las del panel y las de la subida a Dropi) ----
+    //   GET    /api/etiquetas?tienda=               -> {etiquetas, asignaciones}
+    //   POST   /api/etiquetas            {tienda, id?, nombre, color}
+    //   PUT    /api/etiquetas/:id        {tienda, nombre?, color?}
+    //   DELETE /api/etiquetas/:id?tienda=
+    //   PUT    /api/etiquetas/pedido/:id {tienda, ids}
+    //   POST   /api/etiquetas/importar   {tienda, etiquetas, asignaciones}
+    //   GET    /api/etiquetas/pedidos?tienda=&etiqueta=&page=&porPagina=
+    if (ruta === "/api/etiquetas" || ruta.startsWith("/api/etiquetas/")) {
+      autorizar(req);
+      if (!etiquetas) throw new ErrorApi(503, "Las etiquetas no están disponibles");
+      const cuerpo = req.method === "GET" || req.method === "DELETE" ? {} : await leerCuerpo(req);
+      const tienda = String(cuerpo?.tienda ?? url.searchParams.get("tienda") ?? tiendaDe(req) ?? "").trim();
+      if (!tienda) throw new ErrorApi(400, "Falta la tienda");
+      exigirTienda(req, tienda);
+      if (ruta === "/api/etiquetas" && req.method === "GET") {
+        json(res, 200, { ok: true, ...etiquetas.almacen(tienda) });
+        return;
+      }
+      if (ruta === "/api/etiquetas" && req.method === "POST") {
+        try {
+          json(res, 200, { ok: true, etiqueta: etiquetas.crear(tienda, cuerpo) });
+        } catch (e) {
+          throw new ErrorApi(400, e.message);
+        }
+        return;
+      }
+      if (ruta === "/api/etiquetas/importar" && req.method === "POST") {
+        const nuevas = etiquetas.importar(tienda, cuerpo);
+        json(res, 200, { ok: true, nuevas, ...etiquetas.almacen(tienda) });
+        return;
+      }
+      const deP = ruta.match(/^\/api\/etiquetas\/pedido\/([^/]+)$/);
+      if (deP && req.method === "PUT") {
+        json(res, 200, { ok: true, ids: etiquetas.asignar(tienda, decodeURIComponent(deP[1]), cuerpo?.ids ?? []) });
+        return;
+      }
+      if (ruta === "/api/etiquetas/pedidos" && req.method === "GET") {
+        // los pedidos con esa etiqueta, de mas nuevo a mas viejo (el panel los
+        // muestra aunque no esten en la pagina que se esta viendo)
+        const ids = etiquetas
+          .pedidosCon(tienda, url.searchParams.get("etiqueta") ?? "")
+          .sort((a, b) => Number(b) - Number(a));
+        const porPagina = Math.max(1, Math.min(Number(url.searchParams.get("porPagina")) || 50, 100));
+        const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
+        const trozo = ids.slice((page - 1) * porPagina, page * porPagina);
+        const pedidos = [];
+        for (let i = 0; i < trozo.length; i += 5) {
+          const lote = await Promise.all(
+            trozo.slice(i, i + 5).map((x) => cliente.obtenerPedido(x, tienda).catch(() => null)),
+          );
+          pedidos.push(...lote.filter(Boolean));
+        }
+        json(res, 200, { ok: true, pedidos, total: ids.length, numPages: Math.max(1, Math.ceil(ids.length / porPagina)) });
+        return;
+      }
+      const deE = ruta.match(/^\/api\/etiquetas\/([^/]+)$/);
+      if (deE && req.method === "PUT") {
+        try {
+          json(res, 200, { ok: true, etiqueta: etiquetas.actualizar(tienda, decodeURIComponent(deE[1]), cuerpo) });
+        } catch (e) {
+          throw new ErrorApi(404, e.message);
+        }
+        return;
+      }
+      if (deE && req.method === "DELETE") {
+        etiquetas.eliminar(tienda, decodeURIComponent(deE[1]));
+        json(res, 200, { ok: true });
+        return;
+      }
+      throw new ErrorApi(404, `Ruta no encontrada: ${req.method} ${ruta}`);
+    }
+
     // ---- entregas programadas ----
     // GET    /api/programados             -> lista (las mas proximas primero) + config
     // GET    /api/programados/:id         -> la de un pedido
@@ -1031,7 +1113,7 @@ export function crearManejador({
             avisoEstado = `Dropi ya creó la orden; no se pudo actualizar LucidSales a Confirmado: ${e?.message ?? e}`;
             detalle = `${detalle}; ${avisoEstado}`;
           }
-          subida.registrarResultado?.(id, pendienteConfirmacion ? "subido-pendiente-confirmacion" : "subido", detalle);
+          registrarConTienda(id, pendienteConfirmacion ? "subido-pendiente-confirmacion" : "subido", detalle);
           json(res, 200, {
             ok: true,
             id,
@@ -1079,6 +1161,7 @@ export function crearManejador({
         ...(forzar ? { forzado: true } : {}),
       };
       const pedidoLucid = await cliente.obtenerPedido(id, tiendaDe(req));
+      tiendaDePedidoSubido.set(String(id), Number(pedidoLucid?.idEmpresa) || Number(tiendaDe(req)) || null);
       res.__notificacionLucidBot.pedido = pedidoLucid;
       res.__intento.numero = pedidoLucid?.idPedido ?? null;
       res.__intento.tienda = Number(pedidoLucid?.idEmpresa) || null;
@@ -1192,7 +1275,7 @@ export function crearManejador({
         }
         if (r.direccionInvalida) {
           // queda marcada igual que en la subida automatica
-          subida.registrarResultado?.(id, "direccion-invalida", r.problemas.map((x) => `${x.campo}: ${x.detalle}`).join("; "));
+          registrarConTienda(id, "direccion-invalida", r.problemas.map((x) => `${x.campo}: ${x.detalle}`).join("; "));
         }
         console.log(`[dropi] pedido #${resumen.idPedido || id}: FRENADO, no se sube`);
         json(res, 409, {
@@ -1321,7 +1404,7 @@ export function crearManejador({
             }
           }
           if (ev && !ev.ok) {
-            if (cuerpo?.dryRun !== true) subida.registrarResultado?.(id, "direccion-invalida", ev.check.detalle);
+            if (cuerpo?.dryRun !== true) registrarConTienda(id, "direccion-invalida", ev.check.detalle);
             json(res, 409, {
               ok: false,
               id,
@@ -1473,7 +1556,7 @@ export function crearManejador({
         if (rNav?.envioCaro || rNav?.sinTransportadora || rNav?.oficinaHumano || rNav?.corregimientoHumano || rNav?.varianteHumano) {
           const accion = rNav.envioCaro ? "envio-caro" : rNav.sinTransportadora ? "sin-transportadora" : "requiere-humano";
           const det = `${rNav.detalle}${rNav.envioCaro && plan.motivoTope ? ` (tope: ${plan.motivoTope})` : ""}`;
-          if (cuerpo?.dryRun !== true) subida.registrarResultado?.(id, accion, det);
+          if (cuerpo?.dryRun !== true) registrarConTienda(id, accion, det);
           json(res, 409, {
             ok: false,
             id,
@@ -1500,9 +1583,9 @@ export function crearManejador({
           : "";
         let detalleRegistro = `Dropi #${rNav.idDropi ?? "confirmado"}${textoEnvio}; seguro=${rNav.seguro}`;
         if (rNav?.resultadoIncierto) {
-          subida.registrarResultado?.(id, "resultado-incierto", rNav.detalle);
+          registrarConTienda(id, "resultado-incierto", rNav.detalle);
         } else if (rNav?.creado) {
-          subida.registrarResultado?.(id, "subido", detalleRegistro, dropiManual ? { dropi: dropiManual } : {});
+          registrarConTienda(id, "subido", detalleRegistro, dropiManual ? { dropi: dropiManual } : {});
         }
         let estadoLucidSales = Number(resumen?.estadoPedido) === 2;
         let avisoEstado = null;
@@ -1537,9 +1620,9 @@ export function crearManejador({
           }
         }
         if (rNav?.creado && avisoEstado) {
-          subida.registrarResultado?.(id, "subido", detalleRegistro, dropiManual ? { dropi: dropiManual } : {});
+          registrarConTienda(id, "subido", detalleRegistro, dropiManual ? { dropi: dropiManual } : {});
         } else if (rNav?.creado && estadoLucidSales) {
-          subida.registrarResultado?.(id, "subido", `${detalleRegistro}; LucidSales Confirmado`, dropiManual ? { dropi: dropiManual } : {});
+          registrarConTienda(id, "subido", `${detalleRegistro}; LucidSales Confirmado`, dropiManual ? { dropi: dropiManual } : {});
         }
         json(res, rNav.resultadoIncierto ? 202 : rNav.ok ? 200 : 502, {
           ok: rNav.ok,
@@ -1585,7 +1668,7 @@ export function crearManejador({
       let estadoLucidSales = Number(resumen?.estadoPedido) === 2;
       let avisoEstado = null;
       let detalleRegistro = `Dropi #${idDropi ?? "confirmado"}; seguro=${payload.insurance}`;
-      subida.registrarResultado?.(id, "subido", detalleRegistro);
+      registrarConTienda(id, "subido", detalleRegistro);
       if (!estadoLucidSales) {
         const estadoActual = Number(resumen?.estadoPedido);
         if ([0, 3].includes(estadoActual)) {
@@ -1615,7 +1698,7 @@ export function crearManejador({
       }
       if (avisoEstado) detalleRegistro += `; ${avisoEstado}`;
       else if (estadoLucidSales) detalleRegistro += "; LucidSales Confirmado";
-      subida.registrarResultado?.(id, "subido", detalleRegistro);
+      registrarConTienda(id, "subido", detalleRegistro);
       console.log(
         `[dropi] pedido #${resumen.idPedido || id}: SUBIDO -> ` +
           `${idDropi ?? "?"} (insurance=${payload.insurance})`,

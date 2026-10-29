@@ -203,7 +203,7 @@ export function GestorEtiquetas({ open, onClose }: { open: boolean; onClose: () 
   const importar = async (file: File) => {
     try {
       const texto = await file.text();
-      const total = importarEtiquetas(texto);
+      const total = await importarEtiquetas(texto);
       toast.success(`${total} etiquetas importadas`);
     } catch (err) {
       toast.error(errMsg(err));

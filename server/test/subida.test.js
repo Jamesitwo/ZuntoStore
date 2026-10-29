@@ -73,6 +73,7 @@ function armar(overrides = {}) {
     buscarOficinasInter: overrides.buscarOficinasInter,
     intentos: overrides.intentos,
     programados: overrides.programados,
+    etiquetas: overrides.etiquetas,
   });
   // tienda de Dropi configurada por defecto (salvo que la prueba la quite)
   if (overrides.tiendasDropi !== null) {
@@ -1528,4 +1529,24 @@ test("evaluarDireccion: numero pegado que el mapa separo se envia separado", asy
   // sin poder separarlo: no
   const malo = { async validar() { return { formato: { ok: false, detalle: "número pegado" }, calificacion: { puntos: 10, verificada: false }, resumen: "no se pudo", avisos: [] }; } };
   assert.equal((await evaluarDireccion({ validador: malo, minimo: 50, direccion: "Carrera 110AA #3021" })).ok, false);
+});
+
+test("la subida etiqueta el pedido con el motivo y se la quita al subirlo", async () => {
+  const { crearEtiquetas } = await import("../etiquetas.js");
+  const etiquetas = crearEtiquetas({ ruta: null });
+  let falla = true;
+  const { s, ruta } = armar({
+    pedidos: [{ id: 1, EstadoPedido: 0, completo: COMPLETO }],
+    etiquetas,
+    respuestaDropi: (d) => (falla ? { ok: false, creado: false, envioCaro: true, detalle: "envío caro" } : { ok: true, creado: true, seguro: true }),
+  });
+  s.configurar({ automatico: true, dryRun: false });
+  await s.tick({ forzar: true });
+  assert.deepEqual(etiquetas.almacen("3682").asignaciones[1], ["auto_envio-caro"]);
+  falla = false;
+  s.rearmar(1);
+  await s.tick({ forzar: true });
+  assert.equal(etiquetas.almacen("3682").asignaciones[1], undefined);
+  s.detener();
+  fs.rmSync(ruta, { force: true });
 });

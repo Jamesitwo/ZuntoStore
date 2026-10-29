@@ -251,7 +251,13 @@ export function PedidosPage() {
     // revisa todos los pedidos recientes de la tienda, no solo esta pagina.
     const actualizar = forzarEnvio.current;
     forzarEnvio.current = false;
-    const carga: Promise<any> = filtroEnvio
+    // Con el filtro de etiqueta, los pedidos los da NUESTRO servidor (sabe
+    // que pedidos tienen cada etiqueta), no solo los de esta pagina.
+    const carga: Promise<any> = filtroEtiqueta
+      ? backend<any>(
+          `/api/etiquetas/pedidos?tienda=${encodeURIComponent(String(idEmpresa))}&etiqueta=${encodeURIComponent(filtroEtiqueta)}&page=${page}&porPagina=${itemsPerPage}`,
+        ).then((r) => ({ pedidos: r?.pedidos ?? [], totalRecords: r?.total ?? 0, numPages: r?.numPages ?? 1 }))
+      : filtroEnvio
       ? backend<any>(
           `/api/envios/pedidos?estado=${encodeURIComponent(filtroEnvio)}&page=${page}&porPagina=${itemsPerPage}${
             actualizar ? "&actualizar=1" : ""
@@ -291,7 +297,7 @@ export function PedidosPage() {
     return () => {
       cancel = true;
     };
-  }, [idEmpresa, page, itemsPerPage, search, filtersJson, filtroEnvio, recargaEnvio]);
+  }, [idEmpresa, page, itemsPerPage, search, filtersJson, filtroEnvio, recargaEnvio, filtroEtiqueta]);
 
   // Asignaciones de esta tienda (backend propio; si no responde, la lista
   // funciona igual y solo no se muestra la columna Asignado).
@@ -357,8 +363,8 @@ export function PedidosPage() {
   /** El recorte por telefono solo vale mientras el filtro de cliente esta intacto. */
   const telActivo = Boolean(telDeUrl) && filtros.cliente.trim() === clienteDeUrl.trim();
 
-  // Filtro por etiqueta: es local (la API no conoce estas etiquetas),
-  // por eso se aplica sobre los pedidos ya cargados en esta pagina.
+  // Filtro por etiqueta: los pedidos ya vienen filtrados de nuestro servidor;
+  // aqui se vuelve a mirar por si se quito la etiqueta a uno en pantalla.
   // El de asignacion tambien: las asignaciones las guarda NUESTRO backend,
   // la API de LucidSales no sabe nada de ellas.
   const rowsVisibles = useMemo(() => {
@@ -726,7 +732,7 @@ export function PedidosPage() {
           </select>
         </div>
         <div className="field">
-          <label htmlFor="f-etiqueta" title="Filtro local: aplica a los pedidos de esta pagina">
+          <label htmlFor="f-etiqueta" title="Todos los pedidos con esa etiqueta (no solo los de esta página)">
             Etiqueta
           </label>
           <select
@@ -912,8 +918,8 @@ export function PedidosPage() {
           <>
             {filtroEtiqueta && (
               <p className="muted small" style={{ marginTop: 0 }}>
-                Etiqueta aplicada: {rowsVisibles.length} de {rows.length} pedidos
-                de esta pagina.
+                Etiqueta «{et.etiquetas.find((e) => e.id === filtroEtiqueta)?.nombre ?? ""}»: {total} pedido(s) en total
+                {numPages > 1 ? ` · página ${page} de ${numPages}` : ""}.
               </p>
             )}
             {filtroEnvio && infoEnvio && (

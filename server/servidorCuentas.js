@@ -82,6 +82,7 @@ export function crearServidorCuentas({ config, registro, crearServicios, comunes
       pedidosLucidBot: servicios.pedidosLucidBot,
       registroIntentos: servicios.registroIntentos,
       programados: servicios.programados,
+      etiquetas: servicios.etiquetas,
       auditoria: servicios.auditoria,
       verificarSesion: sesiones,
       // con una sola cuenta todo funciona como antes; con varias, cada una

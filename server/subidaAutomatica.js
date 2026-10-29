@@ -356,6 +356,8 @@ export function crearSubidaAutomatica({
   intentos = null,
   // entregas programadas (crearProgramados): pedidos para una fecha futura
   programados = null,
+  // etiquetas de pedidos (crearEtiquetas): la del motivo cuando no se sube
+  etiquetas = null,
 }) {
   let numeroVuelta = 0;
   let timer = null;
@@ -593,6 +595,12 @@ export function crearSubidaAutomatica({
         : {}),
     };
     guardar(c);
+    // etiqueta del motivo en el pedido (o ninguna si ya salio)
+    try {
+      etiquetas?.porMotivo?.(c.procesados[String(id)]?.tienda, id, accionFinal);
+    } catch (e) {
+      log.warn?.("[subida] no se pudo etiquetar el pedido:", e?.message ?? e);
+    }
     // la entrega programada ya salio (subida por Zunto o a mano)
     if (["subido", "subido-pendiente-confirmacion", "resuelto-a-mano"].includes(accionFinal)) {
       try {

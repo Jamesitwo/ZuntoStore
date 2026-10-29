@@ -1,18 +1,23 @@
 // Etiquetas de pedidos — funcion PROPIA (no existe en la API de LucidSales).
 //
-// Se guardan en localStorage, separadas por tienda activa:
-//   zunto.etiquetas.v1 -> { [idTienda]: { etiquetas: [...], asignaciones: { [idPedido]: [ids] } } }
+// Las guarda NUESTRO servidor (por tienda), asi todos ven las mismas y la
+// subida a Dropi puede etiquetar sola los pedidos que no pudo subir
+// ("Dropi · Dirección inválida", ...). Antes vivian en el localStorage de
+// cada navegador: lo que haya ahi se sube una vez al servidor.
 //
 // Es un store externo (useSyncExternalStore): cualquiera que cambie etiquetas
 // (lista, detalle, modales) refresca al instante al resto.
 
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { backend, backendSuave } from "../api/backend";
 import { useAuth } from "../auth/AuthContext";
 
 export interface Etiqueta {
   id: string;
   nombre: string;
   color: string; // hex #rrggbb
+  /** la pone la subida a Dropi (una por motivo) */
+  auto?: boolean;
 }
 
 export interface AlmacenTienda {
@@ -34,30 +39,17 @@ export const PALETA = [
   "#475569", // gris azulado
 ];
 
-const KEY = "zunto.etiquetas.v1";
+/** Donde estaban antes (navegador): se migran al servidor una vez. */
+const KEY_LOCAL = "zunto.etiquetas.v1";
+const KEY_MIGRADAS = "zunto.etiquetas.migradas.v1";
 const COLOR_POR_DEFECTO = PALETA[5];
 
 const oyentes = new Set<() => void>();
-let memoria: Record<string, AlmacenTienda> | null = null;
-
-function cargar(): Record<string, AlmacenTienda> {
-  if (memoria) return memoria;
-  try {
-    const raw = localStorage.getItem(KEY);
-    const parsed = raw ? JSON.parse(raw) : null;
-    memoria = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    memoria = {};
-  }
-  return memoria!;
-}
+const memoria: Record<string, AlmacenTienda> = {};
+const vacio: AlmacenTienda = { etiquetas: [], asignaciones: {} };
+const cargando = new Map<string, Promise<void>>();
 
 function notificar(): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(memoria ?? {}));
-  } catch {
-    /* localStorage no disponible: siguen en memoria */
-  }
   oyentes.forEach((fn) => fn());
 }
 
@@ -69,25 +61,70 @@ function suscribir(fn: () => void): () => void {
 }
 
 function almacen(tienda: string): AlmacenTienda {
-  const todos = cargar();
-  if (!todos[tienda] || typeof todos[tienda] !== "object") {
-    todos[tienda] = { etiquetas: [], asignaciones: {} };
-  }
-  const a = todos[tienda];
-  if (!Array.isArray(a.etiquetas)) a.etiquetas = [];
-  if (!a.asignaciones || typeof a.asignaciones !== "object") a.asignaciones = {};
-  return a;
+  return memoria[tienda] ?? vacio;
 }
 
-function mutar(tienda: string, fn: (a: AlmacenTienda) => AlmacenTienda): void {
-  const actual = almacen(tienda);
-  const copia: AlmacenTienda = {
-    etiquetas: [...actual.etiquetas],
-    asignaciones: { ...actual.asignaciones },
-  };
-  cargar()[tienda] = fn(copia);
-  notificar();
+function leerLocal(): Record<string, AlmacenTienda> {
+  try {
+    const raw = localStorage.getItem(KEY_LOCAL);
+    const d = raw ? JSON.parse(raw) : null;
+    return d && typeof d === "object" && !Array.isArray(d) ? d : {};
+  } catch {
+    return {};
+  }
 }
+
+function migradas(): string[] {
+  try {
+    const d = JSON.parse(localStorage.getItem(KEY_MIGRADAS) ?? "[]");
+    return Array.isArray(d) ? d.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Trae (o vuelve a traer) las etiquetas de la tienda desde el servidor. */
+function cargarServidor(tienda: string): Promise<void> {
+  if (!tienda) return Promise.resolve();
+  const enCurso = cargando.get(tienda);
+  if (enCurso) return enCurso;
+  const p = (async () => {
+    let r = await backendSuave<{ ok: boolean } & AlmacenTienda>(`/api/etiquetas?tienda=${encodeURIComponent(tienda)}`);
+    if (!r?.ok) return;
+    // las que este navegador tenia guardadas se suben una vez
+    const local = leerLocal()[tienda];
+    if (local && !migradas().includes(tienda) && (local.etiquetas?.length || Object.keys(local.asignaciones ?? {}).length)) {
+      try {
+        const m = await backend<{ ok: boolean } & AlmacenTienda>("/api/etiquetas/importar", {
+          method: "POST",
+          body: { tienda, etiquetas: local.etiquetas ?? [], asignaciones: local.asignaciones ?? {} },
+        });
+        if (m?.ok) r = m;
+        localStorage.setItem(KEY_MIGRADAS, JSON.stringify([...migradas(), tienda]));
+      } catch {
+        /* se intenta la proxima vez */
+      }
+    }
+    memoria[tienda] = { etiquetas: r.etiquetas ?? [], asignaciones: r.asignaciones ?? {} };
+    notificar();
+  })().finally(() => cargando.delete(tienda));
+  cargando.set(tienda, p);
+  return p;
+}
+
+/** Cambio local inmediato + llamada al servidor (si falla, se recarga). */
+function mutar(tienda: string, fn: (a: AlmacenTienda) => AlmacenTienda, servidor: () => Promise<unknown>): void {
+  const actual = almacen(tienda);
+  memoria[tienda] = fn({ etiquetas: [...actual.etiquetas], asignaciones: { ...actual.asignaciones } });
+  notificar();
+  servidor().catch((e) => {
+    console.warn("[etiquetas] no se pudo guardar:", e);
+    void cargarServidor(tienda);
+  });
+}
+
+const enviarPedido = (tienda: string, idPedido: string, ids: string[]) =>
+  backend(`/api/etiquetas/pedido/${encodeURIComponent(idPedido)}`, { method: "PUT", body: { tienda, ids } });
 
 function nuevoId(): string {
   return `et_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
@@ -119,8 +156,34 @@ export function useEtiquetas() {
   const datos = useSyncExternalStore(suscribir, () => almacen(tienda));
   const { etiquetas, asignaciones } = datos;
 
+  // se cargan del servidor y se refrescan (la subida a Dropi tambien etiqueta)
+  useEffect(() => {
+    if (!tienda) return;
+    void cargarServidor(tienda);
+    const t = setInterval(() => void cargarServidor(tienda), 60_000);
+    const alVolver = () => void cargarServidor(tienda);
+    window.addEventListener("focus", alVolver);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("focus", alVolver);
+    };
+  }, [tienda]);
+
   return useMemo(() => {
     const idsDe = (idPedido: unknown): string[] => asignaciones[String(idPedido)] ?? [];
+    const ponerEnPedido = (idPedido: unknown, nuevos: string[]) => {
+      const k = String(idPedido);
+      mutar(
+        tienda,
+        (a) => {
+          const asign = { ...a.asignaciones };
+          if (nuevos.length) asign[k] = nuevos;
+          else delete asign[k];
+          return { ...a, asignaciones: asign };
+        },
+        () => enviarPedido(tienda, k, nuevos),
+      );
+    };
 
     return {
       etiquetas,
@@ -130,97 +193,78 @@ export function useEtiquetas() {
       crear: (nombre: string, color: string): Etiqueta | null => {
         const limpia = String(nombre ?? "").trim().slice(0, 40);
         if (!limpia) return null;
-        const existente = etiquetas.find(
-          (e) => e.nombre.toLowerCase() === limpia.toLowerCase(),
-        );
+        const existente = etiquetas.find((e) => e.nombre.toLowerCase() === limpia.toLowerCase());
         if (existente) return existente;
         const nueva: Etiqueta = {
           id: nuevoId(),
           nombre: limpia,
           color: /^#[0-9a-fA-F]{6}$/.test(color) ? color : COLOR_POR_DEFECTO,
         };
-        mutar(tienda, (a) => ({ ...a, etiquetas: [...a.etiquetas, nueva] }));
+        mutar(
+          tienda,
+          (a) => ({ ...a, etiquetas: [...a.etiquetas, nueva] }),
+          () => backend("/api/etiquetas", { method: "POST", body: { tienda, ...nueva } }),
+        );
         return nueva;
       },
 
       actualizar: (id: string, cambios: Partial<Omit<Etiqueta, "id">>) => {
-        mutar(tienda, (a) => ({
-          ...a,
-          etiquetas: a.etiquetas.map((e) =>
-            e.id === id
-              ? {
-                  ...e,
-                  ...cambios,
-                  nombre: (cambios.nombre ?? e.nombre).trim().slice(0, 40) || e.nombre,
-                  color:
-                    cambios.color && /^#[0-9a-fA-F]{6}$/.test(cambios.color)
-                      ? cambios.color
-                      : e.color,
-                }
-              : e,
-          ),
-        }));
+        mutar(
+          tienda,
+          (a) => ({
+            ...a,
+            etiquetas: a.etiquetas.map((e) =>
+              e.id === id
+                ? {
+                    ...e,
+                    nombre: (cambios.nombre ?? e.nombre).trim().slice(0, 40) || e.nombre,
+                    color: cambios.color && /^#[0-9a-fA-F]{6}$/.test(cambios.color) ? cambios.color : e.color,
+                  }
+                : e,
+            ),
+          }),
+          () => backend(`/api/etiquetas/${encodeURIComponent(id)}`, { method: "PUT", body: { tienda, ...cambios } }),
+        );
       },
 
       /** Elimina la etiqueta y la quita de todos los pedidos. */
       eliminar: (id: string) => {
-        mutar(tienda, (a) => {
-          const asignaciones2: Record<string, string[]> = {};
-          for (const [pedido, ids] of Object.entries(a.asignaciones)) {
-            const resto = ids.filter((x) => x !== id);
-            if (resto.length) asignaciones2[pedido] = resto;
-          }
-          return {
-            etiquetas: a.etiquetas.filter((e) => e.id !== id),
-            asignaciones: asignaciones2,
-          };
-        });
+        mutar(
+          tienda,
+          (a) => {
+            const asignaciones2: Record<string, string[]> = {};
+            for (const [pedido, ids] of Object.entries(a.asignaciones)) {
+              const resto = ids.filter((x) => x !== id);
+              if (resto.length) asignaciones2[pedido] = resto;
+            }
+            return { etiquetas: a.etiquetas.filter((e) => e.id !== id), asignaciones: asignaciones2 };
+          },
+          () => backend(`/api/etiquetas/${encodeURIComponent(id)}?tienda=${encodeURIComponent(tienda)}`, { method: "DELETE" }),
+        );
       },
 
       aplicar: (idPedido: unknown, etiquetaId: string) => {
-        mutar(tienda, (a) => {
-          const k = String(idPedido);
-          const actuales = a.asignaciones[k] ?? [];
-          if (actuales.includes(etiquetaId)) return a;
-          return { ...a, asignaciones: { ...a.asignaciones, [k]: [...actuales, etiquetaId] } };
-        });
+        const actuales = idsDe(idPedido);
+        if (!actuales.includes(etiquetaId)) ponerEnPedido(idPedido, [...actuales, etiquetaId]);
       },
 
       quitar: (idPedido: unknown, etiquetaId: string) => {
-        mutar(tienda, (a) => {
-          const k = String(idPedido);
-          const actuales = a.asignaciones[k] ?? [];
-          const resto = actuales.filter((x) => x !== etiquetaId);
-          const asignaciones = { ...a.asignaciones };
-          if (resto.length) asignaciones[k] = resto;
-          else delete asignaciones[k];
-          return { ...a, asignaciones };
-        });
+        ponerEnPedido(
+          idPedido,
+          idsDe(idPedido).filter((x) => x !== etiquetaId),
+        );
       },
 
       /** Agrega o quita en un clic. */
       alternar: (idPedido: unknown, etiquetaId: string) => {
-        if (idsDe(idPedido).includes(etiquetaId)) {
-          const k = String(idPedido);
-          mutar(tienda, (a) => {
-            const resto = (a.asignaciones[k] ?? []).filter((x) => x !== etiquetaId);
-            const asignaciones = { ...a.asignaciones };
-            if (resto.length) asignaciones[k] = resto;
-            else delete asignaciones[k];
-            return { ...a, asignaciones };
-          });
-        } else {
-          mutar(tienda, (a) => {
-            const k = String(idPedido);
-            const actuales = a.asignaciones[k] ?? [];
-            if (actuales.includes(etiquetaId)) return a;
-            return { ...a, asignaciones: { ...a.asignaciones, [k]: [...actuales, etiquetaId] } };
-          });
-        }
+        const actuales = idsDe(idPedido);
+        ponerEnPedido(
+          idPedido,
+          actuales.includes(etiquetaId) ? actuales.filter((x) => x !== etiquetaId) : [...actuales, etiquetaId],
+        );
       },
 
-      tiene: (idPedido: unknown, etiquetaId: string): boolean =>
-        idsDe(idPedido).includes(etiquetaId),
+      tiene: (idPedido: unknown, etiquetaId: string): boolean => idsDe(idPedido).includes(etiquetaId),
 
       /** Etiquetas resueltas de un pedido (en el orden de la lista). */
       etiquetasDe: (idPedido: unknown): Etiqueta[] => {
@@ -238,37 +282,28 @@ export function useEtiquetas() {
   }, [tienda, etiquetas, asignaciones]);
 }
 
-/** Backup manual (etiquetas de TODAS las tiendas de este navegador). */
+/** Backup manual (etiquetas de las tiendas cargadas en esta sesion). */
 export function exportarEtiquetas(): string {
-  return JSON.stringify(cargar(), null, 2);
+  return JSON.stringify(memoria, null, 2);
 }
 
-/** Fusiona un backup; devuelve la cantidad de etiquetas importadas. */
-export function importarEtiquetas(json: string): number {
+/** Sube un backup al servidor (se mezcla); devuelve cuantas etiquetas traia. */
+export async function importarEtiquetas(json: string): Promise<number> {
   const datos = JSON.parse(json);
   if (!datos || typeof datos !== "object" || Array.isArray(datos)) {
     throw new Error("El archivo no parece un backup de etiquetas");
   }
-  const todos = cargar();
   let total = 0;
   for (const [tienda, valor] of Object.entries(datos as Record<string, unknown>)) {
     const v = valor as Partial<AlmacenTienda> | null;
     if (!v || typeof v !== "object") continue;
     const etiquetas = sanearEtiquetas(v.etiquetas);
     total += etiquetas.length;
-    const asignaciones: Record<string, string[]> = {};
-    if (v.asignaciones && typeof v.asignaciones === "object") {
-      for (const [pedido, ids] of Object.entries(v.asignaciones as Record<string, unknown>)) {
-        if (Array.isArray(ids) && ids.length) asignaciones[String(pedido)] = ids.map(String);
-      }
-    }
-    const previo = todos[tienda] ?? { etiquetas: [], asignaciones: {} };
-    // fusiona por id (no duplica)
-    const conocidos = new Set(previo.etiquetas.map((e) => e.id));
-    todos[tienda] = {
-      etiquetas: [...previo.etiquetas, ...etiquetas.filter((e) => !conocidos.has(e.id))],
-      asignaciones: { ...asignaciones, ...previo.asignaciones },
-    };
+    const r = await backend<{ ok: boolean } & AlmacenTienda>("/api/etiquetas/importar", {
+      method: "POST",
+      body: { tienda, etiquetas, asignaciones: v.asignaciones ?? {} },
+    });
+    if (r?.ok) memoria[tienda] = { etiquetas: r.etiquetas ?? [], asignaciones: r.asignaciones ?? {} };
   }
   notificar();
   return total;
