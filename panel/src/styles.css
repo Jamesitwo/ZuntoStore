@@ -5330,3 +5330,95 @@ li.fila-programada-toca { background: color-mix(in srgb, var(--warn) 9%, transpa
 .variante-celda .variante-nombre + input, .variante-celda .row + input { margin-top: 0; }
 .variante-espacio { display: block; height: 30px; margin-bottom: 4px; }
 input.variante-falta { border-color: var(--warn); }
+
+/* ---------- Crear / editar producto en el celular ---------- */
+/* el modal es un elemento de grid: sin min-width 0 crece con su contenido
+   (urls, codigos largos) y se sale de la pantalla */
+.modal-overlay { grid-template-columns: minmax(0, 1fr); }
+.modal { min-width: 0; }
+.modal-body { min-width: 0; overflow-x: auto; }
+.producto-editor-form, .producto-editor-form > * { min-width: 0; }
+.producto-editor-form code { overflow-wrap: anywhere; }
+.producto-editor-form .table-wrap { overflow-x: auto; }
+
+@media (max-width: 640px) {
+  /* pantalla completa: mas espacio y el boton de guardar siempre a mano */
+  /* modales chicos: hoja desde abajo; los anchos (editar producto): pantalla completa */
+  .modal-overlay { padding: 0; align-items: end; justify-items: stretch; }
+  .modal { max-width: 100%; max-height: 92dvh; border-radius: 16px 16px 0 0; }
+  .modal.wide { height: 100dvh; max-height: 100dvh; border-radius: 0; }
+  .modal-head { position: sticky; top: 0; background: var(--surface, #fff); z-index: 1; padding: 12px 14px; }
+  .modal-head h3 { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .modal-body { padding: 12px; flex: 1; }
+  .modal-foot { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); background: var(--surface, #fff); }
+  .modal-foot .btn { flex: 1; }
+
+  .producto-editor-form { gap: 12px; }
+  .producto-editor-form .subtitulo-form { padding: 11px 12px; }
+  .producto-editor-form .row { flex-wrap: wrap; }
+  .producto-editor-form input:not([type="checkbox"]),
+  .producto-editor-form select,
+  .producto-editor-form textarea { max-width: 100%; min-width: 0; }
+
+  /* variantes y precio por variante: una columna */
+  .mixed-fila { flex-direction: column; align-items: stretch; }
+  .mixed-fila input:not([type="number"]), .mixed-fila input[type="number"] { min-width: 0; max-width: none; width: 100%; }
+  .mixed-fila .chip { align-self: flex-start; }
+  .mixed-fila .btn.danger { align-self: flex-end; }
+
+  /* bundles: nombre arriba, cantidad y precio en una fila */
+  .bundle-fila > .row { flex-wrap: wrap; }
+  .bundle-nombre { min-width: 0; flex-basis: 100%; }
+  .bundle-fila input[type="number"] { flex: 1 1 90px; max-width: none !important; }
+  .bundle-fila .table { font-size: 12.5px; }
+  .bundle-fila .table input, .bundle-fila .table select { max-width: 120px !important; }
+
+  /* mensaje inicial y testimonios */
+  .paso-inicial { padding: 8px; }
+  .paso-inicial select { max-width: 100%; }
+  .pasos-urls.galeria { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .url-fila { padding: 6px; }
+  .url-fila .row.gap { flex-wrap: nowrap; }
+  .url-input { min-width: 0; flex: 1; }
+
+  /* chips largos (tags de Meta, integraciones) */
+  .producto-editor-form .chips, .producto-editor-form .chip { max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
+}
+
+@media (max-width: 640px) {
+  /* opciones de un atributo: la ✕ al lado del campo */
+  .producto-editor-form .opciones-lista .row { flex-wrap: nowrap; }
+  .producto-editor-form .opciones-lista .row input { flex: 1; }
+
+  /* precio por variante: combinacion arriba, los dos precios lado a lado */
+  .mixed-fila { flex-direction: row; flex-wrap: wrap; align-items: center; }
+  .mixed-fila input:not([type="number"]) { flex: 1 1 100%; }
+  .mixed-fila input[type="number"] { flex: 1 1 40%; width: auto; }
+  .mixed-fila .btn.danger { margin-left: auto; align-self: center; }
+
+  /* variantes del bundle: una tarjeta por combinacion (sin scroll lateral) */
+  .bundle-fila .table-wrap { overflow: visible; }
+  .bundle-fila .table, .bundle-fila .table tbody { display: block; width: 100%; min-width: 0 !important; }
+  .bundle-fila .table thead { display: none; }
+  .bundle-fila .table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 6px 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .bundle-fila .table td { padding: 0; border: 0; }
+  .bundle-fila .table td:first-child { grid-column: 1 / -1; font-weight: 600; color: var(--text); }
+  .bundle-fila .table td:nth-child(2)::before { content: "Precio"; display: block; font-size: 11px; color: var(--muted); }
+  .bundle-fila .table td:nth-child(3)::before { content: "Variante en Dropi"; display: block; font-size: 11px; color: var(--muted); }
+  .bundle-fila .table td:nth-child(4) { grid-column: 1 / -1; }
+  .bundle-fila .table td:nth-child(4)::before { content: "Stock Dropi: "; }
+  .bundle-fila .table input, .bundle-fila .table select { width: 100%; max-width: none !important; }
+
+  .producto-editor-form .check-linea { white-space: nowrap; }
+}
+@media (max-width: 640px) {
+  /* "Todos los campos": que quepa (valores largos se parten) */
+  .producto-editor-form .table.campo-detalle { min-width: 0 !important; width: 100%; table-layout: fixed; }
+  .producto-editor-form .table.campo-detalle td, .producto-editor-form .table.campo-detalle th { overflow-wrap: anywhere; }
+}
