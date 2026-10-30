@@ -10,6 +10,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { paginaEliminarDatos, paginaPrivacidad } from "./paginasLegales.js";
 
 const TIPOS = {
   ".html": "text/html; charset=utf-8",
@@ -40,7 +41,7 @@ const SALTO_RESPUESTA = new Set(["connection", "keep-alive", "transfer-encoding"
  * @param {{ dir: string, lucidOrigen?: string, fetchImpl?: typeof fetch, log?: Console }} opts
  * @returns {null | { manejar(req, res, ruta): Promise<boolean> }}
  */
-export function crearPanelEstatico({ dir, lucidOrigen = "https://panel.lucidsales.co", fetchImpl = fetch, log = console } = {}) {
+export function crearPanelEstatico({ dir, lucidOrigen = "https://panel.lucidsales.co", fetchImpl = fetch, log = console, legales = {} } = {}) {
   if (!dir) return null;
   const raiz = path.resolve(dir);
   const indice = path.join(raiz, "index.html");
@@ -106,6 +107,13 @@ export function crearPanelEstatico({ dir, lucidOrigen = "https://panel.lucidsale
       }
       if (req.method !== "GET" && req.method !== "HEAD") return false;
       const head = req.method === "HEAD";
+      // paginas publicas que pide Meta (politica de privacidad y borrado de datos)
+      const legal = ruta === "/privacidad" ? paginaPrivacidad(legales) : ruta === "/eliminar-datos" ? paginaEliminarDatos(legales) : null;
+      if (legal) {
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" });
+        res.end(head ? undefined : legal);
+        return true;
+      }
       let rel;
       try {
         rel = decodeURIComponent(ruta);

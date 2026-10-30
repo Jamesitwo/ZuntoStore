@@ -70,7 +70,12 @@ const creador = crearCreadorCampanas({
 });
 creador.arrancar();
 // el panel (build de Vite) en el mismo servicio, si PANEL_DIR lo trae
-const panel = crearPanelEstatico({ dir: config.PANEL_DIR, lucidOrigen: new URL(config.LUCID_BASE).origin });
+const panel = crearPanelEstatico({
+  dir: config.PANEL_DIR,
+  lucidOrigen: new URL(config.LUCID_BASE).origin,
+  // /privacidad y /eliminar-datos (las pide Meta para la app en modo publico)
+  legales: { nombre: config.LEGAL_NOMBRE, email: config.LEGAL_EMAIL },
+});
 if (panel) console.log(`[panel] sirviendo el panel desde ${panel.dir}`);
 
 const multi = crearServidorCuentas({

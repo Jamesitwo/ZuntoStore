@@ -85,3 +85,30 @@ test("/b se reenvia a LucidSales con metodo, cabeceras y cuerpo", async () => {
     srv.close();
   }
 });
+
+test("/privacidad y /eliminar-datos son paginas publicas para Meta", async () => {
+  const dir = armarDist();
+  const { srv, base } = await levantar(crearPanelEstatico({ dir, legales: { nombre: "Zunto Store", email: "datos@zunto.test" } }));
+  try {
+    let r = await fetch(`${base}/privacidad`);
+    assert.equal(r.status, 200);
+    let t = await r.text();
+    assert.match(t, /Ley 1581 de 2012/);
+    assert.match(t, /mailto:datos@zunto\.test/);
+    assert.doesNotMatch(t, /id=root/);
+    r = await fetch(`${base}/eliminar-datos`);
+    t = await r.text();
+    assert.match(t, /Eliminar mis datos/);
+  } finally {
+    srv.close();
+  }
+  // sin correo: se indica WhatsApp
+  const { srv: s2, base: b2 } = await levantar(crearPanelEstatico({ dir, legales: { nombre: "Zunto <b>" } }));
+  try {
+    const t = await (await fetch(`${b2}/privacidad`)).text();
+    assert.match(t, /WhatsApp/);
+    assert.match(t, /Zunto &lt;b&gt;/, "el nombre se escapa");
+  } finally {
+    s2.close();
+  }
+});

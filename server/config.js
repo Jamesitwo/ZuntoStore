@@ -54,6 +54,9 @@ export function cargarConfig(env = process.env) {
     LUCID_BASE: String(g("LUCID_BASE", "https://panel.lucidsales.co/b")).replace(/\/+$/, ""),
     /** carpeta del build del panel (dist) para servirlo desde aqui; vacio = no */
     PANEL_DIR: String(g("PANEL_DIR", "")).trim(),
+    /** Responsable y correo de /privacidad y /eliminar-datos (paginas publicas) */
+    LEGAL_NOMBRE: String(g("LEGAL_NOMBRE", "Zunto Store")).trim() || "Zunto Store",
+    LEGAL_EMAIL: String(g("LEGAL_EMAIL", "")).trim(),
     /** carpeta de datos: ahi van las carpetas de las cuentas (cuentas/<id>/) */
     DATA_DIR: String(g("DATA_DIR", dir)),
     /** registro de cuentas (negocios) y sus tiendas de LucidSales */
