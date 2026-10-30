@@ -2389,6 +2389,10 @@ export function crearManejador({
         const origen = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(String(cuerpo?.origen ?? "")) ? cuerpo.origen : `${proto}://${host}`;
         return responder(() => c.conectarTopView(`${origen}/api/creador/topview/callback`));
       }
+      if (req.method === "POST" && ruta === "/api/creador/topview/completar") {
+        const cuerpo = await leerCuerpo(req);
+        return responder(() => c.completarTopViewPegado(cuerpo?.url));
+      }
       if (req.method === "GET" && ruta === "/api/creador/paginas") return responder(() => c.paginas());
       if (req.method === "GET" && ruta === "/api/creador/proyectos") return responder(() => ({ proyectos: c.lista() }));
       if (req.method === "POST" && ruta === "/api/creador/proyectos") {

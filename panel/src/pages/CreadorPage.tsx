@@ -491,15 +491,40 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
   };
 
   const [conectando, setConectando] = useState(false);
+  /** TopView no deja volver a Zunto: la persona pega la direccion local */
+  const [pegar, setPegar] = useState<{ url: string } | null>(null);
+  const [pegado, setPegado] = useState("");
+  const [terminando, setTerminando] = useState(false);
   const conectarCuenta = async () => {
     setConectando(true);
     setError(null);
     try {
       const r = await creador.conectarTopView();
-      window.location.href = r.url;
+      if (r.pegar) {
+        setPegar({ url: r.url });
+        setPegado("");
+        setConectando(false);
+        window.open(r.url, "_blank", "noopener");
+      } else {
+        window.location.href = r.url;
+      }
     } catch (e) {
       setConectando(false);
       setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const terminarConexion = async () => {
+    setTerminando(true);
+    setError(null);
+    try {
+      const r = await creador.completarTopView(pegado);
+      setPegar(null);
+      onCambio(await creador.ajustes());
+      toast.success(`Cuenta de TopView conectada${r.creditos !== null && r.creditos !== undefined ? `: ${r.creditos} créditos disponibles` : ""}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTerminando(false);
     }
   };
   const desconectarCuenta = async () => {
@@ -642,6 +667,39 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
             </button>
           </div>
         )}
+        {pegar ? (
+          <div className="creador-pegar">
+            <strong>Último paso</strong>
+            <ol>
+              <li>
+                En la pestaña de TopView que se abrió, inicia sesión y autoriza a Zunto (si no se abrió,{" "}
+                <a href={pegar.url} target="_blank" rel="noreferrer">
+                  ábrela aquí
+                </a>
+                ).
+              </li>
+              <li>
+                Al terminar, el navegador te muestra una página que <strong>no carga</strong> (dirección que empieza con{" "}
+                <code>http://localhost</code>). Es normal.
+              </li>
+              <li>Copia la dirección completa de la barra del navegador de esa pestaña y pégala aquí:</li>
+            </ol>
+            <div className="row gap">
+              <input
+                aria-label="Dirección a la que te llevó TopView"
+                value={pegado}
+                onChange={(e) => setPegado(e.target.value)}
+                placeholder="http://localhost:33418/callback?code=…&state=…"
+              />
+              <button type="button" className="btn primary" disabled={!pegado.trim() || terminando} onClick={() => void terminarConexion()}>
+                {terminando ? "Conectando…" : "Terminar conexión"}
+              </button>
+              <button type="button" className="btn ghost" onClick={() => setPegar(null)}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        ) : null}
         {creditos ? <span className="badge ok">{creditos}</span> : null}
         <details className="creador-api" open={ajustes.topview.modo === "api" && !ajustes.topview.cuenta}>
           <summary>O usar una API key de TopView (créditos de la API, aparte del plan)</summary>

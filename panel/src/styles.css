@@ -5543,3 +5543,7 @@ tr.fila-marcada > td { background: color-mix(in srgb, var(--primary, #7c3aed) 9%
 .creador-api { margin-top: 10px; border-top: 1px solid var(--line-soft, #eee); padding-top: 8px; }
 .creador-api summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 .creador-api[open] summary { margin-bottom: 8px; }
+.creador-pegar { border: 1px solid #fde68a; background: #fffbeb; border-radius: 10px; padding: 12px 14px; margin: 6px 0 10px; font-size: 13px; }
+.creador-pegar ol { margin: 6px 0 10px; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.creador-pegar .row { flex-wrap: wrap; }
+.creador-pegar input { flex: 1 1 280px; min-width: 0; }

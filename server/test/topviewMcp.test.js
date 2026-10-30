@@ -135,3 +135,41 @@ test("conectar TopView con la cuenta (OAuth) y generar por el conector MCP", asy
   creador.detener();
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("si TopView no acepta volver a zunto.store, usa una dirección local y la persona la pega", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tvmcp-"));
+  const f = servidorFalso();
+  const base = f.fetcher;
+  const registrados = [];
+  const fetcher = async (url, op = {}) => {
+    if (String(url) === "https://auth.topview.test/register") {
+      const b = JSON.parse(op.body);
+      registrados.push(b.redirect_uris[0]);
+      if (!b.redirect_uris[0].startsWith("http://localhost:33418")) {
+        return { ok: false, status: 400, headers: { get: () => null }, json: async () => ({ error: "invalid_redirect_uri", error_description: `redirect_uri not allowed: ${b.redirect_uris[0]}` }) };
+      }
+    }
+    return base(url, op);
+  };
+  const creador = crearCreadorCampanas({ baseDir: dir, credencialMeta: () => null, fetcher, log: { warn() {} } });
+  const c = creador.para("ana@zunto.co", {});
+  const r = await c.conectarTopView("https://zunto.store/api/creador/topview/callback");
+  assert.equal(r.pegar, true);
+  assert.deepEqual(registrados, ["https://zunto.store/api/creador/topview/callback", "http://localhost:33418/callback"]);
+  const u = new URL(r.url);
+  assert.equal(u.searchParams.get("redirect_uri"), "http://localhost:33418/callback");
+  f.fijarReto(u.searchParams.get("code_challenge"));
+
+  // otro usuario no puede usar esa autorizacion
+  await assert.rejects(creador.para("luis@zunto.co", {}).completarTopViewPegado(`http://localhost:33418/callback?code=CODIGO&state=${u.searchParams.get("state")}`), /otro usuario/);
+  await assert.rejects(c.completarTopViewPegado("hola"), /dirección completa/);
+  const fin = await c.completarTopViewPegado(`http://localhost:33418/callback?code=CODIGO&state=${u.searchParams.get("state")}`);
+  assert.equal(fin.creditos, 74.86);
+  assert.equal(c.ajustes().topview.modo, "cuenta");
+
+  // la segunda vez ya no reintenta la direccion rechazada
+  registrados.length = 0;
+  await c.conectarTopView("https://zunto.store/api/creador/topview/callback");
+  assert.deepEqual(registrados, []);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

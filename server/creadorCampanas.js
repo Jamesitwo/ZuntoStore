@@ -397,27 +397,52 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
   }
 
   /** Paso 1 de "Conectar TopView": registra a Zunto (una vez) y arma la URL. */
-  async function iniciarTopView(slug, redirect) {
+  /**
+   * Si TopView no deja volver a zunto.store (solo acepta direcciones de
+   * apps de escritorio), se usa una direccion local: el navegador no abre
+   * nada ahi, pero la direccion trae el codigo y la persona la pega en Zunto.
+   */
+  const REGRESOS_LOCALES = ["http://localhost:33418/callback", "http://127.0.0.1:33418/callback", "http://localhost/callback"];
+
+  async function iniciarTopView(slug, redirectWeb) {
     const d = await descubrirOAuth({ fetcher });
-    const clave = `${d.issuer}|${redirect}`;
     const clientes = leerClientes();
-    let cliente = clientes[clave];
-    if (!cliente) {
-      cliente = await registrarCliente({ registro: d.registro, redirect, fetcher });
-      clientes[clave] = cliente;
-      fs.mkdirSync(raiz, { recursive: true });
-      escribirJsonSeguro(rutaClientes, clientes);
+    let elegido = null;
+    let ultimo = null;
+    for (const redirect of [redirectWeb, ...REGRESOS_LOCALES]) {
+      const clave = `${d.issuer}|${redirect}`;
+      if (clientes[clave]?.rechazado) continue;
+      if (clientes[clave]?.clientId) {
+        elegido = { redirect, cliente: clientes[clave] };
+        break;
+      }
+      try {
+        const cliente = await registrarCliente({ registro: d.registro, redirect, fetcher });
+        clientes[clave] = cliente;
+        elegido = { redirect, cliente };
+        break;
+      } catch (e) {
+        ultimo = e;
+        // solo se prueba otra direccion si el problema era la direccion
+        if (!/redirect/i.test(String(e?.message))) throw e;
+        clientes[clave] = { rechazado: true, en: ahora() };
+      }
     }
+    fs.mkdirSync(raiz, { recursive: true });
+    escribirJsonSeguro(rutaClientes, clientes);
+    if (!elegido) throw ultimo ?? new Error("TopView no aceptó ninguna dirección de regreso");
+    const { redirect, cliente } = elegido;
     const { url, estado, verificador } = urlAutorizacion({ descubierto: d, cliente, redirect });
     for (const [k, v] of pendientes) if (Date.now() - v.desde > 10 * 60 * 1000) pendientes.delete(k);
     pendientes.set(estado, { slug, verificador, redirect, cliente, tokenUrl: d.token, recurso: d.recurso, desde: Date.now() });
-    return { url };
+    return { url, pegar: redirect !== redirectWeb };
   }
 
   /** Paso 2: TopView devuelve el codigo; se cambia por el acceso y se guarda. */
-  async function completarTopView(estado, codigo) {
+  async function completarTopView(estado, codigo, slugEsperado = null) {
     const p = pendientes.get(String(estado ?? ""));
     if (!p || Date.now() - p.desde > 10 * 60 * 1000) throw new Error("La conexión con TopView venció: inténtalo de nuevo");
+    if (slugEsperado && p.slug !== slugEsperado) throw new Error("Esa autorización es de otro usuario");
     pendientes.delete(String(estado));
     if (!codigo) throw new Error("TopView no autorizó la conexión");
     const t = await pedirToken({
@@ -770,6 +795,23 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
       conectarTopView(redirect) {
         if (!/^https?:\/\//.test(String(redirect ?? ""))) throw new Error("No se pudo armar la dirección de regreso");
         return iniciarTopView(slug, redirect);
+      },
+
+      /** Termina la conexion con la direccion que la persona pego (regreso local). */
+      async completarTopViewPegado(texto) {
+        const t = String(texto ?? "").trim();
+        let u;
+        try {
+          u = new URL(t);
+        } catch {
+          throw new Error("Pega la dirección completa (empieza con http://localhost o http://127.0.0.1)");
+        }
+        const err = u.searchParams.get("error");
+        if (err) throw new Error(u.searchParams.get("error_description") || `TopView respondió: ${err}`);
+        const code = u.searchParams.get("code");
+        const state = u.searchParams.get("state");
+        if (!code || !state) throw new Error("Esa dirección no trae el código de TopView: copia la de la barra del navegador después de autorizar");
+        return completarTopView(state, code, slug);
       },
 
       /** Prueba la llave de Claude. */

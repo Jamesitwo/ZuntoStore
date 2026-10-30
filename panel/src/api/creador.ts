@@ -118,7 +118,9 @@ export const creador = {
     backend<AjustesCreador & { ok: boolean }>(`${P}/ajustes`, { method: "POST", body: cambios }),
   probarIA: () => backend<{ ok: boolean; msg: string }>(`${P}/probar-ia`, { method: "POST", body: {} }),
   conectarTopView: () =>
-    backend<{ ok: boolean; url: string }>(`${P}/topview/conectar`, { method: "POST", body: { origen: window.location.origin } }),
+    backend<{ ok: boolean; url: string; pegar?: boolean }>(`${P}/topview/conectar`, { method: "POST", body: { origen: window.location.origin } }),
+  completarTopView: (url: string) =>
+    backend<{ ok: boolean; creditos: number | null }>(`${P}/topview/completar`, { method: "POST", body: { url } }),
   creditos: () => backend<{ ok: boolean; creditos: number | null }>(`${P}/creditos`),
   paginas: () => backend<{ ok: boolean; paginas: Array<{ id: string; nombre: string }> }>(`${P}/paginas`),
   lista: () => backend<{ ok: boolean; proyectos: ResumenProyecto[] }>(`${P}/proyectos`),
