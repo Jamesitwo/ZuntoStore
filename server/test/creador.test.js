@@ -230,3 +230,36 @@ test("libertad creativa: nivel de riesgo, estilos variados y sin repetir los rec
   assert.match(promptUsuario({ producto: { nombre: "x", precio: 1 }, fotos: [], cantidades: { imagenes: 1, videos: 0 } }, { recientes: ["flat lay", "UGC"] }), /no los repitas.*flat lay · UGC/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("Claude en streaming: si se corta por largo, repite pidiendo prompts más cortos", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "creador-"));
+  const pedidos = [];
+  const sse = (texto, stop) =>
+    [
+      { type: "message_start", message: {} },
+      { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: texto } },
+      { type: "message_delta", delta: { stop_reason: stop } },
+      { type: "message_stop" },
+    ]
+      .map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`)
+      .join("");
+  const fetcher = async (url, op = {}) => {
+    const body = JSON.parse(op.body);
+    pedidos.push(body);
+    const texto = pedidos.length === 1 ? '{"creativos":[{"tipo":"imagen","prompt":"muy lar' : JSON.stringify(PLAN);
+    const stop = pedidos.length === 1 ? "max_tokens" : "end_turn";
+    return { ok: true, status: 200, text: async () => sse(texto, stop) };
+  };
+  const creador = crearCreadorCampanas({ baseDir: dir, credencialMeta: () => null, fetcher, log: { warn() {} } });
+  const c = creador.para("ana@zunto.co", { llm: null });
+  c.guardarAjustes({ claudeKey: "sk-ant-123456789012" });
+  const p = c.crear({ producto: { nombre: "Taladro", precio: 199900 }, fotos: ["https://fotos.test/1.jpg"], imagenes: 1, videos: 1 });
+  c.planear(p.id);
+  await espera(() => c.get(p.id).estado === "plan" || c.get(p.id).errorPlan);
+  assert.equal(c.get(p.id).errorPlan, undefined);
+  assert.equal(pedidos.length, 2);
+  assert.equal(pedidos[0].stream, true);
+  assert.ok(pedidos[0].max_tokens >= 32000);
+  assert.match(JSON.stringify(pedidos[1].messages), /demasiado larga/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

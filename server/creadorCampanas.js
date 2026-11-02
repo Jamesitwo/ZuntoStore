@@ -86,6 +86,7 @@ Nivel de riesgo creativo pedido: ${CREATIVIDAD[creatividad] ?? CREATIVIDAD.equil
 
 ══════ CÓMO ESCRIBIR CADA PROMPT ══════
 Imagen: Estilo → Escena/locación → Producto (bloque de fidelidad, regla 5) → Composición (dónde va el producto, jerarquía, espacio para textos) → Textos sobre la imagen (exactos, entre comillas, cortos y legibles: titular, apoyo, precio, ${marca}, WhatsApp) → Look (luz, paleta, tipografía, acabado fotográfico realista).
+Largo: cada prompt entre 120 y 250 palabras (detallado en el producto, sin relleno); cada copy de máximo 110 palabras.
 Video: CONCEPTO → ESCENA → GUION con tiempos (0–3 s gancho, desarrollo, últimos 3 s precio + WhatsApp + ${marca}) → TEXTOS EN PANTALLA con el segundo exacto → AUDIO (voz, música, sonidos) → reglas de cámara (una acción por plano, movimientos suaves, el producto sin giros bruscos).
 
 ══════ COPY (uno por creativo) ══════
@@ -158,9 +159,36 @@ export function jsonDeTexto(c) {
  * que TopView lo deforme). Si Anthropic no puede abrir las fotos, se repite
  * sin ellas.
  */
-export async function pedirPlanClaude({ apiKey, modelo, sistema, usuario, fotos = [], fetcher = globalThis.fetch, timeoutMs = 300000 }) {
+/** Respuesta de Claude en streaming (SSE) -> {texto, stop}. */
+function leerStreamClaude(texto) {
+  let salida = "";
+  let stop = null;
+  for (const bloque of String(texto).split(/\r?\n\r?\n/)) {
+    const datos = bloque
+      .split(/\r?\n/)
+      .filter((l) => l.startsWith("data:"))
+      .map((l) => l.slice(5).trim())
+      .join("");
+    if (!datos) continue;
+    let ev;
+    try {
+      ev = JSON.parse(datos);
+    } catch {
+      continue;
+    }
+    if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") salida += ev.delta.text ?? "";
+    else if (ev.type === "message_delta" && ev.delta?.stop_reason) stop = ev.delta.stop_reason;
+    else if (ev.type === "error") throw new Error(`Claude: ${ev.error?.message ?? "error en la respuesta"}`);
+  }
+  return { texto: salida, stop };
+}
+
+/** Respuestas largas: 7 creativos con prompts detallados pasan facil de 16 mil tokens. */
+const MAX_TOKENS_PLAN = 32000;
+
+export async function pedirPlanClaude({ apiKey, modelo, sistema, usuario, fotos = [], fetcher = globalThis.fetch, timeoutMs = 600000 }) {
   if (!apiKey) throw new Error("No hay API key de Claude (Creador IA > Ajustes)");
-  const llamar = async (conFotos) => {
+  const llamar = async (conFotos, breve = false) => {
     const contenido = [
       ...(conFotos
         ? fotos.slice(0, 7).flatMap((url, i) => [
@@ -170,7 +198,7 @@ export async function pedirPlanClaude({ apiKey, modelo, sistema, usuario, fotos 
         : []),
       {
         type: "text",
-        text: `${usuario}\n\n${conFotos && fotos.length ? "Mira las fotos con cuidado: describe el producto tal como se ve (piezas, colores, textos, tamaño). " : ""}Responde SOLO con el JSON, sin texto antes ni después.`,
+        text: `${usuario}\n\n${conFotos && fotos.length ? "Mira las fotos con cuidado: describe el producto tal como se ve (piezas, colores, textos, tamaño). " : ""}${breve ? "IMPORTANTE: tu respuesta anterior fue demasiado larga y se cortó. Sé más concreto: cada prompt de máximo 180 palabras y cada copy de máximo 80 palabras. " : ""}Responde SOLO con el JSON, sin texto antes ni después.`,
       },
     ];
     let r;
@@ -180,7 +208,8 @@ export async function pedirPlanClaude({ apiKey, modelo, sistema, usuario, fotos 
         headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
         body: JSON.stringify({
           model: modelo || MODELOS_CLAUDE[0].id,
-          max_tokens: 16000,
+          max_tokens: MAX_TOKENS_PLAN,
+          stream: true,
           system: sistema,
           messages: [{ role: "user", content: contenido }],
         }),
@@ -189,7 +218,18 @@ export async function pedirPlanClaude({ apiKey, modelo, sistema, usuario, fotos 
     } catch (e) {
       throw new Error(e?.name === "TimeoutError" ? "Claude tardó demasiado en responder" : `No se pudo llamar a Claude: ${e?.message ?? e}`);
     }
-    const d = await r.json().catch(() => null);
+    let d = null;
+    let crudo = "";
+    if (typeof r.text === "function") {
+      crudo = await r.text().catch(() => "");
+      try {
+        d = JSON.parse(crudo);
+      } catch {
+        /* streaming */
+      }
+    } else {
+      d = await r.json().catch(() => null);
+    }
     if (!r.ok) {
       const msg = d?.error?.message ?? `HTTP ${r.status}`;
       const err = new Error(
@@ -199,13 +239,30 @@ export async function pedirPlanClaude({ apiKey, modelo, sistema, usuario, fotos 
       err.porFoto = r.status === 400 && /image|url|media/i.test(msg);
       throw err;
     }
-    if (d?.stop_reason === "max_tokens") throw new Error("Claude se quedó sin espacio para responder: pide menos creativos");
-    return jsonDeTexto((d?.content ?? []).filter((b) => b?.type === "text").map((b) => b.text).join(""));
+    const { texto, stop } = d
+      ? { texto: (d.content ?? []).filter((b) => b?.type === "text").map((b) => b.text).join(""), stop: d.stop_reason }
+      : leerStreamClaude(crudo);
+    if (stop === "max_tokens") {
+      const err = new Error("Claude se quedó sin espacio para responder aun pidiéndole prompts más cortos: pide menos creativos");
+      err.largo = true;
+      throw err;
+    }
+    return jsonDeTexto(texto);
+  };
+  // si se corta por largo, se repite una vez pidiendo prompts mas cortos
+  const conFotos = fotos.length > 0;
+  const intentar = async (breve) => {
+    try {
+      return await llamar(conFotos, breve);
+    } catch (e) {
+      if (e?.porFoto) return llamar(false, breve);
+      throw e;
+    }
   };
   try {
-    return await llamar(fotos.length > 0);
+    return await intentar(false);
   } catch (e) {
-    if (e?.porFoto) return llamar(false);
+    if (e?.largo) return intentar(true);
     throw e;
   }
 }
