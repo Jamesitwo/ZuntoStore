@@ -160,6 +160,8 @@ const EQUIVALENTES_UBICACION = [
   ["san andres de tumaco", "tumaco"],
   ["guadalajara de buga", "buga"],
   ["inirida", "puerto inirida"],
+  // Calima - El Darien (Valle): en Dropi es "Darien (calima)"
+  ["darien calima", "darien", "calima el darien", "calima darien", "el darien", "calima"],
 ];
 
 /** Todas las formas aceptadas para un nombre (normalizadas), la propia primero. */

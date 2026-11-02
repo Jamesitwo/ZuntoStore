@@ -454,3 +454,12 @@ test("ciudad con la marca del departamento suelta: «Cordoba N» es Córdoba de 
   // sigue funcionando con parentesis
   assert.equal(coincideUbicacion("Armenia (Q)", variantesUbicacion("Armenia"), "Quindío"), true);
 });
+
+test("Calima - El Darien en Dropi es Darien (calima)", () => {
+  const v = variantesUbicacion("Calima - El Darién");
+  assert.equal(v[0], "calima el darien");
+  assert.ok(v.includes("darien"), "se prueba a escribir solo Darien");
+  assert.equal(coincideUbicacion("Darien (calima)", v, "Valle del Cauca"), true);
+  assert.equal(coincideUbicacion("Darien (calima)", variantesUbicacion("Calima"), "Valle"), true);
+  assert.equal(coincideUbicacion("Cali", v, "Valle"), false);
+});
