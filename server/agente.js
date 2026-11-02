@@ -139,6 +139,23 @@ export function coincideProducto(chat, catalogo) {
 }
 
 /**
+ * Medidas de longitud del texto, pasadas a centimetros: "1,50 m" -> 150,
+ * "150 cm" -> 150, "1.5 metros" -> 150, "90cm" -> 90.
+ */
+export function medidasCm(texto) {
+  const out = [];
+  const re = /(\d+(?:[.,]\d+)?)\s*(cm|cms|centimetros?|mts?|metros?|m)(?![a-z])/g;
+  for (const m of normalizarTexto(texto).matchAll(re)) {
+    const n = Number(m[1].replace(",", "."));
+    if (!Number.isFinite(n)) continue;
+    const cm = m[2].startsWith("c") ? n : n * 100;
+    const r = Math.round(cm);
+    if (r > 0 && !out.includes(r)) out.push(r);
+  }
+  return out;
+}
+
+/**
  * ¿El chat pide OTRA variante? Si menciona algun valor de la variante del
  * pedido ("blanca") pero no todos ("90 cm" en vez de "150 cm"), no es la misma.
  * Si no menciona ninguno, no se puede saber: no frena.
@@ -152,7 +169,13 @@ function varianteDistinta(chat, variante) {
     .filter(Boolean);
   if (!valores.length) return null;
   const t = ` ${normalizarTexto(chat).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ")} `;
-  const estan = valores.filter((v) => t.includes(` ${v} `));
+  const enChat = medidasCm(chat);
+  const estan = valores.filter((v) => {
+    if (t.includes(` ${v} `)) return true;
+    // medidas en otra unidad: "1,50 m" = "150 cm" = "1.5 metros"
+    const m = medidasCm(v);
+    return m.length > 0 && m.every((x) => enChat.includes(x));
+  });
   if (!estan.length || estan.length === valores.length) return null;
   return `variante: en el chat no coincide con la del pedido (${variante})`;
 }

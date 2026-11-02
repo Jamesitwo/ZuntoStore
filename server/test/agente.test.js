@@ -403,3 +403,15 @@ test("varios productos: si el chat no pide uno, o cambia la cantidad o el precio
   const deMas = await ejecutarAgente({ resumen: DOS, mensajes: [], extraer: async () => ({ ...EXTRAIDO_DOS, productos: [...EXTRAIDO_DOS.productos, { producto: "lijadora", cantidad: 1, precio: null }] }) });
   assert.match(deMas.problemas.find((p) => p.campo === "producto").detalle, /pide además: lijadora/);
 });
+
+test("variante con medidas en otra unidad: 1,50 m es lo mismo que 150 cm", async () => {
+  const { coincideProducto, medidasCm } = await import("../agente.js");
+  assert.deepEqual(medidasCm("Verde, 1,50 m"), [150]);
+  assert.deepEqual(medidasCm("Tamaño: 150 cm"), [150]);
+  assert.deepEqual(medidasCm("1.5 metros y 90cm"), [150, 90]);
+  const pedido = [{ nombre: "Arbol De Navidad Plegable", variante: { nombre: "Copa: Verde; Tamaño: 150 cm" } }];
+  assert.equal(coincideProducto("Arbol De Navidad Plegable (Verde, 1,50 m)", pedido).ok, true);
+  assert.equal(coincideProducto("Arbol De Navidad Plegable verde 1.5 metros", pedido).ok, true);
+  // otra medida sigue frenando
+  assert.equal(coincideProducto("Arbol De Navidad Plegable (Verde, 90 cm)", pedido).ok, false);
+});
