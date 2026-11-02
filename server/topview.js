@@ -23,6 +23,32 @@ const RUTAS = {
   omni_reference: "/v1/common_task/omni_reference/task",
 };
 
+/**
+ * Seedance (omni_reference) rechaza fotos que el prompt no nombra ("Image3 is
+ * not referenced in prompt"). Se mandan solo las que el prompt menciona y se
+ * renumeran en orden (Image1, Image2...) cambiando tambien el prompt. Si no
+ * nombra ninguna, se usa la primera foto del producto y se agrega al prompt.
+ */
+export function prepararReferencias(prompt, fileIds = []) {
+  let texto = String(prompt ?? "");
+  const usadas = [];
+  for (const m of texto.matchAll(/image\s*(\d+)/gi)) {
+    const n = Number(m[1]);
+    if (n >= 1 && n <= fileIds.length && !usadas.includes(n)) usadas.push(n);
+  }
+  usadas.sort((a, b) => a - b);
+  if (!usadas.length) {
+    if (!fileIds.length) return { prompt: texto, inputImages: [] };
+    return {
+      prompt: `${texto}\n\nProducto de referencia (fidelidad estricta a su forma, colores y logo): <<<Image1>>>`,
+      inputImages: [{ fileId: fileIds[0], name: "Image1" }],
+    };
+  }
+  const nuevo = new Map(usadas.map((n, i) => [n, i + 1]));
+  texto = texto.replace(/(image\s*)(\d+)/gi, (todo, pre, num) => (nuevo.has(Number(num)) ? `${pre}${nuevo.get(Number(num))}` : todo));
+  return { prompt: texto, inputImages: usadas.map((n, i) => ({ fileId: fileIds[n - 1], name: `Image${i + 1}` })) };
+}
+
 const EXT = { "image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg", "image/webp": "webp", "video/mp4": "mp4" };
 
 export function crearClienteTopView({ apiKey, uid, fetcher = globalThis.fetch, timeoutMs = 60000 } = {}) {
@@ -116,12 +142,13 @@ export function crearClienteTopView({ apiKey, uid, fetcher = globalThis.fetch, t
      */
     async video({ prompt, fileIds = [], ...opciones }) {
       const p = { ...DEFECTOS_TOPVIEW.video, ...opciones };
+      const refs = prepararReferencias(prompt, fileIds);
       const r = await llamar(`${RUTAS.omni_reference}/submit`, {
         method: "POST",
         body: {
           model: p.model,
-          prompt: String(prompt ?? "").slice(0, 8000),
-          inputImages: fileIds.map((fileId, i) => ({ fileId, name: `Image${i + 1}` })),
+          prompt: refs.prompt.slice(0, 8000),
+          inputImages: refs.inputImages,
           aspectRatio: p.aspectRatio,
           resolution: p.resolution,
           duration: p.duration,

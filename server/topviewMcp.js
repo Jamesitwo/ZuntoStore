@@ -12,7 +12,7 @@
 // El cliente expone lo mismo que crearClienteTopView (topview.js): creditos,
 // subir, imagen, video y consultar.
 import crypto from "node:crypto";
-import { DEFECTOS_TOPVIEW } from "./topview.js";
+import { DEFECTOS_TOPVIEW, prepararReferencias } from "./topview.js";
 
 export const MCP_TOPVIEW = "https://mcp.topview.ai/mcp";
 const VERSION_MCP = "2025-06-18";
@@ -312,12 +312,13 @@ export function crearClienteTopViewMcp({ obtenerToken, mcpUrl = MCP_TOPVIEW, fet
 
     async video({ prompt, fileIds = [], ...opciones }) {
       const p = { ...DEFECTOS_TOPVIEW.video, ...opciones };
+      const refs = prepararReferencias(prompt, fileIds);
       const r = await herramienta("topview_generate_video", {
         req: {
           taskType: "omni_reference",
           model: p.model,
-          prompt: String(prompt ?? "").slice(0, 8000),
-          inputImages: fileIds.map((fileId, i) => ({ fileId, name: `Image${i + 1}` })),
+          prompt: refs.prompt.slice(0, 8000),
+          inputImages: refs.inputImages,
           aspectRatio: p.aspectRatio,
           resolution: p.resolution,
           duration: p.duration,

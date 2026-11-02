@@ -173,3 +173,19 @@ test("si TopView no acepta volver a zunto.store, usa una dirección local y la p
   assert.deepEqual(registrados, []);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("videos: solo se mandan las fotos que el prompt nombra (Seedance rechaza las demás)", async () => {
+  const { prepararReferencias } = await import("../topview.js");
+  // fotos 1 y 3 (la 3 es la modelo); la 2 no se nombra
+  let r = prepararReferencias("Producto <<<Image1>>> en mano de PERSONAJE <<<Image3>>>. Otra vez <<<Image1>>>.", ["A", "B", "C"]);
+  assert.deepEqual(r.inputImages, [{ fileId: "A", name: "Image1" }, { fileId: "C", name: "Image2" }]);
+  assert.equal(r.prompt, "Producto <<<Image1>>> en mano de PERSONAJE <<<Image2>>>. Otra vez <<<Image1>>>.");
+  // ninguna nombrada: la primera foto del producto y se agrega al prompt
+  r = prepararReferencias("un taladro girando", ["A", "B"]);
+  assert.deepEqual(r.inputImages, [{ fileId: "A", name: "Image1" }]);
+  assert.match(r.prompt, /<<<Image1>>>$/);
+  // numeros fuera de rango no cuentan
+  r = prepararReferencias("<<<Image2>>> y <<<Image9>>>", ["A", "B"]);
+  assert.deepEqual(r.inputImages, [{ fileId: "B", name: "Image1" }]);
+  assert.equal(r.prompt, "<<<Image1>>> y <<<Image9>>>");
+});
