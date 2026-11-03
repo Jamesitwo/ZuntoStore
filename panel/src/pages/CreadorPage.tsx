@@ -16,6 +16,7 @@ import { Modal } from "../components/Modal";
 import { SubirMedia } from "../components/SubirMedia";
 import { useToast } from "../components/Toast";
 import { Campo, ErrorBanner, PageHeader, Spinner } from "../components/ui";
+import { crearProductoLucid, guardarFichaLucid } from "../lib/crearProducto";
 import { prodId, prodImg, prodImgs, prodName, prodPrice, useCatalogo } from "../lib/catalogo";
 
 const arreglo = (v: unknown): any[] => {
@@ -232,19 +233,50 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [creadoLucid, setCreadoLucid] = useState<{ id: string; nombre: string } | null>(null);
   const opciones: OpcionCombo[] = useMemo(
-    () =>
-      catalogo.map((p) => {
+    () => [
+      ...(creadoLucid && !catalogo.some((p) => prodId(p) === creadoLucid.id)
+        ? [{ id: creadoLucid.id, nombre: creadoLucid.nombre, nota: "recién creado" }]
+        : []),
+      ...catalogo.map((p) => {
         const precio = prodPrice(p);
         return { id: prodId(p), nombre: prodName(p), nota: precio ? pesos(precio) : undefined, img: prodImg(p) || undefined };
       }),
-    [catalogo],
+    ],
+    [catalogo, creadoLucid],
   );
 
   // ---- desde el link del producto en Dropi
   const [linkDropi, setLinkDropi] = useState("");
   const [trayendo, setTrayendo] = useState(false);
-  const [deDropi, setDeDropi] = useState<{ proveedor: number | null; sugerido: number | null; stock: number } | null>(null);
+  const [deDropi, setDeDropi] = useState<{ proveedor: number | null; sugerido: number | null; stock: number; idDropi: string | null } | null>(null);
+  const [creandoLucid, setCreandoLucid] = useState(false);
+  /** Crea en LucidSales el producto que se trajo de Dropi y lo deja elegido. */
+  const crearEnLucid = async () => {
+    setCreandoLucid(true);
+    setError(null);
+    try {
+      const id = await crearProductoLucid({
+        idEmpresa,
+        nombre: form.nombre,
+        precio: Number(String(form.precio).replace(/\D/g, "")),
+        descripcion: form.descripcion,
+        contenido: form.contenido,
+        imagenes: fotos,
+        idDropi: deDropi?.idDropi ?? null,
+        precioProveedor: deDropi?.proveedor ?? null,
+        precioSugerido: deDropi?.sugerido ?? null,
+      });
+      setCreadoLucid({ id, nombre: form.nombre.trim() });
+      setProductoId(id);
+      toast.success("Producto creado en LucidSales");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCreandoLucid(false);
+    }
+  };
   const traerDeDropi = async () => {
     setTrayendo(true);
     setError(null);
@@ -261,7 +293,13 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
         setDisponibles((d) => [...new Set([...f.imagenes, ...d])]);
         setFotos(f.imagenes.slice(0, 6));
       }
-      setDeDropi({ proveedor: f.precioProveedor, sugerido: f.precioSugerido, stock: f.stock });
+      setDeDropi({ proveedor: f.precioProveedor, sugerido: f.precioSugerido, stock: f.stock, idDropi: f.idDropi });
+      // ¿ya esta en el catalogo de LucidSales? (mismo id de Dropi)
+      const ya = f.idDropi ? catalogo.find((x: any) => String(x?.idProductoDropi ?? "") === String(f.idDropi)) : null;
+      if (ya) {
+        setProductoId(prodId(ya));
+        toast.success(`Ya está en LucidSales como «${prodName(ya)}»`);
+      } else setProductoId("");
       toast.success(`Traído de Dropi: ${f.imagenes.length} foto${f.imagenes.length === 1 ? "" : "s"}${f.contenido ? " y lo que incluye" : ""}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -361,6 +399,25 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
             {deDropi.proveedor ? <span className="badge">Proveedor {pesos(deDropi.proveedor)}</span> : null}
             {deDropi.sugerido ? <span className="badge">Sugerido {pesos(deDropi.sugerido)}</span> : null}
             <span className={`badge${deDropi.stock > 0 ? " ok" : " danger"}`}>Stock {deDropi.stock}</span>
+          </div>
+        ) : null}
+        {deDropi && !productoId ? (
+          <div className="creador-crear-lucid">
+            <div>
+              <strong>Este producto no está en tu catálogo de LucidSales</strong>
+              <span className="muted small">
+                Revisa nombre, precio, descripción y fotos abajo, y créalo para que el bot lo pueda vender. Queda enlazado con Dropi
+                (para la subida automática).
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={creandoLucid || !form.nombre.trim() || !Number(String(form.precio).replace(/\D/g, ""))}
+              onClick={() => void crearEnLucid()}
+            >
+              {creandoLucid ? "Creando…" : "Crear en LucidSales"}
+            </button>
           </div>
         ) : null}
       </div>
@@ -1059,7 +1116,33 @@ function DetalleProyecto({ id }: { id: string }) {
       {/* ------------------------------------------------ textos */}
       {p.creativos.length ? (
         <section className="card">
-          <h3 className="card-title">Mensajes de WhatsApp y ficha</h3>
+          <div className="creador-seccion-cab">
+            <h3 className="card-title">Mensajes de WhatsApp y ficha</h3>
+            {p.producto.id && p.ficha ? (
+              <button
+                type="button"
+                className="btn ghost sm"
+                disabled={Boolean(trabajando)}
+                onClick={() =>
+                  void accion(
+                    "ficha",
+                    async () => {
+                      await guardarFichaLucid(p.producto.id as string, {
+                        Descripcion: p.ficha?.descripcion,
+                        ModoDeUso: p.ficha?.modoUso,
+                        CaracteristicasTecnicas: p.ficha?.caracteristicas,
+                        ContenidoPaquete: p.ficha?.contenido,
+                      });
+                      return {};
+                    },
+                    "Ficha guardada en el producto de LucidSales",
+                  )
+                }
+              >
+                {trabajando === "ficha" ? "Guardando…" : "Guardar ficha en LucidSales"}
+              </button>
+            ) : null}
+          </div>
           <Campo id="pd-predef" label="Mensaje con el que llega el cliente" ayuda="Lo envía el cliente al tocar el anuncio (va en todos los anuncios)">
             <input
               id="pd-predef"
