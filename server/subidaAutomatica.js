@@ -358,6 +358,46 @@ export function resumirValidacion(r, minimo) {
 }
 
 /** Rechaza direcciones que en realidad indican recoger en oficina del carrier. */
+/** Pausa entre vueltas seguidas de una ronda a hora fija. */
+const ESPERA_ENTRE_VUELTAS_MS = 90 * 1000;
+const ZONA_COLOMBIA_MIN = -5 * 60; // Colombia no tiene horario de verano
+
+/**
+ * Cuando corre la subida: "intervalo" (cada cadaSegundos, como siempre) u
+ * "horas" (a horas fijas de Colombia, p. ej. ["23:00"]: sube todos los del dia).
+ */
+export function horarioDe(c) {
+  const h = c?.horario ?? {};
+  const horas = [
+    ...new Set(
+      (Array.isArray(h.horas) ? h.horas : [])
+        .map((x) => String(x ?? "").trim().match(/^(\d{1,2}):(\d{2})$/))
+        .filter((m) => m && Number(m[1]) < 24 && Number(m[2]) < 60)
+        .map((m) => `${m[1].padStart(2, "0")}:${m[2]}`),
+    ),
+  ]
+    .sort()
+    .slice(0, 6);
+  return {
+    modo: h.modo === "horas" ? "horas" : "intervalo",
+    horas: horas.length ? horas : h.modo === "horas" ? [] : ["23:00"],
+    vueltas: Math.max(1, Math.min(Number(h.vueltas) || 4, 10)),
+  };
+}
+
+/** Proximo momento (ms) en que toca alguna de las horas (hora de Colombia). */
+export function proximaHora(horas, ahora = Date.now()) {
+  let mejor = null;
+  const local = new Date(ahora + ZONA_COLOMBIA_MIN * 60000); // reloj de Colombia leido en UTC
+  for (const hhmm of horas ?? []) {
+    const [hh, mm] = hhmm.split(":").map(Number);
+    let t = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), hh, mm) - ZONA_COLOMBIA_MIN * 60000;
+    if (t <= ahora + 1000) t += 24 * 3600 * 1000;
+    if (mejor === null || t < mejor) mejor = t;
+  }
+  return mejor;
+}
+
 export function crearSubidaAutomatica({
   cliente,
   conversacion,
@@ -382,6 +422,8 @@ export function crearSubidaAutomatica({
 }) {
   let numeroVuelta = 0;
   let timer = null;
+  /** modo "horas": el setTimeout de la proxima ronda */
+  let timerHora = null;
   let corriendo = false;
   /** Reloj para el panel: cuando toca la proxima vuelta y desde cuando corre la actual. */
   let proximaMs = null;
@@ -1336,11 +1378,54 @@ export function crearSubidaAutomatica({
     }
   }
 
+  /**
+   * Ronda de la hora programada: una vuelta y, si hizo algo (hay mas de 200
+   * pedidos o reintentos pendientes), otras seguidas hasta `vueltas`.
+   */
+  async function ronda() {
+    const c = leer();
+    const h = horarioDe(c);
+    for (let i = 0; i < h.vueltas; i++) {
+      const r = await tick().catch((e) => ({ ok: false, error: e?.message }));
+      const hizo = r?.ok && !r.saltado && !r.detenido && (r.detalle?.length ?? 0) > 0;
+      if (!hizo || i === h.vueltas - 1) break;
+      await new Promise((ok) => {
+        const t = setTimeout(ok, ESPERA_ENTRE_VUELTAS_MS);
+        t.unref?.();
+      });
+    }
+  }
+
+  function programarHora() {
+    const c = leer();
+    const h = horarioDe(c);
+    const prox = proximaHora(h.horas);
+    if (!prox) return;
+    proximaMs = prox;
+    timerHora = setTimeout(() => {
+      timerHora = null;
+      ronda()
+        .catch(() => {})
+        .finally(() => {
+          if (timer) programarHora();
+        });
+    }, Math.max(1000, prox - Date.now()));
+    timerHora.unref?.();
+  }
+
   return {
-    /** Arranca el intervalo. Si esta apagado el tick no hace nada. */
+    /** Arranca el intervalo (o la hora fija). Si esta apagado el tick no hace nada. */
     arrancar() {
       if (timer) return;
       const c = leer();
+      const h = horarioDe(c);
+      if (h.modo === "horas") {
+        // marcador para saber que esta arrancado; las rondas van por programarHora
+        timer = { horas: true, unref() {} };
+        programarHora();
+        log.log(`[subida] automatica ${c.automatico ? "ACTIVA" : "apagada"} (a las ${h.horas.join(", ")} hora Colombia, dryRun=${c.dryRun})`);
+        return;
+      }
       const seg = segundosValidos(c.cadaSegundos);
       proximaMs = Date.now() + seg * 1000;
       timer = setInterval(() => {
@@ -1354,8 +1439,10 @@ export function crearSubidaAutomatica({
     },
 
     detener() {
-      if (timer) clearInterval(timer);
+      if (timer && !timer.horas) clearInterval(timer);
+      if (timerHora) clearTimeout(timerHora);
       timer = null;
+      timerHora = null;
       proximaMs = null;
     },
 
@@ -1384,6 +1471,7 @@ export function crearSubidaAutomatica({
       return {
         ...resto,
         procesados: Object.keys(procesados ?? {}).length,
+        horario: horarioDe(c),
         // para el temporizador del panel (no se guarda)
         reloj: {
           ahora: new Date().toISOString(),
@@ -1402,6 +1490,11 @@ export function crearSubidaAutomatica({
         if (k in patch) c[k] = Boolean(patch[k]);
       }
       if ("cadaSegundos" in patch) c.cadaSegundos = segundosValidos(patch.cadaSegundos);
+      if ("horario" in patch && patch.horario && typeof patch.horario === "object") {
+        const h = horarioDe({ horario: { ...horarioDe(c), ...patch.horario } });
+        if (h.modo === "horas" && !h.horas.length) throw new ErrorApi(400, "Pon al menos una hora (por ejemplo 23:00)");
+        c.horario = h;
+      }
       if ("transportadoras" in patch) {
         const lista = listaTransportadoras(patch.transportadoras);
         if (!lista.length) throw new ErrorApi(400, "Elige al menos una transportadora");

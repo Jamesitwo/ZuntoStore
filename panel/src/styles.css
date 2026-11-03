@@ -5547,3 +5547,10 @@ tr.fila-marcada > td { background: color-mix(in srgb, var(--primary, #7c3aed) 9%
 .creador-pegar ol { margin: 6px 0 10px; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
 .creador-pegar .row { flex-wrap: wrap; }
 .creador-pegar input { flex: 1 1 280px; min-width: 0; }
+.subida-modo { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.horas-subida { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.hora-subida { display: inline-flex; align-items: center; gap: 2px; }
+.hora-subida input { width: auto; }
+@media (max-width: 640px) { .subida-modo { grid-template-columns: 1fr; } }
+.campo-modo-subida { grid-column: span 2; }
+@media (max-width: 900px) { .campo-modo-subida { grid-column: auto; } }

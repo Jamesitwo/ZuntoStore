@@ -58,6 +58,7 @@ function normalizaConfig(c: any): {
   automatico: boolean;
   dryRun: boolean;
   cadaSegundos: number;
+  horario: { modo: "intervalo" | "horas"; horas: string[]; vueltas: number };
   transportadoraId: number;
   maxIntentos: number;
   maxDiasPedido: number;
@@ -83,6 +84,11 @@ function normalizaConfig(c: any): {
     automatico: !!c?.automatico,
     dryRun: c?.dryRun !== false, // por defecto se prepara sin crear
     cadaSegundos: Math.max(30, Math.min(Number(c?.cadaSegundos) || 120, MAX_SEGUNDOS)),
+    horario: {
+      modo: c?.horario?.modo === "horas" ? "horas" : "intervalo",
+      horas: Array.isArray(c?.horario?.horas) && c.horario.horas.length ? c.horario.horas.map(String) : ["23:00"],
+      vueltas: Math.max(1, Math.min(Number(c?.horario?.vueltas) || 4, 10)),
+    },
     transportadoraId: Number(c?.transportadoraId) || 5,
     transportadoras: generales.length ? generales : [Number(c?.transportadoraId) || 5],
     envio: { maxPesos: num(c?.envio?.maxPesos), maxPorcentaje: num(c?.envio?.maxPorcentaje) },
@@ -515,7 +521,11 @@ export function SubidaDropi() {
         </span>
       </div>
       {config?.automatico ? (
-        <RelojSubida reloj={config.reloj} cadaSegundos={Number(config.cadaSegundos) || 120} onVuelta={refrescarEstado} />
+        <RelojSubida
+          reloj={config.reloj}
+          cadaSegundos={config.horario?.modo === "horas" ? 86400 : Number(config.cadaSegundos) || 120}
+          onVuelta={refrescarEstado}
+        />
       ) : null}
 
       <p className="muted small" style={{ marginTop: 8 }}>
@@ -868,6 +878,80 @@ export function SubidaDropi() {
               </p>
             </div>
 
+            <div className="field campo-modo-subida">
+              <label>Cuándo revisa los pedidos</label>
+              <div className="creador-niveles subida-modo" role="radiogroup" aria-label="Cuándo revisa los pedidos">
+                {(
+                  [
+                    ["intervalo", "Cada cierto tiempo", "Revisa todo el día, cada X minutos u horas"],
+                    ["horas", "A una hora fija", "Por ejemplo a las 11 p. m., todos los del día de una vez"],
+                  ] as const
+                ).map(([id, nombre, ayuda]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={form.horario.modo === id}
+                    className={`creador-nivel${form.horario.modo === id ? " activo" : ""}`}
+                    onClick={() => setForm((f) => ({ ...f, horario: { ...f.horario, modo: id } }))}
+                  >
+                    <strong>{nombre}</strong>
+                    <span>{ayuda}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {form.horario.modo === "horas" ? (
+              <div className="field">
+                <label>Horas (hora de Colombia)</label>
+                <div className="horas-subida">
+                  {form.horario.horas.map((h, i) => (
+                    <span key={i} className="hora-subida">
+                      <input
+                        type="time"
+                        aria-label={`Hora ${i + 1}`}
+                        value={h}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            horario: { ...f.horario, horas: f.horario.horas.map((x, j) => (j === i ? e.target.value : x)) },
+                          }))
+                        }
+                      />
+                      {form.horario.horas.length > 1 ? (
+                        <button
+                          type="button"
+                          className="btn ghost sm"
+                          aria-label={`Quitar la hora ${h}`}
+                          onClick={() =>
+                            setForm((f) => ({ ...f, horario: { ...f.horario, horas: f.horario.horas.filter((_, j) => j !== i) } }))
+                          }
+                        >
+                          ✕
+                        </button>
+                      ) : null}
+                    </span>
+                  ))}
+                  {form.horario.horas.length < 6 ? (
+                    <button
+                      type="button"
+                      className="btn ghost sm"
+                      onClick={() => setForm((f) => ({ ...f, horario: { ...f.horario, horas: [...f.horario.horas, "12:00"] } }))}
+                    >
+                      + Otra hora
+                    </button>
+                  ) : null}
+                </div>
+                <p className="campo-ayuda">
+                  A esa hora revisa todos los pedidos pendientes. Si hay muchos (más de 200) o alguno falla y toca reintentar, da hasta{" "}
+                  {form.horario.vueltas} vueltas seguidas, con 1,5 minutos entre una y otra. El resto del día no sube nada solo; el botón
+                  «Probar ahora» sigue funcionando.
+                </p>
+              </div>
+            ) : null}
+
+            {form.horario.modo === "intervalo" ? (
             <Campo
               id="sub-cada"
               label="Cada cuánto revisa"
@@ -923,6 +1007,7 @@ export function SubidaDropi() {
                 </select>
               </span>
             </Campo>
+            ) : null}
 
             <Campo
               id="sub-calif"

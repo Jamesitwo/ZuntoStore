@@ -1621,3 +1621,27 @@ test("pedido con dos productos: una orden por producto y al reintentar no repite
   s.detener();
   fs.rmSync(ruta, { force: true });
 });
+
+test("horario a hora fija: la proxima ronda es a las 23:00 de Colombia", async () => {
+  const { proximaHora, horarioDe } = await import("../subidaAutomatica.js");
+  // 2 nov 2026, 18:00 en Colombia = 23:00 UTC
+  const ahora = Date.UTC(2026, 10, 2, 23, 0);
+  assert.equal(new Date(proximaHora(["23:00"], ahora)).toISOString(), "2026-11-03T04:00:00.000Z");
+  // ya pasaron las 23:00 de Colombia: al otro dia
+  const tarde = Date.UTC(2026, 10, 3, 4, 30);
+  assert.equal(new Date(proximaHora(["23:00"], tarde)).toISOString(), "2026-11-04T04:00:00.000Z");
+  // varias horas: la mas cercana
+  assert.equal(new Date(proximaHora(["08:00", "23:00"], ahora)).toISOString(), "2026-11-03T04:00:00.000Z");
+  assert.deepEqual(horarioDe({ horario: { modo: "horas", horas: ["7:30", "23:00", "25:00", "x"] } }).horas, ["07:30", "23:00"]);
+  assert.equal(horarioDe({}).modo, "intervalo");
+
+  const { s, ruta } = armar();
+  const c = s.configurar({ automatico: true, horario: { modo: "horas", horas: ["23:00"] } });
+  assert.equal(c.horario.modo, "horas");
+  assert.ok(c.reloj.proxima, "el reloj muestra la proxima ronda");
+  const h = new Date(c.reloj.proxima);
+  assert.equal((h.getUTCHours() + 24 - 5) % 24, 23, "a las 11 p. m. de Colombia");
+  assert.throws(() => s.configurar({ horario: { modo: "horas", horas: [] } }), /al menos una hora/);
+  s.detener();
+  fs.rmSync(ruta, { force: true });
+});
