@@ -698,7 +698,12 @@ export function PedidosPage() {
     <>
       <PageHeader
         title="Pedidos"
-        subtitle={`${total.toLocaleString("es-CO")} pedidos · ${etiqueta(idEmpresa)}`}
+        subtitle={`${
+          // con filtro de dias, LucidSales cuenta de mas: se cuentan los que de verdad son de esos dias
+          filtros.desde && filtros.hasta && !loading
+            ? `${rowsVisibles.length.toLocaleString("es-CO")} pedidos${total > rows.length ? " en esta página" : ""}`
+            : `${total.toLocaleString("es-CO")} pedidos`
+        } · ${etiqueta(idEmpresa)}`}
         actions={
           <>
             <button className="btn" onClick={() => setGestorAbierto(true)}>
