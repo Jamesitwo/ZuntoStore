@@ -59,6 +59,7 @@ import { crearConfigLLM } from "./llmConfig.js";
 import { ejecutarAgente, resumenDePedido, textoVariantes } from "./agente.js";
 import { crearClienteDropi, armarPedidoDropi } from "./dropi.js";
 import { crearDropiNavegador, DIRECCION_OFICINA_INTER } from "./dropiNavegador.js";
+import { crearZip } from "./zip.js";
 import { completarNombres, crearSubidaAutomatica, otrosPedidosDelCliente, resumirAnalisis, variantesParaDropi } from "./subidaAutomatica.js";
 import { faltantesDeConfig } from "./config.js";
 import { crearEstadosEnvio } from "./estadosEnvio.js";
@@ -2407,6 +2408,28 @@ export function crearManejador({
       if (req.method === "POST" && ruta === "/api/creador/proyectos") {
         const cuerpo = await leerCuerpo(req);
         return responder(() => ({ proyecto: c.crear(cuerpo ?? {}) }));
+      }
+      // descargas: un creativo (?c=img1) o todo el proyecto en .zip
+      const mDesc = ruta.match(/^\/api\/creador\/proyectos\/([a-z0-9_]+)\/(descargar|zip)$/i);
+      if (mDesc && req.method === "GET") {
+        const u = new URL(req.url ?? "/", "http://localhost");
+        let r;
+        try {
+          r = await c.archivos(mDesc[1], mDesc[2] === "descargar" ? u.searchParams.get("c") : null);
+        } catch (e) {
+          throw new ErrorApi(400, e?.message ?? String(e));
+        }
+        const unico = mDesc[2] === "descargar" ? r.archivos[0] : null;
+        const datos = unico ? unico.datos : crearZip(r.archivos);
+        const nombre = unico ? unico.nombre : `${r.base}-creativos.zip`;
+        res.writeHead(200, {
+          "content-type": unico ? unico.tipo ?? "application/octet-stream" : "application/zip",
+          "content-length": datos.length,
+          "content-disposition": `attachment; filename="${nombre.replace(/[^\w.-]/g, "_")}"`,
+          "cache-control": "no-store",
+        });
+        res.end(datos);
+        return;
       }
       if (m) {
         const [, id, accion] = m;

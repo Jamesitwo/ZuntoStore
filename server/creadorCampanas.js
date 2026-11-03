@@ -1147,6 +1147,51 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
         return guardarP(slug, p);
       },
 
+      /**
+       * Archivos para descargar: un creativo (cid) o todos los listos, mas
+       * los textos (copys, ficha y bienvenida) si se piden todos.
+       */
+      async archivos(id, cid = null) {
+        const p = proyecto(id);
+        const lista = p.creativos.filter((c) => c.estado === "listo" && c.resultado?.url && (!cid || c.id === cid));
+        if (!lista.length) throw new Error(cid ? "Ese creativo todavía no está listo" : "No hay creativos listos para descargar");
+        const limpio = (t) =>
+          String(t ?? "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-zA-Z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+            .slice(0, 40) || "creativo";
+        const base = limpio(p.producto?.nombre);
+        const salida = [];
+        for (const c of lista) {
+          const { bytes, tipo } = await bajar(c.resultado.url);
+          const ext = /mp4|video/i.test(tipo) || c.tipo === "video" ? "mp4" : /png/i.test(tipo) ? "png" : /webp/i.test(tipo) ? "webp" : "jpg";
+          salida.push({ nombre: `${base}-${c.id}-${limpio(c.angulo)}.${ext}`, datos: bytes, tipo: ext === "mp4" ? "video/mp4" : `image/${ext === "jpg" ? "jpeg" : ext}` });
+        }
+        if (!cid) {
+          const copys = p.creativos
+            .filter((c) => c.copy?.texto || c.copy?.titulo)
+            .map((c) => `===== ${c.id} · ${c.angulo} (${c.tipo})${c.estilo ? ` · ${c.estilo}` : ""} =====\n\nTEXTO PRINCIPAL:\n${c.copy.texto}\n\nTÍTULO: ${c.copy.titulo}\nDESCRIPCIÓN: ${c.copy.descripcion}\n`)
+            .join("\n");
+          if (copys) salida.push({ nombre: `${base}-copys.txt`, datos: copys });
+          const f = p.ficha ?? {};
+          const ficha = [
+            p.concepto ? `CONCEPTO\n${p.concepto}` : "",
+            f.descripcion ? `DESCRIPCIÓN\n${f.descripcion}` : "",
+            f.modoUso ? `MODO DE USO\n${f.modoUso}` : "",
+            f.caracteristicas ? `CARACTERÍSTICAS TÉCNICAS\n${f.caracteristicas}` : "",
+            f.contenido ? `CONTENIDO DEL PAQUETE\n${f.contenido}` : "",
+            p.bienvenida ? `BIENVENIDA DE WHATSAPP\n${p.bienvenida}` : "",
+            p.mensajePredefinido ? `MENSAJE CON EL QUE LLEGA EL CLIENTE\n${p.mensajePredefinido}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n\n");
+          if (ficha) salida.push({ nombre: `${base}-ficha.txt`, datos: ficha });
+        }
+        return { base, archivos: salida };
+      },
+
       borrar(id) {
         const p = proyecto(id);
         if (p.campana?.estado === "activa") throw new Error("La campaña está activa: páusala primero");

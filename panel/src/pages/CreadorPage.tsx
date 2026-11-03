@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { creador, CREATIVIDADES, pesos, type Creatividad, type AjustesCreador, type Creativo, type Proyecto, type ResumenProyecto } from "../api/creador";
 import { productos } from "../api/endpoints";
+import { descargarBackend } from "../api/backend";
 import { useAuth } from "../auth/AuthContext";
 import { Combo, type OpcionCombo } from "../components/Combo";
 import { Modal } from "../components/Modal";
@@ -927,6 +928,18 @@ function DetalleProyecto({ id }: { id: string }) {
   const [confirmar, setConfirmar] = useState<null | "generar" | "campana" | "activar" | "borrar" | "replanear">(null);
   const [creditos, setCreditos] = useState<number | null>(null);
   const [editando, setEditando] = useState<Creativo | null>(null);
+  const [descargando, setDescargando] = useState<string | null>(null);
+  const descargar = async (ruta: string, clave: string) => {
+    setDescargando(clave);
+    try {
+      const nombre = await descargarBackend(ruta, clave);
+      toast.success(`Descargado: ${nombre}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDescargando(null);
+    }
+  };
 
   const cargar = useCallback(async () => {
     try {
@@ -1073,6 +1086,17 @@ function DetalleProyecto({ id }: { id: string }) {
             <h3 className="card-title">Creativos</h3>
             <div className="row gap">
               {generando ? <span className="badge">{generando} generándose en TopView…</span> : null}
+              {p.creativos.some((c) => c.estado === "listo") ? (
+                <button
+                  type="button"
+                  className="btn ghost"
+                  disabled={Boolean(descargando)}
+                  onClick={() => void descargar(`/api/creador/proyectos/${id}/zip`, "zip")}
+                  title="Todos los creativos listos, con sus copys y la ficha"
+                >
+                  {descargando === "zip" ? "Preparando .zip…" : "⬇ Descargar todo"}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="btn primary"
@@ -1097,6 +1121,8 @@ function DetalleProyecto({ id }: { id: string }) {
                 onPrompt={() => setEditando(c)}
                 onRegenerar={() => void accion("generar", () => creador.generar(id, [c.id]), "Enviado a TopView")}
                 onCopiar={copiar}
+                descargando={descargando === c.id}
+                onDescargar={() => void descargar(`/api/creador/proyectos/${id}/descargar?c=${encodeURIComponent(c.id)}`, c.id)}
               />
             ))}
           </div>
@@ -1506,7 +1532,11 @@ function TarjetaCreativo({
   onPrompt,
   onRegenerar,
   onCopiar,
+  onDescargar,
+  descargando,
 }: {
+  onDescargar: () => void;
+  descargando: boolean;
   c: Creativo;
   bloqueado: boolean;
   onCambio: (cambio: Partial<Creativo>) => void;
@@ -1572,6 +1602,11 @@ function TarjetaCreativo({
         <button type="button" className="btn ghost sm" onClick={() => onCopiar(copyCompleto)}>
           Copiar copy
         </button>
+        {c.estado === "listo" && c.resultado?.url ? (
+          <button type="button" className="btn ghost sm" disabled={descargando} onClick={onDescargar}>
+            {descargando ? "Bajando…" : "⬇ Descargar"}
+          </button>
+        ) : null}
       </div>
       <textarea
         aria-label={`Texto principal de ${c.angulo}`}

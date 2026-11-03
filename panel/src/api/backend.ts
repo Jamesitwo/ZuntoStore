@@ -95,3 +95,33 @@ export async function backendArchivo(path: string): Promise<void> {
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+
+/**
+ * Descarga un archivo del backend propio (con la sesion del usuario) y lo
+ * guarda en el equipo. Devuelve el nombre con el que se guardo.
+ */
+export async function descargarBackend(path: string, nombrePorDefecto = "archivo"): Promise<string> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_PROPIA}${path}`, { headers: cabecerasBackend() });
+  } catch {
+    throw new Error("No se pudo conectar con el backend propio");
+  }
+  if (!res.ok) {
+    const d = (await res.json().catch(() => null)) as RespuestaBackend | null;
+    throw new Error((d && typeof d.msg === "string" && d.msg) || `Error ${res.status} al descargar`);
+  }
+  const m = /filename="?([^";]+)"?/i.exec(res.headers.get("content-disposition") ?? "");
+  const nombre = m?.[1] ?? nombrePorDefecto;
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nombre;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return nombre;
+}

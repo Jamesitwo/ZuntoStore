@@ -263,3 +263,43 @@ test("Claude en streaming: si se corta por largo, repite pidiendo prompts más c
   assert.match(JSON.stringify(pedidos[1].messages), /demasiado larga/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("descargar creativos: un archivo o todos en zip con los copys", async () => {
+  const { crearZip } = await import("../zip.js");
+  const { execFileSync } = await import("node:child_process");
+  const { dir, creador, c } = armar();
+  c.guardarAjustes({ topviewKey: "k-123456789", topviewUid: "u" });
+  const p = c.crear({ producto: { nombre: "Árbol Plegable", precio: 116900 }, fotos: ["https://fotos.test/1.jpg"], imagenes: 1, videos: 1 });
+  c.planear(p.id);
+  await espera(() => c.get(p.id).estado === "plan");
+  await assert.rejects(c.archivos(p.id), /No hay creativos listos/);
+  await c.generar(p.id);
+  await creador.revisarTareas();
+  const uno = await c.archivos(p.id, "img1");
+  assert.equal(uno.archivos.length, 1);
+  assert.match(uno.archivos[0].nombre, /^Arbol-Plegable-img1-Problema\.jpg$/);
+  const todos = await c.archivos(p.id);
+  const nombres = todos.archivos.map((a) => a.nombre);
+  assert.ok(nombres.some((n) => n.endsWith(".mp4")));
+  assert.ok(nombres.includes("Arbol-Plegable-copys.txt"));
+  assert.ok(nombres.includes("Arbol-Plegable-ficha.txt"));
+  // el zip se abre con unzip
+  const ruta = path.join(dir, "x.zip");
+  fs.writeFileSync(ruta, crearZip(todos.archivos));
+  let hayUnzip = true;
+  try {
+    execFileSync("unzip", ["-v"], { stdio: "ignore" });
+  } catch {
+    hayUnzip = false; // sin unzip en esta maquina: se revisa la cabecera
+  }
+  if (hayUnzip) {
+    const lista = execFileSync("unzip", ["-l", ruta]).toString();
+    assert.match(lista, /Arbol-Plegable-copys\.txt/);
+    const copys = execFileSync("unzip", ["-p", ruta, "Arbol-Plegable-copys.txt"]).toString();
+    assert.match(copys, /TÍTULO: Taladro/);
+  } else {
+    assert.equal(fs.readFileSync(ruta).readUInt32LE(0), 0x04034b50);
+  }
+  creador.detener();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
