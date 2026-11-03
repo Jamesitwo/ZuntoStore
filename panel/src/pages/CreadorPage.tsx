@@ -12,12 +12,13 @@ import { creador, CREATIVIDADES, pesos, type Creatividad, type AjustesCreador, t
 import { productos } from "../api/endpoints";
 import { descargarBackend } from "../api/backend";
 import { useAuth } from "../auth/AuthContext";
+import { useConfirmar } from "../components/Confirmar";
 import { Combo, type OpcionCombo } from "../components/Combo";
 import { Modal } from "../components/Modal";
 import { SubirMedia } from "../components/SubirMedia";
 import { useToast } from "../components/Toast";
 import { Campo, ErrorBanner, PageHeader, Spinner } from "../components/ui";
-import { crearProductoLucid, guardarFichaLucid } from "../lib/crearProducto";
+import { crearProductoLucid, guardarFichaLucid, guardarMensajeInicialLucid } from "../lib/crearProducto";
 import { prodId, prodImg, prodImgs, prodName, prodPrice, useCatalogo } from "../lib/catalogo";
 
 const arreglo = (v: unknown): any[] => {
@@ -353,7 +354,13 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
     setError(null);
     try {
       const r = await creador.crear({
-        producto: { id: productoId || null, ...form },
+        producto: {
+          id: productoId || null,
+          ...form,
+          idDropi: deDropi?.idDropi ?? null,
+          precioProveedor: deDropi?.proveedor ?? null,
+          precioSugerido: deDropi?.sugerido ?? null,
+        },
         fotos,
         imagenes,
         videos,
@@ -929,6 +936,89 @@ function DetalleProyecto({ id }: { id: string }) {
   const [creditos, setCreditos] = useState<number | null>(null);
   const [editando, setEditando] = useState<Creativo | null>(null);
   const [descargando, setDescargando] = useState<string | null>(null);
+  const { session } = useAuth();
+  const preguntar = useConfirmar();
+
+  /** Crea el producto en LucidSales con la ficha y la bienvenida que escribio la IA. */
+  const crearEnLucidDesdeIA = async () => {
+    if (!p) return;
+    const ok = await preguntar({
+      titulo: "¿Crear el producto en LucidSales?",
+      mensaje: (
+        <>
+          <p>
+            Se crea <strong>{p.producto.nombre}</strong> a {pesos(p.producto.precio)} con la descripción, modo de uso, características y
+            contenido de esta sección, las fotos reales del proyecto{p.producto.idDropi ? " y el enlace a Dropi" : ""}.
+          </p>
+          {p.bienvenida ? <p>La bienvenida queda como mensaje inicial del bot.</p> : null}
+        </>
+      ),
+      confirmar: "Crear producto",
+      icono: "＋",
+    });
+    if (!ok) return;
+    await accion(
+      "crear-lucid",
+      async () => {
+        const idNuevo = await crearProductoLucid({
+          idEmpresa: session!.tiendaActiva,
+          nombre: p.producto.nombre,
+          precio: p.producto.precio,
+          descripcion: p.ficha?.descripcion || p.producto.descripcion,
+          contenido: p.ficha?.contenido || p.producto.contenido,
+          caracteristicas: p.ficha?.caracteristicas,
+          modoUso: p.ficha?.modoUso,
+          imagenes: p.fotos,
+          idDropi: p.producto.idDropi ?? null,
+          precioProveedor: p.producto.precioProveedor ?? null,
+          precioSugerido: p.producto.precioSugerido ?? null,
+        });
+        const r = await creador.editar(id, { productoId: idNuevo });
+        if (p.bienvenida) {
+          try {
+            await guardarMensajeInicialLucid(idNuevo, p.bienvenida, p.fotos);
+          } catch (e) {
+            toast.error(`El producto quedó creado, pero el mensaje inicial no: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+        return r;
+      },
+      "Producto creado en LucidSales con la ficha de la IA",
+    );
+  };
+
+  /** Producto ya enlazado: guarda la ficha o la bienvenida como mensaje inicial. */
+  const guardarEnLucid = async (inicial: boolean) => {
+    if (!p?.producto.id) return;
+    if (inicial) {
+      const ok = await preguntar({
+        titulo: "¿Reemplazar el mensaje inicial del bot?",
+        mensaje: "La versión activa del mensaje inicial del producto pasa a ser esta bienvenida, con hasta 4 fotos reales. Las demás versiones no se tocan.",
+        confirmar: "Reemplazar",
+        peligro: true,
+      });
+      if (!ok) return;
+      await accion("inicial", async () => {
+        const como = await guardarMensajeInicialLucid(p.producto.id as string, p.bienvenida ?? "", p.fotos);
+        toast.success(como === "versiones" ? "Mensaje inicial actualizado" : "Mensaje inicial guardado (clásico)");
+        return {};
+      });
+      return;
+    }
+    await accion(
+      "ficha",
+      async () => {
+        await guardarFichaLucid(p.producto.id as string, {
+          Descripcion: p.ficha?.descripcion,
+          ModoDeUso: p.ficha?.modoUso,
+          CaracteristicasTecnicas: p.ficha?.caracteristicas,
+          ContenidoPaquete: p.ficha?.contenido,
+        });
+        return {};
+      },
+      "Ficha guardada en el producto de LucidSales",
+    );
+  };
   const descargar = async (ruta: string, clave: string) => {
     setDescargando(clave);
     try {
@@ -1144,29 +1234,25 @@ function DetalleProyecto({ id }: { id: string }) {
         <section className="card">
           <div className="creador-seccion-cab">
             <h3 className="card-title">Mensajes de WhatsApp y ficha</h3>
-            {p.producto.id && p.ficha ? (
-              <button
-                type="button"
-                className="btn ghost sm"
-                disabled={Boolean(trabajando)}
-                onClick={() =>
-                  void accion(
-                    "ficha",
-                    async () => {
-                      await guardarFichaLucid(p.producto.id as string, {
-                        Descripcion: p.ficha?.descripcion,
-                        ModoDeUso: p.ficha?.modoUso,
-                        CaracteristicasTecnicas: p.ficha?.caracteristicas,
-                        ContenidoPaquete: p.ficha?.contenido,
-                      });
-                      return {};
-                    },
-                    "Ficha guardada en el producto de LucidSales",
-                  )
-                }
-              >
-                {trabajando === "ficha" ? "Guardando…" : "Guardar ficha en LucidSales"}
-              </button>
+            {p.ficha ? (
+              <div className="row gap">
+                {p.producto.id ? (
+                  <>
+                    <button type="button" className="btn ghost sm" disabled={Boolean(trabajando)} onClick={() => void guardarEnLucid(false)}>
+                      {trabajando === "ficha" ? "Guardando…" : "Guardar ficha en LucidSales"}
+                    </button>
+                    {p.bienvenida ? (
+                      <button type="button" className="btn ghost sm" disabled={Boolean(trabajando)} onClick={() => void guardarEnLucid(true)}>
+                        {trabajando === "inicial" ? "Guardando…" : "Usar bienvenida como mensaje inicial"}
+                      </button>
+                    ) : null}
+                  </>
+                ) : (
+                  <button type="button" className="btn primary sm" disabled={Boolean(trabajando)} onClick={() => void crearEnLucidDesdeIA()}>
+                    {trabajando === "crear-lucid" ? "Creando…" : "Crear producto en LucidSales"}
+                  </button>
+                )}
+              </div>
             ) : null}
           </div>
           <Campo id="pd-predef" label="Mensaje con el que llega el cliente" ayuda="Lo envía el cliente al tocar el anuncio (va en todos los anuncios)">

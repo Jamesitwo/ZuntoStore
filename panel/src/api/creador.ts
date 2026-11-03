@@ -40,7 +40,17 @@ export interface Proyecto {
   estado: "nuevo" | "plan" | "creativos" | "campana";
   creado: string;
   actualizado: string;
-  producto: { id: string | null; nombre: string; precio: number; descripcion: string; contenido: string; variantes: string };
+  producto: {
+    id: string | null;
+    nombre: string;
+    precio: number;
+    descripcion: string;
+    contenido: string;
+    variantes: string;
+    idDropi?: string | null;
+    precioProveedor?: number | null;
+    precioSugerido?: number | null;
+  };
   fotos: string[];
   conPersonaje: boolean;
   cantidades: { imagenes: number; videos: number };

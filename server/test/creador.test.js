@@ -303,3 +303,13 @@ test("descargar creativos: un archivo o todos en zip con los copys", async () =>
   creador.detener();
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("el proyecto guarda el id de Dropi y se puede enlazar al producto de LucidSales", () => {
+  const { dir, c } = armar();
+  const p = c.crear({ producto: { nombre: "Cámara", precio: 99900, idDropi: "2280755", precioProveedor: 60000 }, fotos: ["https://a.b/c.jpg"] });
+  assert.equal(p.producto.idDropi, "2280755");
+  assert.equal(p.producto.precioProveedor, 60000);
+  assert.equal(p.producto.id, null);
+  assert.equal(c.editar(p.id, { productoId: 4321 }).producto.id, "4321");
+  fs.rmSync(dir, { recursive: true, force: true });
+});

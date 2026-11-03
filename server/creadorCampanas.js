@@ -943,6 +943,10 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
             descripcion: txt(pr.descripcion, 3000),
             contenido: txt(pr.contenido, 500),
             variantes: txt(pr.variantes, 500),
+            // si vino de Dropi: para crearlo en LucidSales enlazado
+            idDropi: /^\d{1,12}$/.test(String(pr.idDropi ?? "")) ? String(pr.idDropi) : null,
+            precioProveedor: Number(pr.precioProveedor) > 0 ? Math.round(Number(pr.precioProveedor)) : null,
+            precioSugerido: Number(pr.precioSugerido) > 0 ? Math.round(Number(pr.precioSugerido)) : null,
           },
           fotos,
           conPersonaje: datos.conPersonaje !== false && Boolean(a.fotoModelo),
@@ -1050,6 +1054,8 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
           if (!Number.isFinite(n) || n <= 0) throw new Error("El presupuesto debe ser mayor que 0");
           p.presupuesto = Math.round(n);
         }
+        // producto de LucidSales enlazado (p. ej. recien creado desde aqui)
+        if (cambios.productoId !== undefined) p.producto = { ...p.producto, id: cambios.productoId ? String(cambios.productoId).slice(0, 30) : null };
         if (typeof cambios.cuentaId === "string") p.meta = { ...(p.meta ?? {}), cuentaId: cambios.cuentaId };
         if (typeof cambios.paginaId === "string") p.meta = { ...(p.meta ?? {}), paginaId: cambios.paginaId };
         return guardarP(slug, p);

@@ -2,7 +2,7 @@
 // igual que lo hace el panel oficial: addproducto (nombre, valor y la primera
 // variante) y luego updateproducto con la ficha completa.
 import { auth, productos } from "../api/endpoints";
-import { armarCuerpoProducto } from "./productos";
+import { armarCuerpoProducto, parsearMensajeInicial, serializarMensajeInicial } from "./productos";
 
 /** Pais de la tienda (47 = Colombia si no se sabe). */
 export async function paisTienda(idEmpresa: number): Promise<number> {
@@ -102,4 +102,47 @@ export async function guardarFichaLucid(id: string | number, cambios: Record<str
   for (const [k, v] of Object.entries(cambios)) if (v !== undefined) edicion[k] = v;
   const r: any = await productos.update(armarCuerpoProducto(ficha, edicion));
   fallo(r, "LucidSales no guardó la ficha");
+}
+
+/**
+ * Pone la bienvenida (texto + fotos) como mensaje inicial del bot. Con las
+ * versiones A/B nuevas reemplaza la version activa (o crea la A); si
+ * LucidSales no la guarda asi, usa el mensaje inicial clasico.
+ * Devuelve "versiones" | "clasico".
+ */
+export async function guardarMensajeInicialLucid(id: string | number, texto: string, fotos: string[] = []): Promise<"versiones" | "clasico"> {
+  const pasos = [
+    { type: "mensaje_inicial_texto", content: texto, id: Date.now() },
+    ...(fotos.length ? [{ type: "mensaje_inicial_imagenes", content: fotos.slice(0, 4), id: Date.now() + 1 }] : []),
+  ];
+  const mensaje = serializarMensajeInicial(pasos);
+  const g: any = await productos.get(id);
+  fallo(g, "No se pudo leer el producto en LucidSales");
+  const ficha = g?.product ?? g?.producto ?? g?.data ?? g;
+  const actuales = (Array.isArray(ficha?.initialMessages) ? ficha.initialMessages : []).filter((m: any) => m && m.letter);
+  let versiones: any[];
+  if (actuales.length) {
+    const k = Math.max(0, actuales.findIndex((m: any) => m.enabled !== false));
+    versiones = actuales.map((v: any, i: number) => (i === k ? { ...v, message: mensaje, enabled: true } : v));
+  } else {
+    versiones = [{ letter: "A", sales: 0, views: 0, enabled: true, message: mensaje }];
+  }
+  const cuerpo = armarCuerpoProducto(ficha, { idProducto: id });
+  cuerpo.initialMessages = versiones;
+  fallo(await productos.update(cuerpo), "LucidSales no guardó el mensaje inicial");
+  // ¿quedo? se vuelve a leer
+  try {
+    const g2: any = await productos.get(id);
+    const f2 = g2?.product ?? g2?.producto ?? g2;
+    const quedo = (Array.isArray(f2?.initialMessages) ? f2.initialMessages : []).some(
+      (m: any) => serializarMensajeInicial(parsearMensajeInicial(m?.message)) === mensaje,
+    );
+    if (quedo) return "versiones";
+    // respaldo: el mensaje inicial clasico
+    const cuerpo2 = armarCuerpoProducto(f2, { idProducto: id, MensajeInicial: mensaje, personalizarMensajeInicial: 1 });
+    fallo(await productos.update(cuerpo2), "LucidSales no guardó el mensaje inicial");
+    return "clasico";
+  } catch (e) {
+    throw e instanceof Error ? e : new Error(String(e));
+  }
 }
