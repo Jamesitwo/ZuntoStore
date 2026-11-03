@@ -2380,6 +2380,15 @@ export function crearManejador({
       }
       if (req.method === "GET" && ruta === "/api/creador/creditos") return responder(() => c.creditos());
       if (req.method === "POST" && ruta === "/api/creador/probar-ia") return responder(() => c.probarIA());
+      // ficha del producto en Dropi (nombre, descripcion, lo que incluye, fotos)
+      if (req.method === "POST" && ruta === "/api/creador/dropi-producto") {
+        const cuerpo = await leerCuerpo(req);
+        if (!dropiNavegador?.fichaProducto) throw new ErrorApi(503, "El navegador de Dropi no está disponible en este servidor");
+        const r = await dropiNavegador.fichaProducto(cuerpo?.url);
+        if (!r?.ok) throw new ErrorApi(r?.ocupado ? 409 : 400, r?.detalle ?? "No se pudo leer el producto de Dropi");
+        json(res, 200, { ok: true, producto: r });
+        return;
+      }
       if (req.method === "POST" && ruta === "/api/creador/topview/conectar") {
         // la vuelta tiene que llegar a ESTE dominio (zunto.store o localhost)
         const host = String(req.headers["x-forwarded-host"] ?? req.headers.host ?? "").split(",")[0].trim();

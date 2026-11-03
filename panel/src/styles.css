@@ -5576,3 +5576,5 @@ tr.fila-marcada > td { background: color-mix(in srgb, var(--primary, #7c3aed) 9%
   .modal-overlay:has(.modal.confirmar) { align-items: center; }
   .modal.confirmar { border-radius: 16px; margin: auto; width: calc(100% - 32px); max-width: 420px; }
 }
+.creador-dropi { flex-wrap: wrap; }
+.creador-dropi input { flex: 1 1 320px; min-width: 0; }

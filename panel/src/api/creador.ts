@@ -110,6 +110,18 @@ export interface AjustesCreador {
   };
 }
 
+export interface FichaDropi {
+  idDropi: string | null;
+  nombre: string;
+  precioProveedor: number | null;
+  precioSugerido: number | null;
+  stock: number;
+  descripcion: string;
+  contenido: string;
+  imagenes: string[];
+  url: string;
+}
+
 const P = "/api/creador";
 
 export const creador = {
@@ -121,6 +133,8 @@ export const creador = {
     backend<{ ok: boolean; url: string; pegar?: boolean }>(`${P}/topview/conectar`, { method: "POST", body: { origen: window.location.origin } }),
   completarTopView: (url: string) =>
     backend<{ ok: boolean; creditos: number | null }>(`${P}/topview/completar`, { method: "POST", body: { url } }),
+  /** Ficha del producto en Dropi (con la sesion del servidor): tarda 20-40 s. */
+  fichaDropi: (url: string) => backend<{ ok: boolean; producto: FichaDropi }>(`${P}/dropi-producto`, { method: "POST", body: { url } }),
   creditos: () => backend<{ ok: boolean; creditos: number | null }>(`${P}/creditos`),
   paginas: () => backend<{ ok: boolean; paginas: Array<{ id: string; nombre: string }> }>(`${P}/paginas`),
   lista: () => backend<{ ok: boolean; proyectos: ResumenProyecto[] }>(`${P}/proyectos`),

@@ -463,3 +463,41 @@ test("Calima - El Darien en Dropi es Darien (calima)", () => {
   assert.equal(coincideUbicacion("Darien (calima)", variantesUbicacion("Calima"), "Valle"), true);
   assert.equal(coincideUbicacion("Cali", v, "Valle"), false);
 });
+
+test("ficha de un producto de Dropi para el Creador IA", async () => {
+  const { fichaDeDropi, urlProductoDropi } = await import("../dropiNavegador.js");
+  assert.equal(urlProductoDropi("2280755"), "https://app.dropi.co/dashboard/product-details/2280755");
+  assert.match(urlProductoDropi("https://app.dropi.co/dashboard/product-details/2280755/lijadora-electrica-dewalt"), /2280755/);
+  assert.equal(urlProductoDropi("https://otra.com/product-details/1"), null);
+  const f = fichaDeDropi({
+    nombre: " Lijadora Electrica Dewalt ",
+    id: "ID:2280755",
+    precio: "$ 102.000",
+    sugerido: "$ 110.000",
+    stock: " 211 ",
+    descripcion: [
+      'Lijadora Excéntrica Eléctrica 5"',
+      "Lijadora excéntrica eléctrica diseñada para trabajos de lijado.",
+      "Características:",
+      'Disco de lijado de 5" (125 mm).',
+      "Velocidad variable de 5.000 a 12.000 RPM.",
+      "Incluye:",
+      "1 Lijadora excéntrica.",
+      "1 Bolsa recolectora de polvo.",
+      "1 Disco de lija.",
+      "Garantía",
+      "Golpes, caídas o mal uso del producto.",
+      "Importante: La garantía cubre únicamente fallas de fábrica.",
+    ].join("\n"),
+    imagenes: ["https://d39ru7awumhhs2.cloudfront.net/colombia/products/2280755/a.jpeg", "https://d39ru7awumhhs2.cloudfront.net/colombia/products/2280755/a.jpeg", "data:x"],
+  });
+  assert.equal(f.nombre, "Lijadora Electrica Dewalt");
+  assert.equal(f.idDropi, "2280755");
+  assert.equal(f.precioProveedor, 102000);
+  assert.equal(f.precioSugerido, 110000);
+  assert.equal(f.stock, 211);
+  assert.equal(f.contenido, "1 Lijadora excéntrica + 1 Bolsa recolectora de polvo + 1 Disco de lija");
+  assert.match(f.descripcion, /12\.000 RPM/);
+  assert.doesNotMatch(f.descripcion, /Golpes|Incluye|fallas de fábrica/);
+  assert.equal(f.imagenes.length, 1);
+});

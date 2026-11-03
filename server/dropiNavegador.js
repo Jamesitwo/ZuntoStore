@@ -198,6 +198,66 @@ export function coincideUbicacion(opcion, aceptadas, departamento = "") {
   );
 }
 
+/** Link (o ID) de un producto de Dropi -> URL de su ficha. */
+export function urlProductoDropi(entrada) {
+  const t = String(entrada ?? "").trim();
+  if (/^\d{3,12}$/.test(t)) return `https://app.dropi.co/dashboard/product-details/${t}`;
+  try {
+    const u = new URL(t);
+    if (!/(^|\.)dropi\.co$/i.test(u.hostname) || !/product-details\/\d+/i.test(u.pathname)) return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Lo leido de la ficha de Dropi -> datos del producto. De la descripcion se
+ * separa lo que "Incluye" y se deja fuera la letra pequena de la garantia.
+ */
+export function fichaDeDropi(c = {}) {
+  const lineas = String(c.descripcion ?? "")
+    .split(/\r?\n/)
+    .map((l) => l.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const esTitulo = (l, re) => re.test(l.replace(/[:*•\-\s]+$/g, "").replace(/^[*•\-\s]+/, ""));
+  const incluye = [];
+  const cuerpo = [];
+  let seccion = "cuerpo";
+  for (const l of lineas) {
+    if (esTitulo(l, /^(incluye|contenido( del (paquete|kit))?|el kit incluye|que incluye|qué incluye)$/i)) {
+      seccion = "incluye";
+      continue;
+    }
+    if (esTitulo(l, /^(garant[ií]a|importante|condiciones|pol[ií]tica)/i)) {
+      seccion = "fuera";
+      continue;
+    }
+    if (seccion === "incluye") {
+      if (/^[a-záéíóúñ ]{3,30}:$/i.test(l)) {
+        seccion = "cuerpo";
+        cuerpo.push(l);
+      } else incluye.push(l.replace(/^[•\-*\s]+/, "").replace(/\.$/, ""));
+    } else if (seccion === "cuerpo") cuerpo.push(l);
+  }
+  const num = (x) => {
+    const n = montoDeTexto(x);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  return {
+    idDropi: String(c.id ?? "").replace(/\D/g, "") || null,
+    nombre: String(c.nombre ?? "").replace(/\s+/g, " ").trim(),
+    sku: String(c.sku ?? "").trim() || null,
+    tipo: String(c.tipo ?? "").trim() || null,
+    precioProveedor: num(c.precio),
+    precioSugerido: num(c.sugerido),
+    stock: Number(String(c.stock ?? "").replace(/\D/g, "")) || 0,
+    descripcion: cuerpo.join("\n").slice(0, 3000),
+    contenido: incluye.join(" + ").slice(0, 500),
+    imagenes: [...new Set((Array.isArray(c.imagenes) ? c.imagenes : []).filter((u) => /^https:\/\//.test(u)))].slice(0, 12),
+  };
+}
+
 /** Direccion que se escribe en Dropi cuando la oficina la detecto el sistema. */
 export const DIRECCION_OFICINA_INTER = "Oficina Interrapidisimo";
 
@@ -1264,6 +1324,56 @@ export function crearDropiNavegador(config = {}) {
     async sesionActiva() {
       const u = this.urlActual();
       return Boolean(u && !/\/auth\/login/i.test(u));
+    },
+
+    /**
+     * Ficha de un producto de Dropi para el Creador IA: nombre, precios,
+     * descripcion, lo que incluye y las fotos. Abre la ficha con la sesion
+     * del servidor (la misma de la subida) y lee la pagina.
+     */
+    async fichaProducto(entrada) {
+      const url = urlProductoDropi(entrada);
+      if (!url) return { ok: false, detalle: "Pega el link del producto en Dropi (app.dropi.co/.../product-details/...) o su ID" };
+      if (subidaEnCurso) return { ok: false, ocupado: true, detalle: "Dropi está ocupado subiendo un pedido; inténtalo en unos segundos." };
+      subidaEnCurso = true;
+      try {
+        await this.cerrar();
+        const p = await asegurar();
+        await p.goto(url, { waitUntil: "domcontentloaded" });
+        const ficha = await esperarFicha(p, lento);
+        if (ficha.login) return { ok: false, requiereLogin: true, detalle: "La sesión de Dropi del servidor venció: vuelve a conectarla en Ajustes." };
+        if (ficha.captcha) return { ok: false, detalle: "Dropi mostró un captcha al abrir el producto." };
+        if (!ficha.ok) return { ok: false, detalle: `No se pudo abrir el producto: ${ficha.motivo}` };
+        // la galeria y la descripcion cargan un poco despues del boton
+        for (let i = 0; i < 10; i++) {
+          const listo = await p
+            .evaluate(() => document.querySelectorAll(".p-galleria img").length > 0 && Boolean(document.querySelector('[data-cy="product-tabs-description"], #descriptionContainer')))
+            .catch(() => false);
+          if (listo) break;
+          await p.waitForTimeout(500);
+        }
+        const crudo = await p.evaluate(() => {
+          const t = (sel) => (document.querySelector(sel)?.innerText ?? "").trim();
+          const imgs = [...document.querySelectorAll(".p-galleria img, [data-cy='product-images'] img")]
+            .map((i) => i.getAttribute("src") || "")
+            .filter((u) => /^https:\/\//.test(u));
+          return {
+            nombre: t('[data-cy="product-info-name"]'),
+            id: t('[data-cy="product-info-copy-id"]'),
+            sku: t('[data-cy="product-info-sku"]'),
+            tipo: t('[data-cy="product-info-type"]'),
+            precio: t('[data-cy="product-info-price"]'),
+            sugerido: t('[data-cy="product-info-suggested-price"]'),
+            stock: t('[data-cy="product-info-stock"]'),
+            descripcion: t('[data-cy="product-tabs-description"]') || t("#descriptionContainer"),
+            imagenes: [...new Set(imgs)],
+          };
+        });
+        return { ok: true, url: p.url(), ...fichaDeDropi(crudo) };
+      } finally {
+        await this.cerrar().catch(() => {});
+        subidaEnCurso = false;
+      }
     },
 
     async iniciar(url = "https://app.dropi.co/dashboard/home") {

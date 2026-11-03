@@ -241,6 +241,35 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
     [catalogo],
   );
 
+  // ---- desde el link del producto en Dropi
+  const [linkDropi, setLinkDropi] = useState("");
+  const [trayendo, setTrayendo] = useState(false);
+  const [deDropi, setDeDropi] = useState<{ proveedor: number | null; sugerido: number | null; stock: number } | null>(null);
+  const traerDeDropi = async () => {
+    setTrayendo(true);
+    setError(null);
+    try {
+      const { producto: f } = await creador.fichaDropi(linkDropi.trim());
+      setForm((x) => ({
+        ...x,
+        nombre: f.nombre || x.nombre,
+        precio: x.precio || (f.precioSugerido ? String(f.precioSugerido) : ""),
+        descripcion: f.descripcion || x.descripcion,
+        contenido: f.contenido || x.contenido,
+      }));
+      if (f.imagenes.length) {
+        setDisponibles((d) => [...new Set([...f.imagenes, ...d])]);
+        setFotos(f.imagenes.slice(0, 6));
+      }
+      setDeDropi({ proveedor: f.precioProveedor, sugerido: f.precioSugerido, stock: f.stock });
+      toast.success(`Traído de Dropi: ${f.imagenes.length} foto${f.imagenes.length === 1 ? "" : "s"}${f.contenido ? " y lo que incluye" : ""}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTrayendo(false);
+    }
+  };
+
   const elegir = async (id: string | null) => {
     setProductoId(id ?? "");
     if (!id) return;
@@ -309,6 +338,32 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
   return (
     <div className="card creador-nuevo">
       <h3 className="card-title">1. El producto</h3>
+      <div className="field">
+        <label htmlFor="cr-dropi">Link del producto en Dropi (opcional)</label>
+        <div className="row gap creador-dropi">
+          <input
+            id="cr-dropi"
+            value={linkDropi}
+            onChange={(e) => setLinkDropi(e.target.value)}
+            placeholder="https://app.dropi.co/dashboard/product-details/2280755/…  o solo el ID"
+          />
+          <button type="button" className="btn primary" disabled={!linkDropi.trim() || trayendo} onClick={() => void traerDeDropi()}>
+            {trayendo ? "Leyendo Dropi…" : "Traer de Dropi"}
+          </button>
+        </div>
+        <p className="campo-ayuda">
+          {trayendo
+            ? "Zunto abre la ficha en Dropi con su sesión: tarda unos 30 segundos."
+            : "Trae nombre, descripción, lo que incluye y todas las fotos del proveedor. La garantía no se copia."}
+        </p>
+        {deDropi ? (
+          <div className="chips">
+            {deDropi.proveedor ? <span className="badge">Proveedor {pesos(deDropi.proveedor)}</span> : null}
+            {deDropi.sugerido ? <span className="badge">Sugerido {pesos(deDropi.sugerido)}</span> : null}
+            <span className={`badge${deDropi.stock > 0 ? " ok" : " danger"}`}>Stock {deDropi.stock}</span>
+          </div>
+        ) : null}
+      </div>
       <Combo
         label="Producto del catálogo"
         opciones={opciones}
