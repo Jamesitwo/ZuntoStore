@@ -70,6 +70,23 @@ function diaColombia(dias = 0) {
   return t.toISOString().slice(0, 10);
 }
 
+/**
+ * Rango de un dia de Colombia en UTC (como el panel oficial: las 00:00 de
+ * Colombia son las 05:00Z): "2026-11-01" -> [01T05:00Z, 02T04:59:59.999Z].
+ */
+function rangoColombia(desde: string, hasta: string): [number, number] {
+  const ini = Date.parse(`${desde}T05:00:00.000Z`);
+  const fin = Date.parse(`${hasta}T05:00:00.000Z`) + 86400 * 1000 - 1;
+  return [ini, fin];
+}
+
+/** "1 nov, 9:40 p. m." en hora de Colombia */
+function fechaHoraCorta(v: unknown) {
+  const d = new Date(String(v ?? ""));
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("es-CO", { timeZone: "America/Bogota", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+}
+
 /** El correo es el identificador que usa el backend para horarios y reparto. */
 const claveUsuario = (u: any) => String(u?.Usuario ?? u?.Correo ?? "").trim().toLowerCase();
 
@@ -229,8 +246,8 @@ export function PedidosPage() {
         name: "date",
         searchValues:
           filtros.desde && filtros.hasta
-            ? // como el panel oficial: del inicio del primer dia al final del ultimo
-              [`${filtros.desde}T00:00:00.000Z|${filtros.hasta}T23:59:59.000Z`]
+            ? // como el panel oficial: de las 00:00 del primer dia a las 23:59:59 del ultimo, hora de Colombia
+              [rangoColombia(filtros.desde, filtros.hasta).map((t) => new Date(t).toISOString()).join("|")]
             : [],
         sortOrder,
       },
@@ -378,6 +395,14 @@ export function PedidosPage() {
     let out = filtroEtiqueta
       ? rows.filter((p) => et.tiene(p.id ?? p.idPedido, filtroEtiqueta))
       : rows;
+    // con filtro de dias, solo los que de verdad caen en esos dias (hora de Colombia)
+    if (filtros.desde && filtros.hasta) {
+      const [ini, fin] = rangoColombia(filtros.desde, filtros.hasta);
+      out = out.filter((p) => {
+        const t = Date.parse(String(p.Fecha ?? p.CreatedAt ?? ""));
+        return Number.isNaN(t) || (t >= ini && t <= fin);
+      });
+    }
     if (filtroAsign) {
       out = out.filter((p) => {
         const a = asig[String(p.id ?? p.idPedido)];
@@ -388,7 +413,7 @@ export function PedidosPage() {
       });
     }
     return out;
-  }, [rows, filtroEtiqueta, et, filtroAsign, asig, miCorreo]);
+  }, [rows, filtroEtiqueta, et, filtroAsign, asig, miCorreo, filtros.desde, filtros.hasta]);
 
   /** Texto del filtro de asignacion para avisos ("asignados a Ana", ...). */
   const etiquetaFiltroAsign =
@@ -1157,7 +1182,7 @@ export function PedidosPage() {
                         </td>
                         <td className="wrap hide-sm">{money(p.Total)}</td>
                         <td className="hide-sm" title={fmtFecha(fecha)}>
-                          {haceCuanto(fecha) || "—"}
+                          {(filtros.desde ? fechaHoraCorta(fecha) : haceCuanto(fecha)) || "—"}
                         </td>
                         <td>
                           <button
@@ -1232,7 +1257,7 @@ export function PedidosPage() {
                       <EnvioConBot valor={p.EstadoFullfilment} bot={enviosBot[String(p.id ?? p.idPedido)]} />
                     </div>
                     <div className="pedido-movil-meta muted small">
-                      <span title={fmtFecha(fecha)}>{haceCuanto(fecha) || "—"}</span>
+                      <span title={fmtFecha(fecha)}>{(filtros.desde ? fechaHoraCorta(fecha) : haceCuanto(fecha)) || "—"}</span>
                       {asignado && <span>· {asignado.nombre || asignado.usuario}</span>}
                     </div>
                     <div className="pedido-movil-acciones">
