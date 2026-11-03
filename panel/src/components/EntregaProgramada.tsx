@@ -1,6 +1,7 @@
 // Entregas programadas: pedidos que el cliente pidió para otra fecha ("lo
 // quiero para el 30"). Los marca la IA al leer el chat o una persona a mano.
 // La lista de pedidos los resalta cuando se acerca la fecha.
+import { useConfirmar } from "../components/Confirmar";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { backend, backendSuave } from "../api/backend";
@@ -124,6 +125,7 @@ const hoyLocal = () => new Date(Date.now() - 5 * 3600_000).toISOString().slice(0
 /** Tarjeta del detalle del pedido: ver, poner, cambiar o quitar la fecha. */
 export function EntregaProgramadaCard({ id, numero, cliente, tienda }: { id: string; numero?: string | number | null; cliente?: { nombre?: string; telefono?: string }; tienda?: string | number | null }) {
   const toast = useToast();
+  const confirmar = useConfirmar();
   const [p, setP] = useState<Programado | null>(null);
   const [config, setConfig] = useState<ConfigProgramados | null>(null);
   const [cargado, setCargado] = useState(false);
@@ -178,7 +180,7 @@ export function EntregaProgramadaCard({ id, numero, cliente, tienda }: { id: str
   };
 
   const quitar = async () => {
-    if (!window.confirm("¿Quitar la fecha? El pedido se trata como uno normal y se puede enviar ya.")) return;
+    if (!(await confirmar({ titulo: "¿Quitar la fecha de entrega?", mensaje: "El pedido se trata como uno normal y se puede enviar ya.", confirmar: "Quitar fecha", icono: "📅" }))) return;
     setOcupado(true);
     try {
       await backend(`/api/programados/${encodeURIComponent(id)}`, { method: "DELETE" });

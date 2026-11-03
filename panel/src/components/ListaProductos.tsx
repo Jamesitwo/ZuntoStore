@@ -1,3 +1,4 @@
+import { useConfirmar } from "../components/Confirmar";
 import { useEffect, useState } from "react";
 import { SubirMedia } from "./SubirMedia";
 import { errMsg, pickArray } from "../api/client";
@@ -149,6 +150,7 @@ export function ListaProductos({
   onEditado?: () => void;
 }) {
   const toast = useToast();
+  const confirmar = useConfirmar();
 
   const [filas, setFilas] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
@@ -240,10 +242,10 @@ export function ListaProductos({
     if (!inicialNuevo) return;
     setInicialNuevo({ ...inicialNuevo, versiones: inicialNuevo.versiones.map((v, i) => (i === k ? { ...v, enabled } : v)) });
   };
-  const borrarVersion = (k: number) => {
+  const borrarVersion = async (k: number) => {
     if (!inicialNuevo || inicialNuevo.versiones.length <= 1) return;
     const v = inicialNuevo.versiones[k];
-    if (!window.confirm(`¿Borrar la versión ${v?.letter ?? ""}${v?.sales ? ` (lleva ${v.sales} venta(s))` : ""}? Se borra al guardar el producto.`)) return;
+    if (!(await confirmar({ titulo: `¿Borrar la versión ${v?.letter ?? ""}?`, mensaje: `${v?.sales ? `Lleva ${v.sales} venta(s). ` : ""}Se borra al guardar el producto.`, confirmar: "Borrar", peligro: true }))) return;
     const pasos = pasosVersiones().filter((_, i) => i !== k);
     const versiones = inicialNuevo.versiones.filter((_, i) => i !== k);
     const actual = Math.min(inicialNuevo.actual === k ? 0 : inicialNuevo.actual > k ? inicialNuevo.actual - 1 : inicialNuevo.actual, versiones.length - 1);
@@ -2151,7 +2153,7 @@ export function ListaProductos({
                       <span>Versión {String(inicialNuevo.versiones[inicialNuevo.actual].letter)} activa</span>
                     </label>
                     {inicialNuevo.versiones.length > 1 ? (
-                      <button type="button" className="btn sm danger" onClick={() => borrarVersion(inicialNuevo.actual)}>
+                      <button type="button" className="btn sm danger" onClick={() => void borrarVersion(inicialNuevo.actual)}>
                         Borrar esta versión
                       </button>
                     ) : null}

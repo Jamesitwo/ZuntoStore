@@ -1,6 +1,7 @@
 // Cuentas de ZuntoStore (un negocio con sus tiendas de LucidSales). Solo la
 // ve quien administra ZuntoStore. Cada cuenta conecta lo suyo (LucidSales,
 // Dropi, Lucid Bot, sheet, IA, Google Maps) entrando al panel con SU tienda.
+import { useConfirmar } from "./Confirmar";
 import { useEffect, useState } from "react";
 import { backend, backendSuave } from "../api/backend";
 import { errMsg } from "../api/client";
@@ -154,6 +155,7 @@ function FilaCuenta({
 
 export function CuentasAdmin() {
   const toast = useToast();
+  const confirmar = useConfirmar();
   const [cuentas, setCuentas] = useState<Cuenta[] | null>(null);
   const [nombre, setNombre] = useState("");
   const [tiendas, setTiendas] = useState("");
@@ -168,9 +170,11 @@ export function CuentasAdmin() {
   const crear = async () => {
     if (
       cuentas?.length === 1 &&
-      !window.confirm(
-        "Al crear la segunda cuenta empieza la separación: solo las tiendas que figuran en ZuntoStore (cuenta 1) podrán entrar a tus datos. ¿Ya están ahí todas tus tiendas?",
-      )
+      !(await confirmar({
+        titulo: "¿Ya están todas tus tiendas en ZuntoStore?",
+        mensaje: "Al crear la segunda cuenta empieza la separación: solo las tiendas que figuran en ZuntoStore (cuenta 1) podrán entrar a tus datos.",
+        confirmar: "Sí, crear la cuenta",
+      }))
     )
       return;
     setCreando(true);

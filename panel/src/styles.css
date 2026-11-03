@@ -5558,3 +5558,21 @@ tr.fila-marcada > td { background: color-mix(in srgb, var(--primary, #7c3aed) 9%
 .chip-fecha { padding: 7px 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font: inherit; font-size: 13px; cursor: pointer; color: var(--text); }
 .chip-fecha:hover { border-color: var(--primary); }
 .chip-fecha.activo { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
+
+/* ---------- Confirmaciones (reemplazan window.confirm) ---------- */
+.modal.confirmar { max-width: 420px; width: calc(100% - 32px); padding: 26px 24px 20px; text-align: center; animation: confirmar-entra .16s ease-out; }
+@keyframes confirmar-entra { from { transform: translateY(8px) scale(.98); opacity: 0; } to { transform: none; opacity: 1; } }
+.confirmar-icono { width: 52px; height: 52px; margin: 0 auto 12px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; font-weight: 800; background: #f3e8ff; color: var(--primary); }
+.modal.confirmar.peligro .confirmar-icono { background: #fee2e2; color: #dc2626; }
+.modal.confirmar h3 { margin: 0 0 8px; font-size: 18px; line-height: 1.3; color: #18181b; }
+.confirmar-mensaje { color: var(--muted); font-size: 14px; line-height: 1.5; }
+.confirmar-mensaje p { margin: 6px 0; }
+.confirmar-estado { color: var(--text); }
+.confirmar-botones { display: flex; gap: 8px; margin-top: 20px; }
+.confirmar-botones .btn { flex: 1; justify-content: center; padding-top: 10px; padding-bottom: 10px; }
+.btn.danger-solido { border-color: #dc2626; background: #dc2626; color: #fff; }
+.btn.danger-solido:hover:not(:disabled) { background: #b91c1c; border-color: #b91c1c; }
+@media (max-width: 640px) {
+  .modal-overlay:has(.modal.confirmar) { align-items: center; }
+  .modal.confirmar { border-radius: 16px; margin: auto; width: calc(100% - 32px); max-width: 420px; }
+}

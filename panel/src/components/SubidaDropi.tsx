@@ -1,3 +1,4 @@
+import { useConfirmar } from "../components/Confirmar";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { errMsg } from "../api/client";
 import { backend, backendSuave } from "../api/backend";
@@ -171,6 +172,7 @@ function textoReloj(seg: number) {
 export function SubidaDropi() {
   const { session } = useAuth();
   const toast = useToast();
+  const confirmar = useConfirmar();
   const etiqueta = useEtiquetaTienda();
   const inbox = useInboxBot();
 
@@ -324,7 +326,7 @@ export function SubidaDropi() {
 
   /** Guarda las instrucciones; `null` vuelve a las predeterminadas. */
   const guardarPrompt = async (texto: string | null) => {
-    if (texto === null && !window.confirm("¿Volver a las instrucciones predeterminadas? Se perderán las que escribiste.")) return;
+    if (texto === null && !(await confirmar({ titulo: "¿Volver a las instrucciones predeterminadas?", mensaje: "Se perderán las instrucciones que escribiste.", confirmar: "Restablecer", peligro: true }))) return;
     setGuardandoPrompt(true);
     try {
       const r: any = await backend("/api/llm/config", { method: "PUT", body: { prompt: texto } });
@@ -339,7 +341,7 @@ export function SubidaDropi() {
   };
 
   const borrarLlm = async () => {
-    if (!window.confirm("¿Borrar la API key guardada desde el panel? Se volverá a usar la del archivo .env del servidor (si hay).")) return;
+    if (!(await confirmar({ titulo: "¿Borrar la API key de la IA?", mensaje: "Se volverá a usar la del archivo .env del servidor, si hay una.", confirmar: "Borrar", peligro: true }))) return;
     setLlmOcupado("borrar");
     try {
       const r: any = await backend("/api/llm/config", { method: "DELETE" });
@@ -452,7 +454,7 @@ export function SubidaDropi() {
   };
 
   const aprobarDuplicado = async (id: string) => {
-    if (!window.confirm(`Pedido ${id}: ¿revisaste el chat y es una compra NUEVA (no el mismo pedido repetido)?`)) return;
+    if (!(await confirmar({ titulo: `Pedido ${id}: ¿es una compra nueva?`, mensaje: "Confirma que revisaste el chat y que es una compra NUEVA, no el mismo pedido repetido. Se subirá a Dropi.", confirmar: "Sí, es nueva", icono: "🛒" }))) return;
     try {
       await backend(`/api/subida/pedido/${encodeURIComponent(id)}/aprobar-duplicado`, { method: "POST", body: {} });
       toast.info(`Pedido ${id}: se subirá en la próxima vuelta`);
@@ -478,7 +480,7 @@ export function SubidaDropi() {
   };
 
   const yaSubido = async (id: string) => {
-    if (!window.confirm(`¿Ya subiste el pedido ${id} a Dropi a mano? Sale de revisión y Zunto no lo vuelve a intentar.`)) return;
+    if (!(await confirmar({ titulo: `¿Ya subiste el pedido ${id} a mano?`, mensaje: "Sale de revisión y Zunto no lo vuelve a intentar subir.", confirmar: "Sí, ya lo subí", icono: "✓" }))) return;
     try {
       await backend(`/api/subida/pedido/${encodeURIComponent(id)}/resuelto`, { method: "POST", body: {} });
       toast.success(`Pedido ${id} marcado como subido a mano`);
@@ -491,7 +493,7 @@ export function SubidaDropi() {
   };
 
   const reintentarIncierto = async (id: string) => {
-    if (!window.confirm(`Confirma que buscaste el pedido ${id} en Dropi y verificaste que NO existe. Solo entonces se volverá a intentar.`)) return;
+    if (!(await confirmar({ titulo: `¿El pedido ${id} NO está en Dropi?`, mensaje: "Confirma que lo buscaste en Dropi y verificaste que no existe. Solo entonces se vuelve a intentar, para no duplicarlo.", confirmar: "No está, reintentar", peligro: true }))) return;
     try {
       await backend("/api/subida/reintentar", {
         method: "POST",

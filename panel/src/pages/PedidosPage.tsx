@@ -1,3 +1,4 @@
+import { useConfirmar } from "../components/Confirmar";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
@@ -93,6 +94,7 @@ const claveUsuario = (u: any) => String(u?.Usuario ?? u?.Correo ?? "").trim().to
 export function PedidosPage() {
   const { session } = useAuth();
   const toast = useToast();
+  const confirmar = useConfirmar();
   const [searchParams] = useSearchParams();
   // Acceso directo: /pedidos?estado=... o /pedidos?cliente=<nombre>
   // (el segundo enlace viene de la lista de Clientes, ver ClientesPage).
@@ -487,7 +489,27 @@ export function PedidosPage() {
       toast.error("Escribe el motivo de la cancelación");
       return;
     }
-    if (!window.confirm(`¿Cambiar ${ids.length} pedido(s) a «${ESTADOS_PEDIDO[nuevo]}»?`)) return;
+    const ok1 = await confirmar({
+      titulo: `¿Cambiar ${ids.length} ${ids.length === 1 ? "pedido" : "pedidos"} de estado?`,
+      mensaje: (
+        <>
+          <p className="confirmar-estado">
+            Nuevo estado: <span className={`badge badge-estado ${claseEstado(nuevo)}`}>{ESTADOS_PEDIDO[nuevo]}</span>
+          </p>
+          {nuevo === 1 ? (
+            <p>
+              Motivo: <strong>{motivoMasivo.trim()}</strong>
+            </p>
+          ) : null}
+          <p className="muted small">Se aplica a los {ids.length} pedidos marcados en esta lista.</p>
+        </>
+      ),
+      confirmar: nuevo === 1 ? `Cancelar ${ids.length} ${ids.length === 1 ? "pedido" : "pedidos"}` : "Cambiar estado",
+      cancelar: "Volver",
+      peligro: nuevo === 1,
+      icono: nuevo === 1 ? "✕" : "⇄",
+    });
+    if (!ok1) return;
     setMasivo({ hechos: 0, total: ids.length });
     const fallidos: string[] = [];
     const ok: string[] = [];

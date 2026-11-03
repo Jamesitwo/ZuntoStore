@@ -1,5 +1,6 @@
 // API key de Google Maps para el validador de direcciones propio.
 // La key nunca vuelve completa: el servidor solo muestra una vista enmascarada.
+import { useConfirmar } from "../components/Confirmar";
 import { useEffect, useState } from "react";
 import { backend, backendSuave } from "../api/backend";
 import { errMsg } from "../api/client";
@@ -13,6 +14,7 @@ interface Estado {
 
 export function MapasConfig() {
   const toast = useToast();
+  const confirmar = useConfirmar();
   const [estado, setEstado] = useState<Estado | null>(null);
   const [key, setKey] = useState("");
   const [ocupado, setOcupado] = useState<"" | "guardar" | "probar" | "borrar">("");
@@ -52,7 +54,7 @@ export function MapasConfig() {
   };
 
   const borrar = async () => {
-    if (!window.confirm("¿Borrar la API key de Google Maps? El validador solo revisará el formato.")) return;
+    if (!(await confirmar({ titulo: "¿Borrar la API key de Google Maps?", mensaje: "El validador de direcciones solo revisará el formato, sin mirar el mapa.", confirmar: "Borrar", peligro: true }))) return;
     setOcupado("borrar");
     try {
       setEstado(await backend<any>("/api/mapas/config", { method: "DELETE" }));
