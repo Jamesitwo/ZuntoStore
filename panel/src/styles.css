@@ -5554,3 +5554,7 @@ tr.fila-marcada > td { background: color-mix(in srgb, var(--primary, #7c3aed) 9%
 @media (max-width: 640px) { .subida-modo { grid-template-columns: 1fr; } }
 .campo-modo-subida { grid-column: span 2; }
 @media (max-width: 900px) { .campo-modo-subida { grid-column: auto; } }
+.chips-fecha { display: flex; gap: 6px; }
+.chip-fecha { padding: 7px 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font: inherit; font-size: 13px; cursor: pointer; color: var(--text); }
+.chip-fecha:hover { border-color: var(--primary); }
+.chip-fecha.activo { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }

@@ -64,6 +64,12 @@ const FILTROS_VACIOS: FiltrosUI = {
   hasta: "",
 };
 
+/** Fecha de hoy (o de hace `dias`) en Colombia, como "AAAA-MM-DD". */
+function diaColombia(dias = 0) {
+  const t = new Date(Date.now() - 5 * 3600 * 1000 - dias * 86400 * 1000);
+  return t.toISOString().slice(0, 10);
+}
+
 /** El correo es el identificador que usa el backend para horarios y reparto. */
 const claveUsuario = (u: any) => String(u?.Usuario ?? u?.Correo ?? "").trim().toLowerCase();
 
@@ -223,7 +229,8 @@ export function PedidosPage() {
         name: "date",
         searchValues:
           filtros.desde && filtros.hasta
-            ? [`${new Date(filtros.desde).toISOString()}|${new Date(filtros.hasta).toISOString()}`]
+            ? // como el panel oficial: del inicio del primer dia al final del ultimo
+              [`${filtros.desde}T00:00:00.000Z|${filtros.hasta}T23:59:59.000Z`]
             : [],
         sortOrder,
       },
@@ -730,6 +737,33 @@ export function PedidosPage() {
               </option>
             ))}
           </select>
+        </div>
+        <div className="field">
+          <label>Fecha</label>
+          <div className="chips-fecha" role="group" aria-label="Pedidos por día">
+            {(
+              [
+                ["Hoy", diaColombia(0)],
+                ["Ayer", diaColombia(1)],
+              ] as const
+            ).map(([nombre, dia]) => {
+              const activo = filtros.desde === dia && filtros.hasta === dia;
+              return (
+                <button
+                  key={nombre}
+                  type="button"
+                  className={`chip-fecha${activo ? " activo" : ""}`}
+                  aria-pressed={activo}
+                  onClick={() => {
+                    setPage(1);
+                    setFiltros((f) => (activo ? { ...f, desde: "", hasta: "" } : { ...f, desde: dia, hasta: dia }));
+                  }}
+                >
+                  {nombre}
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div className="field">
           <label htmlFor="f-etiqueta" title="Todos los pedidos con esa etiqueta (no solo los de esta página)">
