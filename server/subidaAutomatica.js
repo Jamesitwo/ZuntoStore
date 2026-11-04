@@ -503,6 +503,10 @@ export function crearSubidaAutomatica({
   /** modo "horas": el setTimeout de la proxima ronda */
   let timerHora = null;
   let corriendo = false;
+  /** Parada pedida desde el panel: la vuelta termina el pedido actual y no sigue. */
+  let parar = false;
+  /** Hay una ronda a hora fija en marcha (tambien en la pausa entre vueltas). */
+  let enRonda = false;
   /** Reloj para el panel: cuando toca la proxima vuelta y desde cuando corre la actual. */
   let proximaMs = null;
   let vueltaDesde = null;
@@ -834,6 +838,10 @@ export function crearSubidaAutomatica({
           const id = String(p?.id ?? p?.idPedido ?? "");
           if (!id) continue;
           actividad(`subida: pedido ${id}`);
+          if (parar) {
+            detenido = "detenida a mano desde el panel";
+            break vueltaTiendas;
+          }
           // datos del cliente para la tabla del panel (telefono -> chat)
           const contacto = {
             telefono: String(p?.Movil ?? "").trim(),
@@ -1471,6 +1479,7 @@ export function crearSubidaAutomatica({
     } finally {
       corriendo = false;
       vueltaDesde = null;
+      if (!enRonda) parar = false;
     }
   }
 
@@ -1482,14 +1491,22 @@ export function crearSubidaAutomatica({
     const c = leer();
     const h = horarioDe(c);
     const clave = `ronda ${new Date().toISOString()}`;
-    for (let i = 0; i < h.vueltas; i++) {
-      const r = await tick({ ronda: clave }).catch((e) => ({ ok: false, error: e?.message }));
-      const hizo = r?.ok && !r.saltado && !r.detenido && (r.detalle?.length ?? 0) > 0;
-      if (!hizo || i === h.vueltas - 1) break;
-      await new Promise((ok) => {
-        const t = setTimeout(ok, ESPERA_ENTRE_VUELTAS_MS);
-        t.unref?.();
-      });
+    enRonda = true;
+    parar = false;
+    try {
+      for (let i = 0; i < h.vueltas; i++) {
+        const r = await tick({ ronda: clave }).catch((e) => ({ ok: false, error: e?.message }));
+        const hizo = r?.ok && !r.saltado && !r.detenido && (r.detalle?.length ?? 0) > 0;
+        if (!hizo || parar || i === h.vueltas - 1) break;
+        await new Promise((ok) => {
+          const t = setTimeout(ok, ESPERA_ENTRE_VUELTAS_MS);
+          t.unref?.();
+        });
+        if (parar) break;
+      }
+    } finally {
+      enRonda = false;
+      parar = false;
     }
   }
 
@@ -1535,6 +1552,18 @@ export function crearSubidaAutomatica({
       log.log(`[subida] automatica ${c.automatico ? "ACTIVA" : "apagada"} (cada ${seg}s, dryRun=${c.dryRun})`);
     },
 
+    /**
+     * Para la subida en curso: termina el pedido que esta subiendo (no se
+     * corta a mitad del formulario de Dropi) y no sigue con los demas ni con
+     * las otras vueltas de la ronda. El horario sigue: la proxima vez corre.
+     */
+    parar() {
+      if (!corriendo && !enRonda) return { ok: false, msg: "No hay ninguna subida en curso" };
+      parar = true;
+      log.log("[subida] parada pedida desde el panel: termina el pedido actual y se detiene");
+      return { ok: true, msg: "Se detiene al terminar el pedido actual" };
+    },
+
     detener() {
       if (timer && !timer.horas) clearInterval(timer);
       if (timerHora) clearTimeout(timerHora);
@@ -1574,6 +1603,8 @@ export function crearSubidaAutomatica({
           ahora: new Date().toISOString(),
           proxima: timer && c.automatico && proximaMs ? new Date(proximaMs).toISOString() : null,
           enCurso: corriendo,
+          ronda: enRonda,
+          parando: parar,
           desde: vueltaDesde,
           detenida: c.sesionDropi?.estado && c.sesionDropi.estado !== "ok" ? c.sesionDropi.estado : null,
         },

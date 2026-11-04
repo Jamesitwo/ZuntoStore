@@ -116,7 +116,17 @@ function normalizaConfig(c: any): {
 }
 
 /** Cuenta regresiva hasta la próxima revisión de la subida automática. */
-function RelojSubida({ reloj, cadaSegundos, onVuelta }: { reloj: any; cadaSegundos: number; onVuelta: () => void }) {
+function RelojSubida({
+  reloj,
+  cadaSegundos,
+  onVuelta,
+  onParar,
+}: {
+  reloj: any;
+  cadaSegundos: number;
+  onVuelta: () => void;
+  onParar: () => void;
+}) {
   const [ahora, setAhora] = useState(() => Date.now());
   // diferencia entre el reloj del servidor y el de este equipo
   const desfase = reloj?.ahora ? Date.parse(reloj.ahora) - Date.now() : 0;
@@ -135,11 +145,21 @@ function RelojSubida({ reloj, cadaSegundos, onVuelta }: { reloj: any; cadaSegund
       onVuelta();
     }
   }, [falta, reloj?.proxima, onVuelta]);
-  if (reloj?.enCurso) {
+  if (reloj?.enCurso || reloj?.ronda) {
     const seg = reloj.desde ? Math.max(0, Math.round((ahora + desfase - Date.parse(reloj.desde)) / 1000)) : null;
     return (
-      <div className="reloj-subida en-curso" role="status">
-        <span className="reloj-punto" /> Revisando pedidos ahora{seg !== null ? ` (${textoReloj(seg)})` : ""}…
+      <div className="reloj-subida en-curso row between wrap" role="status">
+        <span>
+          <span className="reloj-punto" />
+          {reloj.parando
+            ? "Parando: termina el pedido que está subiendo y se detiene…"
+            : reloj.enCurso
+              ? `Subiendo pedidos ahora${seg !== null ? ` (${textoReloj(seg)})` : ""}…`
+              : "Pausa entre vueltas de la ronda…"}
+        </span>
+        <button type="button" className="btn sm danger" disabled={!!reloj.parando} onClick={onParar}>
+          {reloj.parando ? "Parando…" : "⏹ Parar subida"}
+        </button>
       </div>
     );
   }
@@ -212,7 +232,7 @@ export function SubidaDropi() {
   }, []);
   // mientras corre una vuelta, se mira cada 5 s hasta que termine
   useEffect(() => {
-    if (!config?.reloj?.enCurso) return;
+    if (!config?.reloj?.enCurso && !config?.reloj?.ronda) return;
     const t = setTimeout(refrescarEstado, 5000);
     return () => clearTimeout(t);
   }, [config, refrescarEstado]);
@@ -509,6 +529,26 @@ export function SubidaDropi() {
     }
   };
 
+  const pararSubida = async () => {
+    const si = await confirmar({
+      titulo: "¿Parar la subida?",
+      mensaje:
+        "Zunto termina el pedido que está subiendo en este momento (para no dejarlo a medias en Dropi) y no sigue con los demás. Los que falten se suben en la próxima revisión.",
+      confirmar: "Parar subida",
+      peligro: true,
+    });
+    if (!si) return;
+    try {
+      const r: any = await backend("/api/subida/parar", { method: "POST", body: {} });
+      if (r?.config) setConfig(r.config);
+      if (r?.ok) toast.success(r.msg ?? "Se detiene al terminar el pedido actual");
+      else toast.error(r?.msg ?? "No se pudo parar");
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+    refrescarEstado();
+  };
+
   return (
     <section className="card">
       <div className="row between wrap">
@@ -523,11 +563,12 @@ export function SubidaDropi() {
               : "apagada"}
         </span>
       </div>
-      {config?.automatico ? (
+      {config?.automatico || config?.reloj?.enCurso || config?.reloj?.ronda ? (
         <RelojSubida
           reloj={config.reloj}
           cadaSegundos={config.horario?.modo === "horas" ? 86400 : Number(config.cadaSegundos) || 120}
           onVuelta={refrescarEstado}
+          onParar={() => void pararSubida()}
         />
       ) : null}
 

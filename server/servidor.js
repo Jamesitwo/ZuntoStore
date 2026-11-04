@@ -1829,6 +1829,15 @@ export function crearManejador({
       return;
     }
 
+    // ---- POST /api/subida/parar ----
+    // Detiene la subida en curso al terminar el pedido actual.
+    if (req.method === "POST" && ruta === "/api/subida/parar") {
+      autorizar(req);
+      const r = subida.parar?.() ?? { ok: false, msg: "No disponible" };
+      json(res, 200, { ...r, config: subida.config() });
+      return;
+    }
+
     // ---- POST /api/subida/probar ----
     // Ejecuta una vuelta ahora mismo aunque este apagado.
     if (req.method === "POST" && ruta === "/api/subida/probar") {

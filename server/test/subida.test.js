@@ -1650,3 +1650,29 @@ test("horario a hora fija: la proxima ronda es a las 23:00 de Colombia", async (
   s.detener();
   fs.rmSync(ruta, { force: true });
 });
+
+test("parar la subida en curso: termina el pedido actual y no sigue con los demás", async () => {
+  let s;
+  const { s: sub, ruta, subidos } = armar({
+    pedidos: [1, 2, 3].map((id) => ({ id, EstadoPedido: 0, completo: { ...COMPLETO, id, idPedido: 110 + id } })),
+    respuestaDropi: async () => {
+      // mientras Dropi crea el primero, alguien pulsa «Parar»
+      if (subidos.length === 1) {
+        assert.equal(s.config().reloj.enCurso, true);
+        assert.equal(s.parar().ok, true);
+        assert.equal(s.config().reloj.parando, true);
+      }
+      return { ok: true, creado: true, seguro: true };
+    },
+  });
+  s = sub;
+  assert.equal(s.parar().ok, false, "sin subida en curso no hay nada que parar");
+  s.configurar({ automatico: true, dryRun: false });
+  s.detener();
+  const r = await s.tick({ forzar: true });
+  assert.equal(subidos.length, 1, "el pedido que estaba subiendo termina; los otros no se tocan");
+  assert.match(r.detenido, /a mano/);
+  assert.equal(s.config().reloj.parando, false, "la proxima vuelta corre normal");
+  assert.match(s.config().sesiones[0].detenido, /a mano/);
+  fs.rmSync(ruta, { force: true });
+});

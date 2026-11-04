@@ -5305,7 +5305,7 @@ li.pedido-movil.fila-estado {
 .reloj-subida.en-curso { display: flex; align-items: center; gap: 8px; }
 .reloj-barra { height: 4px; border-radius: 4px; background: var(--border); overflow: hidden; }
 .reloj-barra > div { height: 100%; background: var(--primary, #7c3aed); transition: width 1s linear; }
-.reloj-punto { width: 8px; height: 8px; border-radius: 50%; background: var(--primary, #7c3aed); animation: reloj-pulso 1s ease-in-out infinite; }
+.reloj-punto { display: inline-block; vertical-align: middle; margin-right: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--primary, #7c3aed); animation: reloj-pulso 1s ease-in-out infinite; }
 @keyframes reloj-pulso { 50% { opacity: .3; } }
 
 /* entregas programadas (pedidos para otra fecha) */
