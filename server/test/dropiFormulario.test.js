@@ -464,6 +464,20 @@ test("Calima - El Darien en Dropi es Darien (calima)", () => {
   assert.equal(coincideUbicacion("Cali", v, "Valle"), false);
 });
 
+test("Mesitas del Colegio en Dropi es El Colegio (mesitas)", () => {
+  const v = variantesUbicacion("Mesitas Del Colegio");
+  assert.equal(v[0], "mesitas del colegio");
+  assert.ok(v.includes("el colegio"), "se prueba a escribir El Colegio");
+  assert.equal(coincideUbicacion("El Colegio (mesitas)", v, "Cundinamarca"), true);
+  assert.equal(coincideUbicacion("Colegio", v, "Cundinamarca"), false);
+});
+
+test("el chat de Intercom no tapa los botones de Dropi", async () => {
+  const { SELECTOR_ESTORBOS } = await import("../dropiNavegador.js");
+  assert.match(SELECTOR_ESTORBOS, /#intercom-container/);
+  assert.match(SELECTOR_ESTORBOS, /iframe\[data-intercom-frame\]/);
+});
+
 test("ficha de un producto de Dropi para el Creador IA", async () => {
   const { fichaDeDropi, urlProductoDropi } = await import("../dropiNavegador.js");
   assert.equal(urlProductoDropi("2280755"), "https://app.dropi.co/dashboard/product-details/2280755");

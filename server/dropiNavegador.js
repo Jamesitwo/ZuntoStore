@@ -147,6 +147,22 @@ const normalizarUbicacion = (t) =>
  * ciudad. Cada grupo son equivalentes; el primero de la lista es el que mas
  * usa Dropi y se prueba a escribir si el nombre completo no aparece.
  */
+/** Ventanas flotantes (chat de Intercom) que pueden tapar botones de Dropi. */
+export const SELECTOR_ESTORBOS =
+  '#intercom-container, .intercom-lightweight-app, .intercom-app, iframe[name^="intercom"], iframe[data-intercom-frame]';
+const OCULTAR_ESTORBOS = `(() => {
+  const css = ${JSON.stringify(SELECTOR_ESTORBOS)} + "{display:none!important;pointer-events:none!important}";
+  const poner = () => {
+    if (document.getElementById("zunto-sin-estorbos")) return;
+    const st = document.createElement("style");
+    st.id = "zunto-sin-estorbos";
+    st.textContent = css;
+    (document.head || document.documentElement).appendChild(st);
+  };
+  if (document.documentElement) poner();
+  document.addEventListener("DOMContentLoaded", poner);
+})();`;
+
 const EQUIVALENTES_UBICACION = [
   ["valle", "valle del cauca"],
   ["guajira", "la guajira"],
@@ -162,6 +178,8 @@ const EQUIVALENTES_UBICACION = [
   ["inirida", "puerto inirida"],
   // Calima - El Darien (Valle): en Dropi es "Darien (calima)"
   ["darien calima", "darien", "calima el darien", "calima darien", "el darien", "calima"],
+  // Mesitas del Colegio (Cundinamarca): en Dropi es "El Colegio (mesitas)"
+  ["el colegio mesitas", "el colegio", "mesitas del colegio", "mesitas", "colegio mesitas", "mesitas el colegio"],
 ];
 
 /** Todas las formas aceptadas para un nombre (normalizadas), la propia primero. */
@@ -380,8 +398,21 @@ export function crearDropiNavegador(config = {}) {
         pagina = navegador.pages()[0] ?? (await navegador.newPage());
       }
     }
+    await navegador.addInitScript(OCULTAR_ESTORBOS).catch(() => {});
     pagina.setDefaultTimeout(lento);
     return pagina;
+  }
+
+  /**
+   * El chat de soporte de Dropi (Intercom) a veces abre una notificacion
+   * encima del boton «Enviar al cliente» y se come el clic: se oculta.
+   */
+  async function quitarEstorbos(p) {
+    await p
+      .evaluate((sel) => {
+        for (const el of document.querySelectorAll(sel)) el.remove();
+      }, SELECTOR_ESTORBOS)
+      .catch(() => {});
   }
 
   /** ¿Hay un captcha en pantalla? Se mira, no se toca. */
@@ -1777,10 +1808,32 @@ export function crearDropiNavegador(config = {}) {
         (r) => r.request().method() === "POST" && /\/orders\/myorders(?:\?|$)/i.test(r.url()),
         { timeout: lento },
       ).catch(() => null);
+      await quitarEstorbos(p);
       try {
-        await crear.click();
+        await crear.click({ timeout: 15000 });
       } catch (e) {
-        return {
+        // algo tapo el boton (p. ej. el chat de Intercom): Playwright NO
+        // llego a hacer el clic. Si Dropi no recibio nada, se quita y se reintenta.
+        const tapado = /intercepts pointer events/i.test(String(e?.message ?? e));
+        let clicOk = false;
+        if (tapado) {
+          await quitarEstorbos(p);
+          await crear.click({ timeout: 10000 }).then(() => (clicOk = true)).catch(() => {});
+          if (!clicOk) {
+            const llego = await Promise.race([respuestaDropi, p.waitForTimeout(3000).then(() => null)]);
+            if (!llego) {
+              return {
+                ok: false,
+                creado: false,
+                seguro: seguroActivado,
+                detalle: "Una ventana flotante de Dropi tapó el botón «Enviar al cliente» y no se pudo pulsar; no se creó el pedido. Reintenta.",
+                url: p.url(),
+              };
+            }
+            clicOk = true;
+          }
+        }
+        if (!clicOk) return {
           ok: false,
           creado: false,
           resultadoIncierto: true,
