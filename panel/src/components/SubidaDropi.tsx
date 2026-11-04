@@ -810,16 +810,20 @@ export function SubidaDropi() {
               <span className="campo-ayuda">
                 Antes de leer el chat, Zunto ejecuta este flujo (POST /contacts/ID/send/FLUJO), espera 3 s y lee el campo: así
                 el chat llega hasta la última interacción. El flujo solo debe guardar la conversación en el campo (sin mensajes
-                al cliente).
+                al cliente). En la subida automática cada pedido tarda ~3 s más.
               </span>
               {lucidBotForm.conversationFlowId ? (
-                <label className="small" style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6 }}>
+                <label className="switch" htmlFor="lb-flow-subida" style={{ marginTop: 8 }}>
                   <input
+                    id="lb-flow-subida"
                     type="checkbox"
                     checked={!!lucidBotForm.conversationFlowEnSubida}
                     onChange={(e) => setLucidBotForm((f: any) => ({ ...f, conversationFlowEnSubida: e.target.checked }))}
                   />
-                  También en la subida automática (un flujo por pedido; cada pedido tarda ~3 s más)
+                  <span className="switch-pista" aria-hidden="true" />
+                  <span className="switch-texto small">
+                    {lucidBotForm.conversationFlowEnSubida ? "También en la subida automática" : "Solo al ver o subir a mano"}
+                  </span>
                 </label>
               ) : null}
             </div>
