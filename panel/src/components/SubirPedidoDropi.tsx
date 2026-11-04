@@ -187,6 +187,7 @@ export function SubirPedidoDropi({
   const toast = useToast();
 
   const [conv, setConv] = useState<any>(null);
+  const [cargandoConv, setCargandoConv] = useState(true);
   const [verChat, setVerChat] = useState(false);
   const [validando, setValidando] = useState(false);
   const [resultado, setResultado] = useState<any>(null);
@@ -202,9 +203,11 @@ export function SubirPedidoDropi({
   useEffect(() => {
     let cancel = false;
     void (async () => {
+      setCargandoConv(true);
       const r = await backendSuave<any>(`${url}/conversacion`);
       if (cancel) return;
       setConv(r && r.ok !== false ? r : null);
+      setCargandoConv(false);
     })();
     return () => {
       cancel = true;
@@ -308,7 +311,9 @@ export function SubirPedidoDropi({
           Agente de Dropi · subida con seguro
         </div>
         <span className={`chip${conv?.mensajes?.length ? " ok" : ""}`}>
-          {conv === null
+          {cargandoConv
+            ? "cargando chat…"
+            : conv === null
             ? "sin chat del bot"
             : `${conv.mensajes?.length ?? 0} mensaje(s) del bot`}
         </span>
@@ -325,7 +330,9 @@ export function SubirPedidoDropi({
 
       <IntentosSubida id={id} recarga={recargaVeredicto} />
 
-      {conv === null ? (
+      {cargandoConv ? (
+        <p className="muted small">Trayendo el chat actualizado desde Lucid Bot…</p>
+      ) : conv === null ? (
         <p className="muted small">
           No se pudo cargar la conversación actual desde LucidBot. Revisa que el contacto tenga el campo configurado y que el pedido tenga un teléfono o enlace de chat válido.
         </p>
@@ -335,6 +342,7 @@ export function SubirPedidoDropi({
             {verChat ? "Ocultar chat" : `Ver chat (${conv.mensajes?.length ?? 0})`}
           </button>
           {conv.telefono ? <span className="muted small">tel. {conv.telefono}</span> : null}
+          {conv.aviso ? <span className="muted small" title={conv.aviso}>⚠ chat sin actualizar: {conv.aviso}</span> : null}
         </div>
       )}
 

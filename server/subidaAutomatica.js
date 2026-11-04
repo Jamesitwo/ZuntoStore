@@ -1016,7 +1016,7 @@ export function crearSubidaAutomatica({
           let mensajes = conv?.mensajes ?? [];
           const chatUrl = conv?.meta?.chatUrl ?? conv?.meta?.chat_url ?? conv?.meta?.inboxUrl ?? "";
           if (lucidBotContactos?.obtenerConversacion) {
-            const chat = await lucidBotContactos.obtenerConversacion({ pedido: pedidoCompleto, chatUrl });
+            const chat = await lucidBotContactos.obtenerConversacion({ pedido: pedidoCompleto, chatUrl, origen: "subida" });
             if (chat.configurado) {
               if (!chat.ok) {
                 marcarP("sin-conversacion", `no se pudo traer la conversación actual de LucidBot: ${chat.detalle}`);

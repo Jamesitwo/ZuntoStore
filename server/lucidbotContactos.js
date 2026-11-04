@@ -15,6 +15,11 @@ const DEFECTO = {
   adminPhone: "",
   summaryField: "resumen_dropi",
   conversationFieldId: "",
+  // flujo que guarda la conversacion al dia en ese campo: se dispara antes de
+  // leerlo (asi el chat llega hasta la ultima interaccion)
+  conversationFlowId: "",
+  // tambien en la subida automatica (un flujo por pedido, +3 s cada uno)
+  conversationFlowEnSubida: false,
   tagName: "",
   flowId: "",
   fields: [],
@@ -55,7 +60,8 @@ function idContactoDesdeEnlace(enlace) {
   }
 }
 
-export function crearLucidBotContactos({ ruta, fetcher = fetch, timeoutMs = 12000 } = {}) {
+export function crearLucidBotContactos({ ruta, fetcher = fetch, timeoutMs = 12000, esperaFlujoMs = 3000, esperar } = {}) {
+  const pausa = esperar ?? ((ms) => new Promise((ok) => setTimeout(ok, ms)));
   const archivo = ruta ?? path.join(process.cwd(), "config", "lucidbot-contactos.json");
 
   function leer() {
@@ -111,6 +117,12 @@ export function crearLucidBotContactos({ ruta, fetcher = fetch, timeoutMs = 1200
       if (id && !/^\d+$/.test(id)) throw new ErrorApi(400, "El ID del campo con la conversación debe ser numérico");
       siguiente.conversationFieldId = id;
     }
+    if (patch.conversationFlowId !== undefined) {
+      const id = String(patch.conversationFlowId ?? "").trim();
+      if (id && !/^\d+$/.test(id)) throw new ErrorApi(400, "El ID del flujo que actualiza la conversación debe ser numérico");
+      siguiente.conversationFlowId = id;
+    }
+    if (typeof patch.conversationFlowEnSubida === "boolean") siguiente.conversationFlowEnSubida = patch.conversationFlowEnSubida;
     if (patch.tagName !== undefined) siguiente.tagName = textoSeguro(patch.tagName, 120);
     if (patch.flowId !== undefined) {
       const flow = String(patch.flowId ?? "").trim();
@@ -144,7 +156,39 @@ export function crearLucidBotContactos({ ruta, fetcher = fetch, timeoutMs = 1200
     return estado();
   }
 
-  async function obtenerConversacion({ pedido, chatUrl } = {}) {
+  /**
+   * Dispara en Lucid Bot el flujo que guarda la conversacion al dia en el
+   * campo (POST /contacts/{id}/send/{flujo}) y espera a que la guarde.
+   * Si falla no se frena: se lee lo que tenga el campo.
+   */
+  async function refrescarConversacion(c, contactId) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
+    try {
+      const r = await fetcher(
+        `https://panel.lucidbot.co/api/contacts/${encodeURIComponent(contactId)}/send/${encodeURIComponent(c.conversationFlowId)}`,
+        {
+          method: "POST",
+          signal: ctl.signal,
+          headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded", "X-ACCESS-TOKEN": c.token },
+          body: "",
+        },
+      );
+      const body = await r.json().catch(() => null);
+      if (!r.ok || body?.success === false) {
+        const razon = textoSeguro(body?.message ?? body?.msg ?? body?.detail, 200);
+        return { ok: false, detalle: `Lucid Bot no ejecutó el flujo ${c.conversationFlowId} (HTTP ${r.status}${razon ? `: ${razon}` : ""})` };
+      }
+    } catch (e) {
+      return { ok: false, detalle: `no se pudo ejecutar el flujo que actualiza el chat: ${e?.name === "AbortError" ? "timeout" : e?.message ?? e}` };
+    } finally {
+      clearTimeout(timer);
+    }
+    await pausa(esperaFlujoMs);
+    return { ok: true };
+  }
+
+  async function obtenerConversacion({ pedido, chatUrl, origen = "panel" } = {}) {
     const c = leer();
     if (!c.conversationFieldId) return { ok: false, configurado: false, detalle: "No hay un ID configurado para el campo de conversación" };
     if (!c.token) return { ok: false, configurado: true, detalle: "Falta X-ACCESS-TOKEN de Lucid Bot" };
@@ -154,6 +198,13 @@ export function crearLucidBotContactos({ ruta, fetcher = fetch, timeoutMs = 1200
       chatUrl ?? fuente.chatUrl ?? fuente.chat_url ?? fuente.inboxUrl ?? fuente.linkChat,
     ) || phone.replace(/\D/g, "");
     if (!contactId) return { ok: false, configurado: true, detalle: "No se pudo identificar el contacto desde el enlace del chat ni el teléfono" };
+
+    // primero el flujo que deja el campo al dia (si esta configurado)
+    let aviso = null;
+    if (c.conversationFlowId && (origen !== "subida" || c.conversationFlowEnSubida)) {
+      const rf = await refrescarConversacion(c, contactId);
+      if (!rf.ok) aviso = rf.detalle;
+    }
 
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), timeoutMs);
@@ -225,7 +276,7 @@ export function crearLucidBotContactos({ ruta, fetcher = fetch, timeoutMs = 1200
         }
         return { ok: false, configurado: true, contactId, detalle: `Conversación no legible del contacto ${contactId}: ${que}` };
       }
-      return { ok: true, configurado: true, contactId, mensajes, total: mensajes.length };
+      return { ok: true, configurado: true, contactId, mensajes, total: mensajes.length, ...(aviso ? { aviso } : {}) };
     } catch (e) {
       return { ok: false, configurado: true, detalle: e?.name === "AbortError" ? "Lucid Bot no respondió antes del timeout" : `No se pudo traer la conversación: ${e?.message ?? e}` };
     } finally {

@@ -199,7 +199,7 @@ export function SubidaDropi() {
 
   const [config, setConfig] = useState<any>(null);
   const [lucidBotConfig, setLucidBotConfig] = useState<any>(null);
-  const [lucidBotForm, setLucidBotForm] = useState<any>({ activo: false, adminPhone: "", summaryField: "resumen_dropi", conversationFieldId: "", tagName: "", flowId: "", fields: [], pedidoFieldId: "", pedidoValor: "id", pedidoActivo: false });
+  const [lucidBotForm, setLucidBotForm] = useState<any>({ activo: false, adminPhone: "", summaryField: "resumen_dropi", conversationFieldId: "", conversationFlowId: "", conversationFlowEnSubida: false, tagName: "", flowId: "", fields: [], pedidoFieldId: "", pedidoValor: "id", pedidoActivo: false });
   const [lucidBotToken, setLucidBotToken] = useState("");
   const [guardandoLucidBot, setGuardandoLucidBot] = useState(false);
   const [ultimos, setUltimos] = useState<any[]>([]);
@@ -260,6 +260,8 @@ export function SubidaDropi() {
           adminPhone: rb.config.adminPhone ?? "",
           summaryField: rb.config.summaryField ?? "resumen_dropi",
           conversationFieldId: rb.config.conversationFieldId ?? rb.config.summaryFieldId ?? "",
+          conversationFlowId: rb.config.conversationFlowId ?? "",
+          conversationFlowEnSubida: !!rb.config.conversationFlowEnSubida,
           tagName: rb.config.tagName ?? "",
           flowId: rb.config.flowId ?? "",
           fields: Array.isArray(rb.config.fields) ? rb.config.fields : [],
@@ -794,6 +796,31 @@ export function SubidaDropi() {
                 placeholder="Ej. 12345"
               />
               <span className="campo-ayuda">Se consulta con GET /contacts/ID/custom_fields/ID antes de subir. El ID del contacto sale del enlace del inbox.</span>
+            </div>
+            <div className="field">
+              <label htmlFor="lb-conversation-flow-id">ID del flujo que actualiza la conversación (opcional)</label>
+              <input
+                id="lb-conversation-flow-id"
+                inputMode="numeric"
+                value={lucidBotForm.conversationFlowId}
+                onChange={(e) => setLucidBotForm((f: any) => ({ ...f, conversationFlowId: e.target.value }))}
+                placeholder="Ej. 67890"
+              />
+              <span className="campo-ayuda">
+                Antes de leer el chat, Zunto ejecuta este flujo (POST /contacts/ID/send/FLUJO), espera 3 s y lee el campo: así
+                el chat llega hasta la última interacción. El flujo solo debe guardar la conversación en el campo (sin mensajes
+                al cliente).
+              </span>
+              {lucidBotForm.conversationFlowId ? (
+                <label className="small" style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={!!lucidBotForm.conversationFlowEnSubida}
+                    onChange={(e) => setLucidBotForm((f: any) => ({ ...f, conversationFlowEnSubida: e.target.checked }))}
+                  />
+                  También en la subida automática (un flujo por pedido; cada pedido tarda ~3 s más)
+                </label>
+              ) : null}
             </div>
             <div className="field">
               <label htmlFor="lb-admin-phone">Teléfono del admin que recibe los avisos</label>

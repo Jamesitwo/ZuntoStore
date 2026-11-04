@@ -121,3 +121,54 @@ test("campo con value null: dice que el bot no guardo la conversacion", async ()
   assert.match(r.detalle, /920789 \(«conversacion»\) está vacío \(null\)/);
   fs.rmSync(ruta, { force: true });
 });
+
+function armarConFlujo({ flujoFalla = false } = {}) {
+  const ruta = path.join(os.tmpdir(), `lucidbot-${Date.now()}-${Math.random()}.json`);
+  const eventos = [];
+  const fetcher = async (url, opciones) => {
+    eventos.push(`${opciones?.method ?? "GET"} ${url.replace("https://panel.lucidbot.co/api", "")}`);
+    if (/\/send\//.test(url)) {
+      return flujoFalla
+        ? { ok: false, status: 404, json: async () => ({ success: false, message: "Flow not found" }) }
+        : { ok: true, status: 200, json: async () => ({ success: true }) };
+    }
+    return { ok: true, status: 200, json: async () => ({ value: JSON.stringify([{ de: "cliente", texto: "hola" }, { de: "cliente", texto: "Cuanto te demoras" }]) }) };
+  };
+  const lb = crearLucidBotContactos({ ruta, fetcher, esperar: async (ms) => eventos.push(`espera ${ms}`) });
+  lb.configurar({ token: "tok", conversationFieldId: "920789", conversationFlowId: "4455" });
+  return { lb, ruta, eventos };
+}
+
+test("chat al día: ejecuta el flujo, espera 3 s y después lee el campo", async () => {
+  const { lb, ruta, eventos } = armarConFlujo();
+  const r = await lb.obtenerConversacion({ pedido: { Movil: "3009998877" } });
+  assert.deepEqual(eventos, [
+    "POST /contacts/573009998877/send/4455",
+    "espera 3000",
+    "GET /contacts/573009998877/custom_fields/920789",
+  ]);
+  assert.equal(r.ok, true);
+  assert.equal(r.mensajes.at(-1).texto, "Cuanto te demoras");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("chat al día: en la subida automática solo si se activó", async () => {
+  const { lb, ruta, eventos } = armarConFlujo();
+  await lb.obtenerConversacion({ pedido: { Movil: "3009998877" }, origen: "subida" });
+  assert.deepEqual(eventos, ["GET /contacts/573009998877/custom_fields/920789"]);
+  lb.configurar({ conversationFlowEnSubida: true });
+  eventos.length = 0;
+  await lb.obtenerConversacion({ pedido: { Movil: "3009998877" }, origen: "subida" });
+  assert.equal(eventos[0], "POST /contacts/573009998877/send/4455");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("chat al día: si el flujo falla, igual lee el campo y avisa", async () => {
+  const { lb, ruta, eventos } = armarConFlujo({ flujoFalla: true });
+  const r = await lb.obtenerConversacion({ pedido: { Movil: "3009998877" } });
+  assert.equal(r.ok, true);
+  assert.match(r.aviso, /flujo 4455.*404.*Flow not found/);
+  assert.equal(eventos.at(-1), "GET /contacts/573009998877/custom_fields/920789");
+  assert.throws(() => lb.configurar({ conversationFlowId: "abc" }), /numérico/);
+  fs.rmSync(ruta, { force: true });
+});
