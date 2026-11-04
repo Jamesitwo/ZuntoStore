@@ -8,6 +8,7 @@
 // los pedidos viejos); desde ahi, cada pedido nuevo se envia una vez.
 import fs from "node:fs";
 import path from "node:path";
+import { actividad } from "./vigia.js";
 
 const MAX_GUARDADOS = 5000;
 const MAX_INTENTOS = 3;
@@ -118,7 +119,10 @@ export function crearPedidosLucidBot({
     tick,
     iniciar() {
       if (timer) return;
-      timer = setInterval(() => void tick().catch((e) => log.warn?.("[lucidbot-pedidos]", e?.message ?? e)), cadaMs);
+      timer = setInterval(() => {
+        actividad("lucidbot-pedidos");
+        tick().catch((e) => log.warn?.("[lucidbot-pedidos]", e?.message ?? e));
+      }, cadaMs);
       timer.unref?.();
       void tick().catch(() => {});
     },

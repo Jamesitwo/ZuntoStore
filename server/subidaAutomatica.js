@@ -22,6 +22,7 @@ import { cambiarEstado } from "./estado.js";
 import { direccionConReferencias, recogeEnOficina, validarDireccion } from "./direccionColombia.js";
 import { oficinaQueCoincide } from "./oficinasInter.js";
 import { DIRECCION_OFICINA_INTER } from "./dropiNavegador.js";
+import { actividad } from "./vigia.js";
 
 const MAX_PROCESADOS = 3000;
 /**
@@ -755,6 +756,7 @@ export function crearSubidaAutomatica({
         for (const p of pedidos) {
           const id = String(p?.id ?? p?.idPedido ?? "");
           if (!id) continue;
+          actividad(`subida: pedido ${id}`);
           // datos del cliente para la tabla del panel (telefono -> chat)
           const contacto = {
             telefono: String(p?.Movil ?? "").trim(),

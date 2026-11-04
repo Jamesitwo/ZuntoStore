@@ -12,6 +12,7 @@ import { ErrorApi } from "./errores.js";
 import { mensajeDeError } from "./estado.js";
 import { crearManejador } from "./servidor.js";
 import { crearVerificadorSesion, tiendaDePeticion, tienePermiso } from "./sesionPanel.js";
+import { actividad } from "./vigia.js";
 
 const RUTAS_PUBLICAS = [/^\/api\/salud$/, /^\/api\/interrapidisimo\//];
 const LIMITE = 64 * 1024;
@@ -259,6 +260,7 @@ export function crearServidorCuentas({ config, registro, crearServicios, comunes
     try {
       const url = new URL(req.url ?? "/", "http://localhost");
       const ruta = url.pathname;
+      actividad(`${req.method} ${ruta}`);
       // el panel (archivos y /b) no es de ninguna cuenta
       if (comunes.panel && (await comunes.panel.manejar(req, res, url))) return;
       if (req.method === "OPTIONS") return de(registro.get(1)).manejador.atender(req, res);

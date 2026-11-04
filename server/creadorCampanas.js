@@ -18,6 +18,7 @@ import { slugDe } from "./anunciosTenant.js";
 import { EXCLUSIONES_ZUNTO, crearMetaCampanas, mensajeBienvenida } from "./metaCampanas.js";
 import { escribirJsonSeguro, leerJsonSeguro } from "./secretos.js";
 import { crearClienteTopView, DEFECTOS_TOPVIEW } from "./topview.js";
+import { actividad } from "./vigia.js";
 import { crearClienteTopViewMcp, descubrirOAuth, MCP_TOPVIEW, pedirToken, registrarCliente, urlAutorizacion } from "./topviewMcp.js";
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -621,7 +622,10 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
 
   function arrancar() {
     if (reloj) return;
-    reloj = setInterval(() => void revisarTareas().catch((e) => log.warn?.("[creador]", e?.message ?? e)), cadaMs);
+    reloj = setInterval(() => {
+      actividad("creador: revisar tareas");
+      revisarTareas().catch((e) => log.warn?.("[creador]", e?.message ?? e));
+    }, cadaMs);
     reloj.unref?.();
   }
   function detener() {

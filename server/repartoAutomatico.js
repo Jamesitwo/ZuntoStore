@@ -9,6 +9,7 @@
 // Un fallo (de LucidSales, de configuracion o de red) nunca rompe el
 // intervalo: se queda registrado en `ultimo` y se reintenta en la siguiente.
 import { ErrorApi } from "./errores.js";
+import { actividad } from "./vigia.js";
 
 export function crearRepartoAutomatico({ asignacion, cliente, config, log = console }) {
   let timer = null;
@@ -144,6 +145,7 @@ export function crearRepartoAutomatico({ asignacion, cliente, config, log = cons
         if (timer) clearInterval(timer);
         const cada = Math.max(10, Number(asignacion.getConfig().cadaSegundos) || 60);
         timer = setInterval(() => {
+          actividad("reparto automatico");
           void tick();
           encender(); // por si el panel cambio el intervalo
         }, cada * 1000);

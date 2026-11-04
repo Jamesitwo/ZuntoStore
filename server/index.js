@@ -9,6 +9,7 @@ import { cargarConfig, faltantesDeConfig } from "./config.js";
 import { crearClienteInter } from "./interrapidisimo.js";
 import { crearRegistroAnuncios } from "./anunciosTenant.js";
 import { crearPanelEstatico } from "./panelEstatico.js";
+import { iniciarVigia } from "./vigia.js";
 import { crearCreadorCampanas } from "./creadorCampanas.js";
 import { configDeCuenta, crearRegistroCuentas } from "./cuentas.js";
 import { crearServiciosCuenta, crearTurnoDropi } from "./serviciosCuenta.js";
@@ -98,6 +99,10 @@ if (config.NODE_ENV === "production") {
     throw new Error("En produccion, define CORS_ORIGIN con el origen HTTPS exacto del panel");
   }
 }
+
+// si el proceso se queda bloqueado, el vigilante deja en el log que hacia y
+// lo termina para que Railway lo reinicie (VIGIA_SEG=0 lo apaga)
+iniciarVigia({ segundos: Number(process.env.VIGIA_SEG ?? 120) });
 
 server.listen(config.PORT, config.HOST, () => {
   const faltan = faltantesDeConfig(config);
