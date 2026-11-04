@@ -9,6 +9,7 @@ import { useInboxBot } from "../lib/botInbox";
 import { AnalisisPedido } from "./AnalisisPedido";
 import { IdPedidoLucidBot } from "./IdPedidoLucidBot";
 import { ReglasEnvio, type ConfigEnvio, type ReglaProducto } from "./ReglasEnvio";
+import { SesionesSubida } from "./SesionesSubida";
 import { SheetProductos } from "./SheetProductos";
 import { useToast } from "./Toast";
 import { Campo, ErrorBanner, Spinner } from "./ui";
@@ -540,6 +541,8 @@ export function SubidaDropi() {
       </p>
 
       {nota ? <p className="muted small">{nota}</p> : null}
+
+      <SesionesSubida sesiones={config?.sesiones} />
 
       {config !== null ? (
         <details className="card" open={sesion?.estado === "requiere-login" || sesion?.estado === "requiere-captcha"}>

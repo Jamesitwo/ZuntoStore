@@ -128,6 +128,11 @@ test("tick con forzar lo ejecuta aunque este apagado", async () => {
   assert.equal(r.ok, true);
   assert.equal(subidos.length, 1);
   assert.equal(subidos[0].seguro, true);
+  // queda el resumen de la sesion para el panel
+  const [ses] = s.config().sesiones;
+  assert.equal(ses.subidos, 1);
+  assert.equal(ses.noSubidos, 0);
+  assert.equal(ses.dryRun, true);
   fs.rmSync(ruta, { force: true });
 });
 

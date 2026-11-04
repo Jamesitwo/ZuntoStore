@@ -359,6 +359,83 @@ export function resumirValidacion(r, minimo) {
 }
 
 /** Rechaza direcciones que en realidad indican recoger en oficina del carrier. */
+/** Sesiones de subida que se guardan (las mas recientes). */
+const MAX_SESIONES = 20;
+
+const NOMBRE_MOTIVO = {
+  "direccion-invalida": "Dirección inválida",
+  "sin-conversacion": "Sin conversación con el cliente",
+  "sin-tienda-dropi": "Tienda sin cuenta de Dropi",
+  "estado-incompatible": "El estado del pedido no permite subirlo",
+  "posible-duplicado": "Posible pedido duplicado",
+  "entrega-programada": "Entrega programada para otro día",
+  "envio-caro": "Envío demasiado caro",
+  "sin-transportadora": "Sin transportadora disponible",
+  "requiere-login": "Dropi pidió iniciar sesión",
+  "requiere-captcha": "Dropi pidió captcha",
+  "resultado-incierto": "Resultado incierto (verificar en Dropi)",
+  "requiere-revision": "Revisión manual (intentos agotados)",
+};
+
+/** Texto de un motivo sin datos de un pedido (numeros, nombres entre comillas). */
+function motivoGeneral(t) {
+  return String(t ?? "")
+    .replace(/«[^»]*»|"[^"]*"|“[^”]*”/g, "«…»")
+    .replace(/\d[\d.,-]*/g, "#")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 110);
+}
+
+/** Motivo legible de un resultado de la vuelta; null si se subio. */
+export function motivoDeResultado(d) {
+  const a = d?.accion;
+  if (!a || a === "subido" || a === "preparado") return null;
+  if (NOMBRE_MOTIVO[a]) return NOMBRE_MOTIVO[a];
+  if (a === "frenar") {
+    const campos = [...new Set((d.motivos ?? []).map(String).filter(Boolean))];
+    return campos.length ? `Frenado por el agente: ${campos.join(", ")}` : "Frenado por el agente";
+  }
+  if (a === "requiere-humano") return d.detalle ? `Revisión manual: ${motivoGeneral(d.detalle)}` : "Revisión manual";
+  if (a === "error") return d.detalle ? `Error: ${motivoGeneral(d.detalle)}` : "Error";
+  return a;
+}
+
+/**
+ * Suma los resultados de una vuelta a su sesion (las vueltas de una misma
+ * ronda a hora fija son una sola sesion). Cada pedido cuenta una vez, con su
+ * ultimo resultado. Devuelve la lista de sesiones actualizada.
+ */
+export function sumarSesion(sesiones, { clave, desde, hasta, dryRun, detalle, detenido }) {
+  const lista = Array.isArray(sesiones) ? sesiones.filter((x) => x && x.clave !== clave) : [];
+  const previa = (Array.isArray(sesiones) ? sesiones : []).find((x) => x?.clave === clave);
+  const pedidos = { ...(previa?.pedidos ?? {}) };
+  for (const d of detalle ?? []) {
+    if (!d?.id) continue;
+    pedidos[d.id] = motivoDeResultado(d) ?? "";
+  }
+  const cuenta = new Map();
+  let subidos = 0;
+  for (const m of Object.values(pedidos)) {
+    if (!m) subidos++;
+    else cuenta.set(m, (cuenta.get(m) ?? 0) + 1);
+  }
+  const motivos = [...cuenta].sort((a, b) => b[1] - a[1]).map(([motivo, n]) => ({ motivo, n }));
+  const sesion = {
+    clave,
+    desde: previa?.desde ?? desde,
+    hasta,
+    vueltas: (previa?.vueltas ?? 0) + 1,
+    dryRun: Boolean(dryRun),
+    subidos,
+    noSubidos: Object.keys(pedidos).length - subidos,
+    motivos,
+    pedidos,
+    ...(detenido ? { detenido } : {}),
+  };
+  return [sesion, ...lista].sort((a, b) => String(b.desde).localeCompare(String(a.desde))).slice(0, MAX_SESIONES);
+}
+
 /** Pausa entre vueltas seguidas de una ronda a hora fija. */
 const ESPERA_ENTRE_VUELTAS_MS = 90 * 1000;
 const ZONA_COLOMBIA_MIN = -5 * 60; // Colombia no tiene horario de verano
@@ -1350,6 +1427,23 @@ export function crearSubidaAutomatica({
       if (subidos || frenados) {
         log.log(`[subida] ${c.dryRun ? "preparados" : "subidos"}: ${subidos}, frenados: ${frenados}`);
       }
+      // resumen de la sesion para el panel (solo si paso algo)
+      if (detalle.length) {
+        try {
+          const sesionClave = opciones.ronda ?? claveVuelta;
+          c.sesiones = sumarSesion(c.sesiones, {
+            clave: sesionClave,
+            desde: vueltaDesde,
+            hasta: new Date().toISOString(),
+            dryRun: c.dryRun,
+            detalle,
+            detenido,
+          });
+          guardar(c);
+        } catch (e) {
+          log.warn?.("[subida] no se pudo guardar el resumen de la sesión:", e?.message ?? e);
+        }
+      }
       if (detenido) {
         if (detenido !== ultimoAviso) log.warn?.(`[subida] vuelta detenida: ${detenido}`);
         ultimoAviso = detenido;
@@ -1387,8 +1481,9 @@ export function crearSubidaAutomatica({
   async function ronda() {
     const c = leer();
     const h = horarioDe(c);
+    const clave = `ronda ${new Date().toISOString()}`;
     for (let i = 0; i < h.vueltas; i++) {
-      const r = await tick().catch((e) => ({ ok: false, error: e?.message }));
+      const r = await tick({ ronda: clave }).catch((e) => ({ ok: false, error: e?.message }));
       const hizo = r?.ok && !r.saltado && !r.detenido && (r.detalle?.length ?? 0) > 0;
       if (!hizo || i === h.vueltas - 1) break;
       await new Promise((ok) => {
