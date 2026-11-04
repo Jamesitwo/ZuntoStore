@@ -897,7 +897,7 @@ export function crearDropiNavegador(config = {}) {
    * envio no pase el tope. Devuelve {ok, id, nombre, precio, intentos} o
    * {ok:false, envioCaro, sinTransportadora, detalle, intentos}.
    */
-  async function elegirTransportadora(p, ids, { maxEnvio = null, ciudad = "" } = {}) {
+  async function elegirTransportadora(p, ids, { maxEnvio = null, ciudad = "", permitirSobreTope = false } = {}) {
     const intentos = [];
     let primera = true;
     for (const id of ids) {
@@ -930,6 +930,15 @@ export function crearDropiNavegador(config = {}) {
         continue;
       }
       return { ok: true, id, nombre, precio: c.precio, intentos };
+    }
+    // todas pasan el tope, pero hay ganancia minima: se elige la mas barata
+    // de las caras y la ganancia se revisa al final, antes de crear
+    if (permitirSobreTope) {
+      const caras = intentos.filter((i) => i.caro).sort((a, b) => a.precio - b.precio);
+      for (const i of caras) {
+        const s = await seleccionarTransportadora(p, i.id, ciudad);
+        if (s.ok) return { ok: true, id: i.id, nombre: i.nombre, precio: i.precio, intentos, sobreTope: true };
+      }
     }
     const resumen = intentos.map((i) => `${i.nombre}: ${i.motivo}`).join("; ");
     const envioCaro = intentos.some((i) => i.caro);
@@ -1497,6 +1506,9 @@ export function crearDropiNavegador(config = {}) {
         .map(Number)
         .filter((x, i, a) => Number.isInteger(x) && x > 0 && a.indexOf(x) === i);
       const maxEnvio = Number(datos.maxEnvio) > 0 ? Number(datos.maxEnvio) : null;
+      // ganancia minima: con ella, un envio sobre el tope se acepta si la
+      // ganancia que muestra Dropi no baja de este valor
+      const gananciaMin = Number(datos.gananciaMin) > 0 ? Number(datos.gananciaMin) : null;
       const oficinaInter = datos.oficinaInter === true;
       // direccion de la oficina a elegir (si se sabe cual es)
       const oficinaObjetivo = String(datos.oficinaObjetivo ?? "").trim() || null;
@@ -1735,7 +1747,11 @@ export function crearDropiNavegador(config = {}) {
 
       // 6) transportadora: la primera de la lista que este disponible y cuyo
       //    envio no pase el tope (hay que esperar a que Dropi cotice)
-      const selCarrier = await elegirTransportadora(p, candidatas, { maxEnvio, ciudad: ciudadDropi });
+      const selCarrier = await elegirTransportadora(p, candidatas, {
+        maxEnvio,
+        ciudad: ciudadDropi,
+        permitirSobreTope: Boolean(maxEnvio && gananciaMin),
+      });
       if (!selCarrier.ok) {
         return {
           ok: false,
@@ -1747,6 +1763,7 @@ export function crearDropiNavegador(config = {}) {
         };
       }
       const envio = { id: selCarrier.id, transportadora: selCarrier.nombre, precio: selCarrier.precio, tope: maxEnvio };
+      if (selCarrier.sobreTope) Object.assign(envio, { sobreTope: true, gananciaMin });
       await p.waitForTimeout(2500);
 
       // 6.5) oficina de Interrapidisimo: solo si Dropi ofrece UNA
@@ -1781,6 +1798,26 @@ export function crearDropiNavegador(config = {}) {
       // resumen de Dropi con todo elegido: ganancia y precio del envio
       const resumenDropi = await leerResumenDropi(p);
 
+      // envio sobre el tope: solo sigue si la ganancia aguanta
+      if (envio.sobreTope) {
+        const g = resumenDropi?.ganancia;
+        const base = `El envío con ${envio.transportadora} (${pesos(envio.precio)}) supera el tope de ${pesos(maxEnvio)}`;
+        if (typeof g !== "number") {
+          return { ok: false, creado: false, envioCaro: true, envio, detalle: `${base} y no se pudo leer la ganancia en Dropi para compararla con el mínimo; no se creó el pedido.` };
+        }
+        if (g < gananciaMin) {
+          return {
+            ok: false,
+            creado: false,
+            envioCaro: true,
+            envio,
+            resumenDropi,
+            detalle: `${base} y la ganancia quedaría en ${pesos(g)}, por debajo del mínimo de ${pesos(gananciaMin)}; no se creó el pedido.`,
+          };
+        }
+        envio.ganancia = g;
+      }
+
       // modo preparacion: todo listo pero NO se pulsa crear
       if (datos.soloPreparar) {
         return {
@@ -1792,7 +1829,7 @@ export function crearDropiNavegador(config = {}) {
           envio,
           resumenDropi,
           tienda: tiendaSel.elegido,
-          detalle: `formulario preparado en la tienda ${tiendaSel.elegido} con ${envio.transportadora} (${pesos(envio.precio)}${oficina ? `, oficina ${oficina}` : ""}) y «Enviar al cliente» habilitado; no se pulsó (modo prueba)`,
+          detalle: `formulario preparado en la tienda ${tiendaSel.elegido} con ${envio.transportadora} (${pesos(envio.precio)}${oficina ? `, oficina ${oficina}` : ""})${envio.sobreTope ? ` (supera el tope de ${pesos(maxEnvio)}; ganancia ${pesos(envio.ganancia)} ≥ mínimo ${pesos(gananciaMin)})` : ""} y «Enviar al cliente» habilitado; no se pulsó (modo prueba)`,
           url: p.url(),
         };
       }

@@ -79,6 +79,7 @@ function normalizaConfig(c: any): {
       transportadoras: lista(r?.transportadoras),
       maxPesos: num(r?.maxPesos),
       maxPorcentaje: num(r?.maxPorcentaje),
+      gananciaMin: num(r?.gananciaMin),
     };
   }
   const generales = lista(c?.transportadoras);
@@ -93,7 +94,7 @@ function normalizaConfig(c: any): {
     },
     transportadoraId: Number(c?.transportadoraId) || 5,
     transportadoras: generales.length ? generales : [Number(c?.transportadoraId) || 5],
-    envio: { maxPesos: num(c?.envio?.maxPesos), maxPorcentaje: num(c?.envio?.maxPorcentaje) },
+    envio: { maxPesos: num(c?.envio?.maxPesos), maxPorcentaje: num(c?.envio?.maxPorcentaje), gananciaMin: num(c?.envio?.gananciaMin) },
     reglasProducto: reglas,
     oficinaInter: c?.oficinaInter === true,
     detectarOficinaInter: c?.detectarOficinaInter !== false,

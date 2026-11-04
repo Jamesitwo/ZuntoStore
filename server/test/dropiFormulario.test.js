@@ -156,6 +156,21 @@ test("si todas pasan el tope: envio caro y no se elige ninguna", async (t) => {
   }
 });
 
+test("con ganancia mínima: si todas pasan el tope elige la más barata y marca sobreTope", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  const p = await pagina(paginaTransportadoras());
+  try {
+    const r = await nav.elegirTransportadora(p, [5, 3], { maxEnvio: 10000, permitirSobreTope: true });
+    assert.equal(r.ok, true, r.detalle);
+    assert.equal(r.sobreTope, true);
+    assert.equal(r.id, 3, "la más barata de las que pasan el tope");
+    assert.equal(r.precio, 12300);
+    assert.equal(await p.locator('[data-cy="order-create-carrier-option-3"]').evaluate((el) => el.classList.contains("selected")), true);
+  } finally {
+    await p.close();
+  }
+});
+
 test("si la segunda no esta disponible y la primera es cara: envio caro", async (t) => {
   if (motivoSalto) return t.skip(motivoSalto);
   const p = await pagina(paginaTransportadoras({ interDisponible: false }));

@@ -1502,6 +1502,7 @@ export function crearManejador({
           corregimiento: r.extraido?.corregimiento || "",
           transportadoras,
           maxEnvio: plan.maxEnvio,
+          gananciaMin: plan.gananciaMin,
           oficinaInter: plan.oficinaInter,
           oficinaObjetivo: oficinaDetectada ? oficinaDetectada.direccion || oficinaDetectada.nombre : oficinaAuto ? resumen?.direccion : null,
           tienda: tiendaDropi,

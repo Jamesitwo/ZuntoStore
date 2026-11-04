@@ -290,9 +290,13 @@ export function planEnvio(c, resumen, { oficina = null } = {}) {
     topes.push({ valor: v, motivo: `${pct}% de $${Math.round(valor).toLocaleString("es-CO")}` });
   }
   const tope = topes.sort((a, b) => a.valor - b.valor)[0] ?? null;
+  // ganancia minima (del producto o la general): permite pasar el tope si la
+  // ganancia que muestra Dropi con ese envio no baja de este valor
+  const gananciaMin = topePesos(regla?.gananciaMin) ?? topePesos(c?.envio?.gananciaMin);
   return {
     transportadoras,
     maxEnvio: tope?.valor ?? null,
+    gananciaMin: tope ? gananciaMin : null,
     motivoTope: tope?.motivo ?? null,
     oficinaInter: oficina === "Inter Rapidísimo",
     reglaProducto: Boolean(regla),
@@ -545,7 +549,7 @@ export function crearSubidaAutomatica({
     // el tope); cada producto puede tener la suya en reglasProducto
     transportadoras: [5],
     // tope del flete: en pesos y/o en % del valor del pedido (null = sin tope)
-    envio: { maxPesos: null, maxPorcentaje: null },
+    envio: { maxPesos: null, maxPorcentaje: null, gananciaMin: null },
     // id de producto de LucidSales -> {nombre, transportadoras[], maxPesos, maxPorcentaje}
     reglasProducto: {},
     // pedidos que recogen en oficina de Inter: se suben si Dropi ofrece UNA sola oficina
@@ -1247,6 +1251,7 @@ export function crearSubidaAutomatica({
             transportadoras: plan.transportadoras,
             tope: plan.maxEnvio ?? null,
             motivoTope: plan.motivoTope ?? null,
+            gananciaMin: plan.gananciaMin ?? null,
           };
           let rNav;
           try {
@@ -1271,6 +1276,7 @@ export function crearSubidaAutomatica({
               corregimiento: r2.extraido?.corregimiento || "",
               transportadoras: plan.transportadoras,
               maxEnvio: plan.maxEnvio,
+              gananciaMin: plan.gananciaMin,
               oficinaInter: plan.oficinaInter,
               // la oficina a elegir: la detectada, o la direccion que escribio
               // junto a "oficina inter" (sin direccion: regla de una sola)
@@ -1379,7 +1385,10 @@ export function crearSubidaAutomatica({
           }
           const textoEnvio =
             (rNav.envio
-              ? `; ${rNav.envio.transportadora} $${Math.round(rNav.envio.precio ?? 0).toLocaleString("es-CO")}${rNav.envio.oficina ? ` (oficina ${rNav.envio.oficina})` : ""}`
+              ? `; ${rNav.envio.transportadora} $${Math.round(rNav.envio.precio ?? 0).toLocaleString("es-CO")}${rNav.envio.oficina ? ` (oficina ${rNav.envio.oficina})` : ""}` +
+                (rNav.envio.sobreTope
+                  ? ` (supera el tope de $${Math.round(rNav.envio.tope ?? 0).toLocaleString("es-CO")}, pero la ganancia $${Math.round(rNav.envio.ganancia ?? 0).toLocaleString("es-CO")} cumple el mínimo de $${Math.round(rNav.envio.gananciaMin ?? 0).toLocaleString("es-CO")})`
+                  : "")
               : "") + (oficinaDetectada ? "; la dirección del cliente es una oficina de Interrapidísimo" : "");
           let detalleFinal = c.dryRun
             ? `formulario preparado${textoEnvio}; seguro=${rNav.seguro}`
@@ -1632,7 +1641,11 @@ export function crearSubidaAutomatica({
         c.transportadoraId = lista[0];
       }
       if ("envio" in patch && patch.envio && typeof patch.envio === "object") {
-        c.envio = { maxPesos: topePesos(patch.envio.maxPesos), maxPorcentaje: topePct(patch.envio.maxPorcentaje) };
+        c.envio = {
+          maxPesos: topePesos(patch.envio.maxPesos),
+          maxPorcentaje: topePct(patch.envio.maxPorcentaje),
+          gananciaMin: topePesos(patch.envio.gananciaMin),
+        };
       }
       if ("oficinaInter" in patch) c.oficinaInter = Boolean(patch.oficinaInter);
       if ("detectarOficinaInter" in patch) c.detectarOficinaInter = Boolean(patch.detectarOficinaInter);
@@ -1650,9 +1663,10 @@ export function crearSubidaAutomatica({
             transportadoras: listaTransportadoras(v.transportadoras),
             maxPesos: topePesos(v.maxPesos),
             maxPorcentaje: topePct(v.maxPorcentaje),
+            gananciaMin: topePesos(v.gananciaMin),
           };
           // una regla vacia no sirve: se descarta
-          if (regla.transportadoras.length || regla.maxPesos || regla.maxPorcentaje) limpio[clave] = regla;
+          if (regla.transportadoras.length || regla.maxPesos || regla.maxPorcentaje || regla.gananciaMin) limpio[clave] = regla;
         }
         c.reglasProducto = limpio;
       }

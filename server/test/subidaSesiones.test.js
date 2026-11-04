@@ -41,3 +41,16 @@ test("resumen de la sesión de subida: subidos, no subidos y motivos con su núm
   assert.equal(s.length, 20);
   assert.equal(s[0].clave, "v24");
 });
+
+test("plan de envío: la ganancia mínima (general o del producto) viaja con el tope", async () => {
+  const { planEnvio } = await import("../subidaAutomatica.js");
+  const resumen = { total: "240000", productos: [{ id: 77, cantidad: 2, precio: "120000" }] };
+  const general = planEnvio({ envio: { maxPesos: 20000, gananciaMin: 30000 } }, resumen);
+  assert.equal(general.maxEnvio, 20000);
+  assert.equal(general.gananciaMin, 30000);
+  // la del producto manda sobre la general
+  const prod = planEnvio({ envio: { maxPesos: 20000, gananciaMin: 30000 }, reglasProducto: { 77: { gananciaMin: 50000 } } }, resumen);
+  assert.equal(prod.gananciaMin, 50000);
+  // sin tope no hace falta (no hay nada que pasar)
+  assert.equal(planEnvio({ envio: { gananciaMin: 30000 } }, resumen).gananciaMin, null);
+});

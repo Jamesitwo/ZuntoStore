@@ -30,11 +30,13 @@ export interface ReglaProducto {
   transportadoras: number[];
   maxPesos: number | null;
   maxPorcentaje: number | null;
+  /** con ella, un envio sobre el tope se acepta si la ganancia no baja de esto */
+  gananciaMin?: number | null;
 }
 
 export interface ConfigEnvio {
   transportadoras: number[];
-  envio: { maxPesos: number | null; maxPorcentaje: number | null };
+  envio: { maxPesos: number | null; maxPorcentaje: number | null; gananciaMin?: number | null };
   reglasProducto: Record<string, ReglaProducto>;
   oficinaInter: boolean;
   detectarOficinaInter: boolean;
@@ -126,7 +128,7 @@ export function ReglasEnvio({ valor, onChange }: { valor: ConfigEnvio; onChange:
   const agregar = () => {
     const p = catalogo.find((x) => x.id === nuevo);
     if (!p) return;
-    setRegla(p.id, { nombre: p.nombre, transportadoras: [], maxPesos: null, maxPorcentaje: null });
+    setRegla(p.id, { nombre: p.nombre, transportadoras: [], maxPesos: null, maxPorcentaje: null, gananciaMin: null });
     setNuevo("");
   };
 
@@ -170,6 +172,19 @@ export function ReglasEnvio({ valor, onChange }: { valor: ConfigEnvio; onChange:
             onChange={(e) =>
               onChange({ ...valor, envio: { ...valor.envio, maxPorcentaje: numeroONull(e.target.value) } })
             }
+          />
+        </Campo>
+        <Campo
+          id="env-ganancia-min"
+          label="Ganancia mínima para pasar el tope (pesos)"
+          ayuda="Si el envío supera el tope (p. ej. 2 o más unidades), igual se sube cuando la ganancia que muestra Dropi con ese envío es al menos esto. Vacío = el tope manda siempre."
+        >
+          <input
+            id="env-ganancia-min"
+            inputMode="numeric"
+            placeholder="Ej. 30000"
+            value={valor.envio.gananciaMin ?? ""}
+            onChange={(e) => onChange({ ...valor, envio: { ...valor.envio, gananciaMin: numeroONull(e.target.value) } })}
           />
         </Campo>
         <div className="field">
@@ -226,6 +241,7 @@ export function ReglasEnvio({ valor, onChange }: { valor: ConfigEnvio; onChange:
                 <th>Transportadoras</th>
                 <th>Máx. pesos</th>
                 <th>Máx. %</th>
+                <th>Ganancia mín.</th>
                 <th />
               </tr>
             </thead>
@@ -264,6 +280,15 @@ export function ReglasEnvio({ valor, onChange }: { valor: ConfigEnvio; onChange:
                       value={r.maxPorcentaje ?? ""}
                       aria-label={`Envío máximo en % de ${r.nombre}`}
                       onChange={(e) => setRegla(id, { maxPorcentaje: numeroONull(e.target.value) })}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      inputMode="numeric"
+                      placeholder="General"
+                      value={r.gananciaMin ?? ""}
+                      aria-label={`Ganancia mínima para pasar el tope de ${r.nombre}`}
+                      onChange={(e) => setRegla(id, { gananciaMin: numeroONull(e.target.value) })}
                     />
                   </td>
                   <td>
