@@ -243,3 +243,17 @@ test("tipos de vía como los escriben los clientes: Krra, Karrera, Cale...", asy
   assert.equal(r.ok, true, r.detalle);
   assert.match(r.normalizada, /^Cra 63 # 18-49 Sur/);
 });
+
+test("punto en vez de guion entre cruce y placa: 23.47 = 23-47", async () => {
+  const { validarDireccion } = await import("../direccionColombia.js");
+  let r = validarDireccion("Cll 50 B # 23.47 B, Piso 1");
+  assert.equal(r.ok, true, r.detalle);
+  assert.match(r.normalizada, /^Calle 50B # 23-47, B, Piso 1$/);
+  r = validarDireccion("cll 50 b # 23.47.b Venecia");
+  assert.equal(r.ok, true, r.detalle);
+  assert.match(r.normalizada, /^Calle 50B # 23-47/);
+  r = validarDireccion("Calle 10 No. 5.20");
+  assert.equal(r.ok, true, r.detalle);
+  assert.match(r.normalizada, /^Calle 10 # 5-20/);
+  assert.equal(validarDireccion("Calle 10 No. 5-20").normalizada, "Calle 10 # 5-20");
+});
