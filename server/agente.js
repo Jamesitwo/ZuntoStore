@@ -182,9 +182,11 @@ function varianteDistinta(chat, variante) {
 
 /**
  * ¿El precio del chat calza con el pedido?
- * Se acepta que el cliente haya citado el total (con envio) o solo el producto.
+ * Se acepta que el cliente haya citado el total (con envio) o solo el producto,
+ * y tambien el precio del producto + el envio que se le dijo en el chat
+ * ("99.900 y el envio 20.000" = 119.900) o el total que dijo el chat.
  */
-export function coincidePrecio(precioChat, resumen, tolerancia = 0.01) {
+export function coincidePrecio(precioChat, resumen, tolerancia = 0.01, { envio = null, total = null } = {}) {
   const p = parsearPrecio(precioChat);
   if (p === null) return { ok: false, razon: "no se entendio el precio del chat", valor: null };
 
@@ -192,16 +194,24 @@ export function coincidePrecio(precioChat, resumen, tolerancia = 0.01) {
     ["Total", parsearPrecio(resumen?.total)],
     ["SubTotal", parsearPrecio(resumen?.subtotal)],
   ];
-  for (const [campo, v] of candidatos) {
-    if (v === null || v === 0) continue;
-    const dif = Math.abs(p - v) / v;
-    if (dif <= tolerancia) return { ok: true, razon: `coincide con ${campo}`, valor: p };
+  const envioChat = parsearPrecio(envio);
+  const totalChat = parsearPrecio(total);
+  const lecturas = [[p, ""]];
+  if (envioChat !== null && envioChat > 0) lecturas.push([p + envioChat, ` (${p} + envío ${envioChat} del chat)`]);
+  if (totalChat !== null && totalChat > 0 && totalChat !== p) lecturas.push([totalChat, ` (total del chat ${totalChat})`]);
+  for (const [valor, como] of lecturas) {
+    for (const [campo, v] of candidatos) {
+      if (v === null || v === 0) continue;
+      const dif = Math.abs(valor - v) / v;
+      if (dif <= tolerancia) return { ok: true, razon: `coincide con ${campo}${como}`, valor: p };
+    }
   }
   const detalle = candidatos
     .filter(([, v]) => v !== null)
     .map(([c, v]) => `${c}=${v}`)
     .join(" / ");
-  return { ok: false, razon: `el chat dice ${p} y el pedido ${detalle || "sin totales"}`, valor: p };
+  const extra = envioChat ? ` (con envío ${envioChat}: ${p + envioChat})` : "";
+  return { ok: false, razon: `el chat dice ${p}${extra} y el pedido ${detalle || "sin totales"}`, valor: p };
 }
 
 /** ¿La direccion del chat se parece a la del pedido? (contencion de palabras) */
@@ -392,7 +402,10 @@ export function validarPedido(resumen, extraido, { oficina = null } = {}) {
     });
   }
 
-  const precio = coincidePrecio(extraido?.precioAcordado, resumen);
+  const precio = coincidePrecio(extraido?.precioAcordado, resumen, 0.01, {
+    envio: extraido?.envioAcordado,
+    total: extraido?.totalAcordado,
+  });
   checks.push({
     campo: "precio",
     ok: precio.ok,

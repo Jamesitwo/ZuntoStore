@@ -74,6 +74,21 @@ const RESUMEN = {
   direccion: "Carrera 92 #78b-02",
 };
 
+test("coincidePrecio suma el envío que se dijo en el chat (99.900 + 20.000 ≈ 120.000)", () => {
+  const pedido = { total: "120000", subtotal: "120000" };
+  // sin el envio no calza
+  assert.equal(coincidePrecio(99900, pedido).ok, false);
+  const r = coincidePrecio(99900, pedido, 0.01, { envio: 20000 });
+  assert.equal(r.ok, true);
+  assert.match(r.razon, /envío 20000/);
+  // o con el total que dijo el bot en el resumen
+  assert.equal(coincidePrecio(99900, pedido, 0.01, { total: 119900 }).ok, true);
+  // un envio que no cuadra sigue frenando, y lo explica
+  const malo = coincidePrecio(99900, { total: "150000", subtotal: "150000" }, 0.01, { envio: 20000 });
+  assert.equal(malo.ok, false);
+  assert.match(malo.razon, /con envío 20000: 119900/);
+});
+
 test("coincidePrecio acepta el total citado en el chat", () => {
   assert.equal(coincidePrecio("105.690", RESUMEN).ok, true);
 });

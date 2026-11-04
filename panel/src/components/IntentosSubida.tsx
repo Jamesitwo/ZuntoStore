@@ -74,7 +74,9 @@ function Ia({ analisis }: { analisis: any }) {
       {e.razonamiento ? <p className="intento-razonamiento">{e.razonamiento}</p> : null}
       <p className="muted small" style={{ margin: "0 0 6px" }}>
         Leyó del chat: producto {v(e.producto)} · cantidad {v(e.cantidad)} · precio{" "}
-        {typeof e.precioAcordado === "number" ? peso(e.precioAcordado) : v(e.precioAcordado)} · dirección {v(e.direccion)} ·
+        {typeof e.precioAcordado === "number" ? peso(e.precioAcordado) : v(e.precioAcordado)}
+        {typeof e.envioAcordado === "number" ? ` · envío ${peso(e.envioAcordado)}` : ""}
+        {typeof e.totalAcordado === "number" ? ` · total ${peso(e.totalAcordado)}` : ""} · dirección {v(e.direccion)} ·
         confirmó {v(e.clienteConfirmo)} · entrega futura {v(e.entregaFutura)}
         {e.fechaEntregaSolicitada ? ` (${e.fechaEntregaSolicitada})` : ""}
       </p>

@@ -317,6 +317,8 @@ export function resumirAnalisis(r) {
       producto: corto(e.producto, 120),
       cantidad: e.cantidad ?? null,
       precioAcordado: e.precioAcordado ?? null,
+      ...(e.envioAcordado != null ? { envioAcordado: e.envioAcordado } : {}),
+      ...(e.totalAcordado != null ? { totalAcordado: e.totalAcordado } : {}),
       direccion: corto(e.direccion, 160),
       clienteConfirmo: e.clienteConfirmo ?? null,
       entregaFutura: e.entregaFutura ?? null,

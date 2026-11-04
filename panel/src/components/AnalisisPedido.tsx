@@ -37,7 +37,9 @@ export function AnalisisPedido({ analisis, abierto = false }: { analisis: any; a
         ))}
       </ul>
       <p className="muted small">
-        La IA leyó: producto {v(e.producto)} · cantidad {v(e.cantidad)} · precio {v(e.precioAcordado)} ·
+        La IA leyó: producto {v(e.producto)} · cantidad {v(e.cantidad)} · precio {v(e.precioAcordado)}
+        {e.envioAcordado != null ? ` · envío ${v(e.envioAcordado)}` : ""}
+        {e.totalAcordado != null ? ` · total ${v(e.totalAcordado)}` : ""} ·
         dirección {v(e.direccion)} · confirmó {v(e.clienteConfirmo)} · entrega futura {v(e.entregaFutura)}
         {e.fechaEntregaSolicitada ? ` (${e.fechaEntregaSolicitada})` : ""}
       </p>

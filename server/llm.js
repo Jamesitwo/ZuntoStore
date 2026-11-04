@@ -19,6 +19,8 @@ Campos exactos:
 - "producto": nombre del producto que el cliente quiere (string, "" si no se menciona)
 - "cantidad": unidades (numero entero, 1 si no se dice)
 - "precioAcordado": precio que quedo acordado, en pesos colombianos, como numero entero sin puntos ni comas (ej: 84900). null si no se menciona o no queda claro.
+- "envioAcordado": costo del envio que se le dijo al cliente en el chat, en pesos (numero entero; 0 si se dijo que es gratis; null si no se menciona).
+- "totalAcordado": total a pagar CON envio que aparece en el chat (por ejemplo en el resumen del pedido: "Total pedido: 119.900"), numero entero; null si no se menciona.
 - "direccion": direccion que dio el cliente (string, "" si no dio)
 - "clienteConfirmo": true solo si el cliente acepto/claramente confirmo el pedido. false si solo pregunto o quedo a medias.
 - "entregaFutura": true si el cliente pidió que se entregue/reciba en una fecha posterior a hoy o pidió aplazarla; false si no pidió una fecha futura; null si no se puede determinar.
@@ -87,6 +89,10 @@ function normalizarSalida(v) {
     cantidad: Number.isInteger(o.cantidad) && o.cantidad > 0 ? o.cantidad : 1,
     precioAcordado:
       typeof o.precioAcordado === "number" && Number.isFinite(o.precioAcordado) ? o.precioAcordado : null,
+    envioAcordado:
+      typeof o.envioAcordado === "number" && Number.isFinite(o.envioAcordado) && o.envioAcordado >= 0 ? o.envioAcordado : null,
+    totalAcordado:
+      typeof o.totalAcordado === "number" && Number.isFinite(o.totalAcordado) && o.totalAcordado > 0 ? o.totalAcordado : null,
     direccion: typeof o.direccion === "string" ? o.direccion.trim() : "",
     clienteConfirmo: o.clienteConfirmo === true,
     entregaFutura: typeof o.entregaFutura === "boolean" ? o.entregaFutura : null,
