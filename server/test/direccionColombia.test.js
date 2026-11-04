@@ -233,3 +233,13 @@ test("pegados: «78Asur» y «número 50f34»", () => {
   );
   assert.equal(claveCalle("Calle 78Asur número 50f34"), claveCalle("Calle 78A Sur # 50F-34"));
 });
+
+test("tipos de vía como los escriben los clientes: Krra, Karrera, Cale...", async () => {
+  const { tipoViaCanonico, validarDireccion } = await import("../direccionColombia.js");
+  for (const t of ["Krra", "krr", "Karrera", "Carera", "Crra"]) assert.equal(tipoViaCanonico(t), "Cra", t);
+  for (const t of ["Cale", "Kalle", "Clle"]) assert.equal(tipoViaCanonico(t), "Calle", t);
+  assert.equal(tipoViaCanonico("Tranv"), "Transversal");
+  const r = validarDireccion("Krra 63 #18-49 Sur, Almacén de dotaciones");
+  assert.equal(r.ok, true, r.detalle);
+  assert.match(r.normalizada, /^Cra 63 # 18-49 Sur/);
+});

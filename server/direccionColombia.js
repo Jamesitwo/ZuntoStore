@@ -33,10 +33,11 @@ const TIPOS = [
   // el orden importa: los compuestos primero
   [/^(avenida\s+carrera|av\.?\s*(cra|carrera|kr|kra)|ak)\b/, "Av. Carrera"],
   [/^(avenida\s+calle|av\.?\s*(cl|cll|calle)|ac)\b/, "Av. Calle"],
-  [/^(carrera|cra|kra|kr|cr|carr|crr|car)\b/, "Cra"],
-  [/^(calle|cll|cl|call)\b/, "Calle"],
-  [/^(diagonal|diag|dg)\b/, "Diagonal"],
-  [/^(transversal|transv|trans|tv|tr)\b/, "Transversal"],
+  // tambien como lo escriben los clientes: "Krra", "Karrera", "Carera"...
+  [/^(carrera|cra|kra|kr|cr|carr|crr|car|krra|krr|crra|karrera|karera|carera|carreara|carrrera)\b/, "Cra"],
+  [/^(calle|cll|cl|call|clle|cale|kalle|kll)\b/, "Calle"],
+  [/^(diagonal|diag|dg|dgl|diagnal)\b/, "Diagonal"],
+  [/^(transversal|transv|trans|tv|tr|tranv|tranversal|trv)\b/, "Transversal"],
   [/^(circular|circ|cq|cir)\b/, "Circular"],
   [/^(autopista|autop)\b/, "Autopista"],
   [/^(avenida|av)\b/, "Avenida"],
