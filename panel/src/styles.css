@@ -5607,3 +5607,13 @@ tr.fila-marcada > td { background: color-mix(in srgb, var(--primary, #7c3aed) 9%
 .sesion-motivo:hover { background: rgba(127, 127, 127, .12); }
 .sesion-motivo strong { min-width: 2.2em; text-align: right; font-variant-numeric: tabular-nums; }
 .sesion-pedidos { padding: 2px 6px 6px 3.4em; word-break: break-word; }
+
+/* asignar los pedidos que el bot no sube */
+.asignar-fallidos { margin: 12px 0 4px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+.asignar-motivos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.chip-check {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--border);
+  border-radius: 10px; font-size: 13px; cursor: pointer; user-select: none;
+}
+.chip-check input { width: 14px; height: 14px; margin: 0; flex: none; }
+.chip-check:has(input:checked) { border-color: var(--primary, #7c3aed); background: rgba(124, 58, 237, .08); }

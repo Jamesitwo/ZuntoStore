@@ -33,6 +33,17 @@ import { Campo, ErrorBanner, Spinner } from "./ui";
 const MAX_SEGUNDOS = 12 * 3600;
 
 /** Resultados que se pueden reintentar desde el panel. */
+/** Motivos por los que el bot no sube un pedido y se le puede asignar a alguien. */
+const MOTIVOS_ASIGNABLES: Array<[string, string]> = [
+  ["direccion-invalida", "Dirección inválida"],
+  ["requiere-revision", "Intentos agotados (frenado por el agente, sin chat, errores)"],
+  ["requiere-humano", "Revisión manual (oficina, prepago, variantes)"],
+  ["envio-caro", "Envío demasiado caro"],
+  ["sin-transportadora", "Sin transportadora disponible"],
+  ["posible-duplicado", "Posible pedido duplicado"],
+  ["resultado-incierto", "Resultado incierto (verificar en Dropi)"],
+];
+
 const REINTENTABLES = ["requiere-revision", "direccion-invalida", "envio-caro", "sin-transportadora"];
 const EN_ALERTA = [...REINTENTABLES, "resultado-incierto", "posible-duplicado"];
 
@@ -64,6 +75,7 @@ function normalizaConfig(c: any): {
   transportadoraId: number;
   maxIntentos: number;
   maxDiasPedido: number;
+  asignarFallidos: { activo: boolean; motivos: string[]; soloEnTurno: boolean };
   tiendas: string[];
   estados: number[];
   tiendasDropi: Record<string, string>;
@@ -106,6 +118,11 @@ function normalizaConfig(c: any): {
       ? Math.max(0, Math.min(100, Number(c.minCalificacionDireccion)))
       : 70,
     maxIntentos: Math.max(1, Math.min(Number(c?.maxIntentos) || 2, 10)),
+    asignarFallidos: {
+      activo: c?.asignarFallidos?.activo === true,
+      motivos: Array.isArray(c?.asignarFallidos?.motivos) ? c.asignarFallidos.motivos.map(String) : MOTIVOS_ASIGNABLES.map(([m]) => m),
+      soloEnTurno: c?.asignarFallidos?.soloEnTurno === true,
+    },
     maxDiasPedido: Number.isFinite(Number(c?.maxDiasPedido)) ? Math.max(0, Math.min(365, Math.floor(Number(c.maxDiasPedido)))) : 5,
     tiendas: (Array.isArray(c?.tiendas) ? c.tiendas : []).map(String) as string[],
     estados: (Array.isArray(c?.estados) ? c.estados : []).map(Number) as number[],
@@ -1136,6 +1153,67 @@ export function SubidaDropi() {
 
           </div>
 
+          <div className="asignar-fallidos">
+            <label className="switch" htmlFor="sub-asignar">
+              <input
+                id="sub-asignar"
+                type="checkbox"
+                checked={form.asignarFallidos.activo}
+                onChange={(e) => setForm((f) => ({ ...f, asignarFallidos: { ...f.asignarFallidos, activo: e.target.checked } }))}
+              />
+              <span className="switch-pista" aria-hidden="true" />
+              <span className="switch-texto">
+                {form.asignarFallidos.activo
+                  ? "Los pedidos que el bot no sube se asignan a un usuario"
+                  : "Los pedidos que el bot no sube quedan sin asignar"}
+              </span>
+            </label>
+            <p className="campo-ayuda">
+              Se reparten de forma equitativa entre los mismos usuarios del reparto automático (los que tienen menos pedidos
+              reciben primero). Un pedido que ya tiene dueño no se cambia. En el modo «preparar sin crear» no se asigna nada.
+            </p>
+            {form.asignarFallidos.activo ? (
+              <>
+                <div className="asignar-motivos">
+                  {MOTIVOS_ASIGNABLES.map(([m, t]) => (
+                    <label key={m} className="chip-check">
+                      <input
+                        type="checkbox"
+                        checked={form.asignarFallidos.motivos.includes(m)}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            asignarFallidos: {
+                              ...f.asignarFallidos,
+                              motivos: e.target.checked
+                                ? [...f.asignarFallidos.motivos, m]
+                                : f.asignarFallidos.motivos.filter((x) => x !== m),
+                            },
+                          }))
+                        }
+                      />
+                      <span>{t}</span>
+                    </label>
+                  ))}
+                </div>
+                <label className="switch" htmlFor="sub-asignar-turno" style={{ marginTop: 8 }}>
+                  <input
+                    id="sub-asignar-turno"
+                    type="checkbox"
+                    checked={form.asignarFallidos.soloEnTurno}
+                    onChange={(e) => setForm((f) => ({ ...f, asignarFallidos: { ...f.asignarFallidos, soloEnTurno: e.target.checked } }))}
+                  />
+                  <span className="switch-pista" aria-hidden="true" />
+                  <span className="switch-texto small">
+                    {form.asignarFallidos.soloEnTurno
+                      ? "Preferir a quien esté en turno (si nadie lo está, entre todos)"
+                      : "Entre todos, sin mirar horarios"}
+                  </span>
+                </label>
+              </>
+            ) : null}
+          </div>
+
           <Campo
             id="sub-tiendas"
             label="Tiendas que revisa"
@@ -1347,6 +1425,7 @@ export function SubidaDropi() {
                         >
                           {u.accion}
                         </span>
+                        {u.asignado?.nombre ? <div className="small">👤 {u.asignado.nombre}</div> : null}
                         {u.intentos && u.accion !== "requiere-revision" && u.accion !== "subido" && u.accion !== "preparado" ? (
                           <div className="muted small">intento {u.intentos} de {form.maxIntentos}</div>
                         ) : null}

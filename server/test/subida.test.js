@@ -74,6 +74,7 @@ function armar(overrides = {}) {
     intentos: overrides.intentos,
     programados: overrides.programados,
     etiquetas: overrides.etiquetas,
+    asignacion: overrides.asignacion,
   });
   // tienda de Dropi configurada por defecto (salvo que la prueba la quite)
   if (overrides.tiendasDropi !== null) {
@@ -1675,4 +1676,44 @@ test("parar la subida en curso: termina el pedido actual y no sigue con los dem�
   assert.equal(s.config().reloj.parando, false, "la proxima vuelta corre normal");
   assert.match(s.config().sesiones[0].detenido, /a mano/);
   fs.rmSync(ruta, { force: true });
+});
+
+test("asignar los que no se suben: el pedido frenado queda a cargo de una persona", async () => {
+  const { crearAsignacion } = await import("../asignacion.js");
+  const rutaAsig = path.join(os.tmpdir(), `asig-${Date.now()}-${Math.random()}.json`);
+  const asignacion = crearAsignacion(rutaAsig);
+  const pedidos = [
+    { id: 1, EstadoPedido: 0, completo: { ...COMPLETO, Direccion: "casa verde al lado de la panaderia pedro" } },
+    { id: 2, EstadoPedido: 0, completo: { ...COMPLETO, id: 2, idPedido: 112, Movil: "+573001112233" } },
+  ];
+  const cliente = {
+    ...clienteFalso(pedidos),
+    async listarUsuarios() {
+      return { usuarios: [{ Usuario: "Ana@x.co", Nombre: "Ana", activo: 1 }, { Usuario: "beto@x.co", Nombre: "Beto", activo: 1 }] };
+    },
+  };
+  const { s, ruta, subidos } = armar({ pedidos, cliente, asignacion });
+  s.configurar({ automatico: true, dryRun: false });
+  s.detener();
+
+  // apagado: no asigna nada
+  await s.tick({ forzar: true });
+  assert.equal(Object.keys(asignacion.estado().asignaciones).length, 0);
+  assert.equal(s.config().asignarFallidos.activo, false);
+
+  // encendido: el de la direccion invalida se asigna; el subido no
+  s.rearmarRevision();
+  s.configurar({ asignarFallidos: { activo: true } });
+  await s.tick({ forzar: true });
+  const asig = asignacion.estado().asignaciones;
+  assert.ok(asig["1"], "el pedido no subido quedó asignado");
+  assert.equal(asig["2"], undefined, "el que se subió no se asigna");
+  assert.equal(subidos.length, 1);
+  assert.equal(s.estadoPedido(1).asignado.nombre, asig["1"].nombre);
+  assert.deepEqual(Object.values(s.config().sesiones[0].asignadosA), [1]);
+
+  // un motivo desmarcado no se asigna
+  assert.deepEqual(s.configurar({ asignarFallidos: { motivos: ["envio-caro"] } }).asignarFallidos?.motivos ?? s.config().asignarFallidos.motivos, ["envio-caro"]);
+  fs.rmSync(ruta, { force: true });
+  fs.rmSync(rutaAsig, { force: true });
 });

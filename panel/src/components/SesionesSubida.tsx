@@ -13,6 +13,7 @@ export interface SesionSubida {
   motivos: Array<{ motivo: string; n: number }>;
   pedidos: Record<string, string>;
   detenido?: string;
+  asignadosA?: Record<string, number>;
 }
 
 const fecha = new Intl.DateTimeFormat("es-CO", {
@@ -82,6 +83,14 @@ function Sesion({ s, abierta }: { s: SesionSubida; abierta: boolean }) {
       ) : (
         <p className="small muted">Todos los pedidos de esta sesión se subieron.</p>
       )}
+      {s.asignadosA && Object.keys(s.asignadosA).length ? (
+        <p className="small">
+          👤 Asignados para subir a mano:{" "}
+          {Object.entries(s.asignadosA)
+            .map(([n, k]) => `${n} ${k}`)
+            .join(" · ")}
+        </p>
+      ) : null}
       {s.vueltas > 1 ? <p className="small muted">{s.vueltas} vueltas en esta sesión.</p> : null}
     </details>
   );

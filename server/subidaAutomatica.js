@@ -365,6 +365,29 @@ export function resumirValidacion(r, minimo) {
 }
 
 /** Rechaza direcciones que en realidad indican recoger en oficina del carrier. */
+/**
+ * Resultados finales en los que el bot no subio el pedido y se le puede
+ * asignar a una persona para que lo resuelva (en el orden del panel).
+ */
+export const MOTIVOS_ASIGNABLES = [
+  "direccion-invalida",
+  "requiere-revision",
+  "requiere-humano",
+  "envio-caro",
+  "sin-transportadora",
+  "posible-duplicado",
+  "resultado-incierto",
+];
+
+/** Configuracion de "asignar los que no se suben" (con valores por defecto). */
+export function asignarFallidosDe(c) {
+  const a = c?.asignarFallidos ?? {};
+  const motivos = Array.isArray(a.motivos)
+    ? a.motivos.filter((m) => MOTIVOS_ASIGNABLES.includes(m))
+    : [...MOTIVOS_ASIGNABLES];
+  return { activo: a.activo === true, motivos, soloEnTurno: a.soloEnTurno === true };
+}
+
 /** Sesiones de subida que se guardan (las mas recientes). */
 const MAX_SESIONES = 20;
 
@@ -412,7 +435,7 @@ export function motivoDeResultado(d) {
  * ronda a hora fija son una sola sesion). Cada pedido cuenta una vez, con su
  * ultimo resultado. Devuelve la lista de sesiones actualizada.
  */
-export function sumarSesion(sesiones, { clave, desde, hasta, dryRun, detalle, detenido }) {
+export function sumarSesion(sesiones, { clave, desde, hasta, dryRun, detalle, detenido, asignados = [] }) {
   const lista = Array.isArray(sesiones) ? sesiones.filter((x) => x && x.clave !== clave) : [];
   const previa = (Array.isArray(sesiones) ? sesiones : []).find((x) => x?.clave === clave);
   const pedidos = { ...(previa?.pedidos ?? {}) };
@@ -427,6 +450,8 @@ export function sumarSesion(sesiones, { clave, desde, hasta, dryRun, detalle, de
     else cuenta.set(m, (cuenta.get(m) ?? 0) + 1);
   }
   const motivos = [...cuenta].sort((a, b) => b[1] - a[1]).map(([motivo, n]) => ({ motivo, n }));
+  const asignadosA = { ...(previa?.asignadosA ?? {}) };
+  for (const x of asignados ?? []) if (x?.nombre) asignadosA[x.nombre] = (asignadosA[x.nombre] ?? 0) + 1;
   const sesion = {
     clave,
     desde: previa?.desde ?? desde,
@@ -437,6 +462,7 @@ export function sumarSesion(sesiones, { clave, desde, hasta, dryRun, detalle, de
     noSubidos: Object.keys(pedidos).length - subidos,
     motivos,
     pedidos,
+    ...(Object.keys(asignadosA).length ? { asignadosA } : {}),
     ...(detenido ? { detenido } : {}),
   };
   return [sesion, ...lista].sort((a, b) => String(b.desde).localeCompare(String(a.desde))).slice(0, MAX_SESIONES);
@@ -783,6 +809,65 @@ export function crearSubidaAutomatica({
   /**
    * Una vuelta. `forzar:true` la ejecuta aunque este apagado (boton Probar).
    */
+  /**
+   * Los pedidos que el bot no pudo subir en esta vuelta se le asignan a una
+   * persona (mismo reparto equitativo y mismos participantes del reparto
+   * automatico). Los que ya tienen dueno no se tocan. Nunca rompe la vuelta.
+   */
+  async function asignarNoSubidos(c, detalle) {
+    const conf = asignarFallidosDe(c);
+    if (!conf.activo || c.dryRun || !asignacion?.repartir || !conf.motivos.length) return [];
+    const ultimo = new Map();
+    for (const d of detalle) if (d?.id) ultimo.set(String(d.id), d.accion);
+    const porTienda = new Map();
+    for (const [id, accion] of ultimo) {
+      if (!conf.motivos.includes(accion)) continue;
+      const tienda = c.procesados?.[id]?.tienda ?? null;
+      const k = tienda === null ? "" : String(tienda);
+      if (!porTienda.has(k)) porTienda.set(k, []);
+      porTienda.get(k).push(id);
+    }
+    if (!porTienda.size) return [];
+    const hechos = [];
+    try {
+      const usuarios = (await cliente.listarUsuarios({ page: 1, itemsPerPage: 100 })).usuarios ?? [];
+      const activos = usuarios.filter((u) => u?.Usuario && u.activo !== false && u.activo !== 0 && u.activo !== "0");
+      const participantes = asignacion.getConfig?.()?.usuarios;
+      const dentro = (Array.isArray(participantes)
+        ? activos.filter((u) => participantes.includes(String(u.Usuario).trim().toLowerCase()))
+        : activos
+      ).map((u) => ({ usuario: String(u.Usuario).toLowerCase(), nombre: u.Nombre || u.Usuario }));
+      if (!dentro.length) throw new Error("no hay usuarios activos que participen del reparto");
+      for (const [tienda, pedidos] of porTienda) {
+        const args = { usuarios: dentro, pedidos, reasignar: false, idEmpresa: tienda === "" ? null : Number(tienda) };
+        let r;
+        try {
+          r = asignacion.repartir({ ...args, modo: conf.soloEnTurno ? "horario" : "todos" });
+        } catch (e) {
+          // nadie en turno (p. ej. la ronda de la noche): se reparte entre todos
+          if (!conf.soloEnTurno) throw e;
+          r = asignacion.repartir({ ...args, modo: "todos" });
+        }
+        for (const x of r.reparto) {
+          hechos.push(x);
+          const e = c.procesados?.[x.pedido];
+          if (e) e.asignado = { usuario: x.usuario, nombre: x.nombre, ts: new Date().toISOString() };
+        }
+      }
+      if (hechos.length) {
+        guardar(c);
+        const por = {};
+        for (const x of hechos) por[x.nombre] = (por[x.nombre] ?? 0) + 1;
+        log.log(
+          `[subida] ${hechos.length} pedido(s) sin subir asignados: ${Object.entries(por).map(([n, k]) => `${n} ${k}`).join(", ")}`,
+        );
+      }
+    } catch (e) {
+      log.warn?.("[subida] no se pudieron asignar los pedidos sin subir:", e?.message ?? e);
+    }
+    return hechos;
+  }
+
   async function tick(opciones = {}) {
     const c = leer();
     if (!c.automatico && !opciones.forzar) return { ok: true, saltado: "desactivado" };
@@ -1446,6 +1531,9 @@ export function crearSubidaAutomatica({
       if (subidos || frenados) {
         log.log(`[subida] ${c.dryRun ? "preparados" : "subidos"}: ${subidos}, frenados: ${frenados}`);
       }
+      // los que no se pudieron subir: a una persona (si esta activado)
+      const asignados = await asignarNoSubidos(c, detalle);
+
       // resumen de la sesion para el panel (solo si paso algo)
       if (detalle.length) {
         try {
@@ -1457,6 +1545,7 @@ export function crearSubidaAutomatica({
             dryRun: c.dryRun,
             detalle,
             detenido,
+            asignados,
           });
           guardar(c);
         } catch (e) {
@@ -1609,6 +1698,7 @@ export function crearSubidaAutomatica({
         ...resto,
         procesados: Object.keys(procesados ?? {}).length,
         horario: horarioDe(c),
+        asignarFallidos: asignarFallidosDe(c),
         // para el temporizador del panel (no se guarda)
         reloj: {
           ahora: new Date().toISOString(),
@@ -1646,6 +1736,9 @@ export function crearSubidaAutomatica({
           maxPorcentaje: topePct(patch.envio.maxPorcentaje),
           gananciaMin: topePesos(patch.envio.gananciaMin),
         };
+      }
+      if ("asignarFallidos" in patch && patch.asignarFallidos && typeof patch.asignarFallidos === "object") {
+        c.asignarFallidos = asignarFallidosDe({ asignarFallidos: { ...asignarFallidosDe(c), ...patch.asignarFallidos } });
       }
       if ("oficinaInter" in patch) c.oficinaInter = Boolean(patch.oficinaInter);
       if ("detectarOficinaInter" in patch) c.detectarOficinaInter = Boolean(patch.detectarOficinaInter);
