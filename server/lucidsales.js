@@ -12,8 +12,19 @@ export function crearClienteLucid(config, fetchImpl = globalThis.fetch) {
   let tokenLogin = null;
   let datosLogin = null;
 
-  async function llamar(ruta, opciones = {}) {
+  /**
+   * Una llamada a la API. Si LucidSales (o Cloudflare delante) devuelve una
+   * pagina HTML en vez de JSON, el mensaje lo dice en una linea (sin pegar el
+   * HTML). Las consultas (GET) con un error temporal (5xx o HTML) se
+   * reintentan una vez: no cambian nada, asi que repetirlas es seguro.
+   */
+  async function llamar(ruta, opciones = {}, intento = 0) {
     const url = `${config.LUCID_BASE}${ruta}`;
+    const consulta = String(opciones.method ?? "GET").toUpperCase() === "GET";
+    const reintentar = async () => {
+      await new Promise((ok) => setTimeout(ok, Number(config.LUCID_REINTENTO_MS ?? 2000)));
+      return llamar(ruta, opciones, intento + 1);
+    };
     let res;
     try {
       res = await fetchImpl(url, {
@@ -21,17 +32,29 @@ export function crearClienteLucid(config, fetchImpl = globalThis.fetch) {
         signal: AbortSignal.timeout(config.TIMEOUT_MS),
       });
     } catch (err) {
+      if (consulta && intento === 0) return reintentar();
       throw new ErrorApi(504, `Sin respuesta de LucidSales (${ruta}): ${err?.message ?? err}`);
     }
     const texto = await res.text().catch(() => "");
     let datos = null;
+    let html = false;
     if (texto) {
       try {
         datos = JSON.parse(texto);
       } catch {
-        datos = { msg: String(texto).slice(0, 300) };
+        html = /^\s*<(!doctype|html|!--|head|body)/i.test(texto) || /<html[\s>]/i.test(texto.slice(0, 2000));
+        if (html) {
+          const titulo = (texto.match(/<title[^>]*>([^<]{1,120})<\/title>/i)?.[1] ?? "").replace(/\s+/g, " ").trim();
+          datos = {
+            msg: `LucidSales respondió una página de error (HTTP ${res.status}${titulo ? `: «${titulo}»` : ""}) en vez de datos; suele ser una caída o un bloqueo temporal`,
+            html: true,
+          };
+        } else {
+          datos = { msg: String(texto).slice(0, 300) };
+        }
       }
     }
+    if (consulta && intento === 0 && (html || res.status >= 500)) return reintentar();
     return { status: res.status, datos };
   }
 
@@ -131,6 +154,10 @@ export function crearClienteLucid(config, fetchImpl = globalThis.fetch) {
       );
 
       const p = r.datos?.pedido ?? r.datos?.data?.pedido ?? r.datos?.data ?? r.datos;
+      // LucidSales caido o bloqueado: no es que el pedido no exista
+      if (r.datos?.html || r.status >= 500) {
+        throw new ErrorApi(502, `No se pudo leer el pedido ${id}: ${r.datos?.msg ?? `LucidSales respondió HTTP ${r.status}`}`);
+      }
       if (r.status === 404 || !p || typeof p !== "object" || !p.id) {
         throw new ErrorApi(
           404,

@@ -1628,6 +1628,7 @@ export function crearManejador({
         }
         let estadoLucidSales = Number(resumen?.estadoPedido) === 2;
         let avisoEstado = null;
+        let pendienteConfirmar = false;
         if (rNav?.creado && !estadoLucidSales) {
           const estadoActual = Number(resumen?.estadoPedido);
           if ([0, 3].includes(estadoActual)) {
@@ -1650,7 +1651,8 @@ export function crearManejador({
               });
               if (cambio.noActualizado) detalleRegistro += `; ${cambio.msg}`;
             } catch (e) {
-              avisoEstado = `Dropi confirmó la orden, pero LucidSales no pudo actualizarse a Confirmado: ${e?.message ?? e}`;
+              pendienteConfirmar = true;
+              avisoEstado = `Dropi confirmó la orden, pero LucidSales no pudo actualizarse a Confirmado: ${e?.message ?? e}. La subida automática lo reintenta sola en la próxima vuelta.`;
               detalleRegistro += `; pendiente Confirmado en LucidSales: ${e?.message ?? e}`;
             }
           } else {
@@ -1659,7 +1661,7 @@ export function crearManejador({
           }
         }
         if (rNav?.creado && avisoEstado) {
-          registrarConTienda(id, "subido", detalleRegistro, dropiManual ? { dropi: dropiManual } : {});
+          registrarConTienda(id, pendienteConfirmar ? "subido-pendiente-confirmacion" : "subido", detalleRegistro, dropiManual ? { dropi: dropiManual } : {});
         } else if (rNav?.creado && estadoLucidSales) {
           registrarConTienda(id, "subido", `${detalleRegistro}; LucidSales Confirmado`, dropiManual ? { dropi: dropiManual } : {});
         }
@@ -1706,6 +1708,7 @@ export function crearManejador({
       const idDropi = respuesta?.objects?.id ?? respuesta?.objects?.order_id ?? null;
       let estadoLucidSales = Number(resumen?.estadoPedido) === 2;
       let avisoEstado = null;
+      let pendienteConfirmar = false;
       let detalleRegistro = `Dropi #${idDropi ?? "confirmado"}; seguro=${payload.insurance}`;
       registrarConTienda(id, "subido", detalleRegistro);
       if (!estadoLucidSales) {
@@ -1729,7 +1732,8 @@ export function crearManejador({
               ok: true,
             });
           } catch (e) {
-            avisoEstado = `Dropi confirmó la orden, pero LucidSales no pudo actualizarse a Confirmado: ${e?.message ?? e}`;
+            pendienteConfirmar = true;
+            avisoEstado = `Dropi confirmó la orden, pero LucidSales no pudo actualizarse a Confirmado: ${e?.message ?? e}. La subida automática lo reintenta sola en la próxima vuelta.`;
           }
         } else {
           avisoEstado = `Dropi confirmó la orden; se conservó el estado ${Number.isFinite(estadoActual) ? estadoActual : "desconocido"} de LucidSales para no retroceder el pedido.`;
@@ -1737,7 +1741,7 @@ export function crearManejador({
       }
       if (avisoEstado) detalleRegistro += `; ${avisoEstado}`;
       else if (estadoLucidSales) detalleRegistro += "; LucidSales Confirmado";
-      registrarConTienda(id, "subido", detalleRegistro);
+      registrarConTienda(id, pendienteConfirmar ? "subido-pendiente-confirmacion" : "subido", detalleRegistro);
       console.log(
         `[dropi] pedido #${resumen.idPedido || id}: SUBIDO -> ` +
           `${idDropi ?? "?"} (insurance=${payload.insurance})`,
