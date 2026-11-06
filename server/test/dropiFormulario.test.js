@@ -555,6 +555,12 @@ test("Calima - El Darien en Dropi es Darien (calima)", () => {
   assert.equal(coincideUbicacion("Cali", v, "Valle"), false);
 });
 
+test("Chibolo en Dropi es Chivolo", () => {
+  const v = variantesUbicacion("Chibolo");
+  assert.ok(v.includes("chivolo"));
+  assert.equal(coincideUbicacion("Chivolo", v, "Magdalena"), true);
+});
+
 test("Dos Quebradas = Dosquebradas (nombres escritos junto o separado)", () => {
   const v = variantesUbicacion("Dos Quebradas");
   assert.equal(v[0], "dos quebradas");
