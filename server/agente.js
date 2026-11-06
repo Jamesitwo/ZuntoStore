@@ -88,6 +88,23 @@ function tokenCasa(t, conjunto) {
   return false;
 }
 
+/**
+ * Palabras que hacen de un producto OTRO producto: un combo o kit no es la
+ * pieza sola ("COMBO Cargador 12V PRO + KIT DE RACHES" no es "Cargador 12V PRO").
+ */
+const MARCAS_COMBO = /\b(combo|combos|kit|kits|pack|packs|set|sets|juego|juegos|paquete|paquetes|duo|trio|2x1|3x2)\b|\+/;
+
+/** La marca de combo que trae el chat y no trae el producto del pedido (o null). */
+function comboDeMas(chat, producto) {
+  const m = normalizarTexto(chat).match(MARCAS_COMBO);
+  if (!m) return null;
+  const marca = m[0];
+  const prod = normalizarTexto(producto);
+  // el producto tambien es un combo/kit/pack: no es "de mas"
+  if (MARCAS_COMBO.test(prod)) return null;
+  return marca === "+" ? "un producto + otro" : `«${marca}»`;
+}
+
 /** Cuanto del chat aparece en el objetivo: 0..1. */
 function cobertura(chat, objetivo) {
   const a = tokens(chat);
@@ -127,6 +144,14 @@ export function coincideProducto(chat, catalogo) {
     // y al reves: todo el nombre del catalogo esta en el chat (el chat trae de mas)
     const alReves = cobertura(nombre, chat);
     if (c.valor >= 0.5 || (alReves.valor >= 0.99 && alReves.tokens >= 2)) {
+      const combo = comboDeMas(chat, completo);
+      if (combo) {
+        return {
+          ok: false,
+          razon: `el chat pide un combo (${combo}: "${String(chat).slice(0, 80)}") y el pedido es solo "${completo}"`,
+          nombre,
+        };
+      }
       const v = varianteDistinta(chat, variante);
       if (v) return { ok: false, razon: v, nombre };
       return { ok: true, razon: "", nombre: completo };

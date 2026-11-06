@@ -430,3 +430,17 @@ test("variante con medidas en otra unidad: 1,50 m es lo mismo que 150 cm", async
   // otra medida sigue frenando
   assert.equal(coincideProducto("Arbol De Navidad Plegable (Verde, 90 cm)", pedido).ok, false);
 });
+
+test("coincideProducto: un combo/kit del chat no pasa como la pieza sola", () => {
+  const r = coincideProducto("COMBO Cargador 12V PRO KIT DE RACHES AMERICANO", [{ nombre: "Cargador 12V PRO" }]);
+  assert.equal(r.ok, false);
+  assert.match(r.razon, /combo/);
+  // "+" también es un combo
+  assert.equal(coincideProducto("Bateria 12V + kit de raches", [{ nombre: "Bateria 12V" }]).ok, false);
+  // si el pedido también es el combo, pasa
+  assert.equal(coincideProducto("COMBO Cargador 12V PRO KIT DE RACHES AMERICANO", [{ nombre: "Bateria de 12V + KIT DE RACHES" }]).ok, false, "otro combo distinto no calza por palabras");
+  assert.equal(coincideProducto("Combo cargador 12v pro kit de raches", [{ nombre: "COMBO Cargador 12V PRO + Kit de Raches" }]).ok, true);
+  // sin combo sigue como antes
+  assert.equal(coincideProducto("cargador 12v", [{ nombre: "Cargador 12V PRO" }]).ok, true);
+  assert.equal(coincideProducto("Pulverizadora Raptor + kit de raches", [{ nombre: "Pulverizadora Raptor + kit de raches" }]).ok, true);
+});
