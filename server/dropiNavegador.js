@@ -1033,7 +1033,15 @@ export function crearDropiNavegador(config = {}) {
     if (!(await campo.count().catch(() => 0))) return false;
     const actual = await campo.inputValue({ timeout: 2000 }).catch(() => null);
     if (actual === null || normalizarTexto(actual) === normalizarTexto(texto)) return false;
-    await campo.fill(String(texto));
+    // con la oficina de Inter ya elegida, Dropi BLOQUEA el campo (la direccion
+    // la pone la oficina): ahi no se escribe
+    if (!(await campo.isEditable({ timeout: 2000 }).catch(() => false))) return false;
+    // nunca frena la subida: si no se deja escribir, sigue como estaba
+    const ok = await campo
+      .fill(String(texto), { timeout: 5000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!ok) return false;
     await campo.press("Tab").catch(() => {});
     await p.waitForTimeout(800);
     return true;

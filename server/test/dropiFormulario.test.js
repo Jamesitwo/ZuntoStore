@@ -217,6 +217,16 @@ test("si Dropi borró la dirección (al cambiar la ciudad), se vuelve a escribir
     assert.equal(await p.locator("#oficinas").isVisible(), true);
     // si sigue escrita no se toca
     assert.equal(await nav.asegurarDireccion(p, "Oficina Interrapidísimo"), false);
+    // Dropi bloqueó el campo (oficina ya elegida): no se escribe ni se queda esperando
+    await p.evaluate(() => {
+      const d = document.querySelector('[data-cy="client-address"]');
+      d.value = "Cra 6 # 5-10 Riosucio";
+      d.disabled = true;
+    });
+    const t0 = Date.now();
+    assert.equal(await nav.asegurarDireccion(p, "Oficina Interrapidísimo"), false);
+    assert.ok(Date.now() - t0 < 5000, "no espera 30 s");
+    assert.equal(await p.locator('[data-cy="client-address"]').inputValue(), "Cra 6 # 5-10 Riosucio");
   } finally {
     await p.close();
   }
