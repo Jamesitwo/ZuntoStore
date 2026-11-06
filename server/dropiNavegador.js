@@ -178,6 +178,8 @@ const EQUIVALENTES_UBICACION = [
   ["inirida", "puerto inirida"],
   // Calima - El Darien (Valle): en Dropi es "Darien (calima)"
   ["darien calima", "darien", "calima el darien", "calima darien", "el darien", "calima"],
+  // Dosquebradas (Risaralda): en Dropi va junto
+  ["dosquebradas", "dos quebradas"],
   // Mesitas del Colegio (Cundinamarca): en Dropi es "El Colegio (mesitas)"
   ["el colegio mesitas", "el colegio", "mesitas del colegio", "mesitas", "colegio mesitas", "mesitas el colegio"],
 ];
@@ -185,9 +187,14 @@ const EQUIVALENTES_UBICACION = [
 /** Todas las formas aceptadas para un nombre (normalizadas), la propia primero. */
 export function variantesUbicacion(texto) {
   const n = normalizarUbicacion(texto);
-  const grupo = EQUIVALENTES_UBICACION.find((g) => g.includes(n));
-  return [...new Set([n, ...(grupo ?? [])])].filter(Boolean);
+  const grupo = EQUIVALENTES_UBICACION.find((g) => g.includes(n) || g.some((x) => sinEspacios(x) === sinEspacios(n)));
+  // "Dos Quebradas" / "Dosquebradas": tambien se prueba escrito junto
+  const junto = !grupo && n.includes(" ") ? [sinEspacios(n)] : [];
+  return [...new Set([n, ...(grupo ?? []), ...junto])].filter(Boolean);
 }
+
+/** Para comparar nombres que se escriben junto o separado ("dos quebradas" = "dosquebradas"). */
+const sinEspacios = (t) => String(t ?? "").replace(/ /g, "");
 
 /** Iniciales de un nombre sin "de/del/la/y": "valle del cauca" -> "vc". */
 const iniciales = (n) =>
@@ -203,12 +210,14 @@ const iniciales = (n) =>
  * "Armenia (Q)" = Armenia del Quindio (no la de Antioquia).
  */
 export function coincideUbicacion(opcion, aceptadas, departamento = "") {
-  if (aceptadas.includes(normalizarUbicacion(opcion))) return true;
+  const juntas = aceptadas.map(sinEspacios);
+  const es = (t) => juntas.includes(sinEspacios(normalizarUbicacion(t)));
+  if (es(opcion)) return true;
   // la marca del departamento va entre parentesis ("Armenia (Q)") o suelta al
   // final en mayuscula ("Cordoba N" = Cordoba de Narino)
   const m =
     String(opcion ?? "").match(/^(.*?)\s*\(([^)]+)\)\s*$/) ?? String(opcion ?? "").trim().match(/^(.*\S)\s+([A-Z]{1,3})\.?$/);
-  if (!m || !aceptadas.includes(normalizarUbicacion(m[1]))) return false;
+  if (!m || !es(m[1])) return false;
   const codigo = normalizarUbicacion(m[2]).replace(/ /g, "");
   if (!codigo || !departamento) return false;
   return variantesUbicacion(departamento).some(

@@ -499,6 +499,16 @@ test("Calima - El Darien en Dropi es Darien (calima)", () => {
   assert.equal(coincideUbicacion("Cali", v, "Valle"), false);
 });
 
+test("Dos Quebradas = Dosquebradas (nombres escritos junto o separado)", () => {
+  const v = variantesUbicacion("Dos Quebradas");
+  assert.equal(v[0], "dos quebradas");
+  assert.ok(v.includes("dosquebradas"), "se prueba a escribir junto");
+  assert.equal(coincideUbicacion("Dosquebradas", v, "Risaralda"), true);
+  // cualquier otro nombre escrito junto o separado tambien calza
+  assert.equal(coincideUbicacion("Santarosa de Cabal", variantesUbicacion("Santa Rosa de Cabal"), "Risaralda"), true);
+  assert.equal(coincideUbicacion("Pereira", v, "Risaralda"), false);
+});
+
 test("Mesitas del Colegio en Dropi es El Colegio (mesitas)", () => {
   const v = variantesUbicacion("Mesitas Del Colegio");
   assert.equal(v[0], "mesitas del colegio");
