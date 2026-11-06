@@ -156,6 +156,26 @@ test("si todas pasan el tope: envio caro y no se elige ninguna", async (t) => {
   }
 });
 
+test("si Dropi borró la dirección (al cambiar la ciudad), se vuelve a escribir", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  const p = await pagina(`<input data-cy="client-address" value="">
+    <div id="oficinas" hidden data-cy="centro-servicio-interrapidisimo-field">Elegir oficina</div>
+    <script>
+      const dir = document.querySelector('[data-cy="client-address"]');
+      dir.addEventListener("blur", () => { document.getElementById("oficinas").hidden = !/oficina/i.test(dir.value); });
+    </script>`);
+  try {
+    // Dropi la dejo vacia: se reescribe y aparece el selector de oficinas
+    assert.equal(await nav.asegurarDireccion(p, "Oficina Interrapidisimo"), true);
+    assert.equal(await p.locator('[data-cy="client-address"]').inputValue(), "Oficina Interrapidisimo");
+    assert.equal(await p.locator("#oficinas").isVisible(), true);
+    // si sigue escrita no se toca
+    assert.equal(await nav.asegurarDireccion(p, "Oficina Interrapidísimo"), false);
+  } finally {
+    await p.close();
+  }
+});
+
 test("con ganancia mínima: si todas pasan el tope elige la más barata y marca sobreTope", async (t) => {
   if (motivoSalto) return t.skip(motivoSalto);
   const p = await pagina(paginaTransportadoras());

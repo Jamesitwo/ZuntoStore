@@ -987,6 +987,23 @@ export function crearDropiNavegador(config = {}) {
     return { ok: true, elegida: quedo };
   }
 
+  /**
+   * Dropi a veces BORRA la direccion al cambiar el departamento, la ciudad o la
+   * tienda. Sin direccion no deja crear y, si es para oficina de Inter, no
+   * muestra el selector de oficinas. Se revisa y, si cambio, se vuelve a
+   * escribir. Devuelve true si tuvo que reescribirla.
+   */
+  async function asegurarDireccion(p, texto) {
+    const campo = p.locator('[data-cy="client-address"]').first();
+    if (!(await campo.count().catch(() => 0))) return false;
+    const actual = await campo.inputValue({ timeout: 2000 }).catch(() => null);
+    if (actual === null || normalizarTexto(actual) === normalizarTexto(texto)) return false;
+    await campo.fill(String(texto));
+    await campo.press("Tab").catch(() => {});
+    await p.waitForTimeout(800);
+    return true;
+  }
+
   async function elegirOficinaInter(p, { objetivo = null } = {}) {
     const boton = p.locator('[data-cy="centro-servicio-interrapidisimo-field"]').first();
     const sinCentros = p.locator('[data-cy="order-create-client-no-centers-alert-dialog"]').first();
@@ -1331,6 +1348,11 @@ export function crearDropiNavegador(config = {}) {
       return seleccionarTransportadora(p, idCarrier, ciudad);
     },
 
+    /** Revisa que la direccion siga escrita (se usa en pruebas). */
+    asegurarDireccion(p, texto) {
+      return asegurarDireccion(p, texto);
+    },
+
     /** Elige transportadora con tope (se usa en pruebas). */
     elegirTransportadora(p, ids, opciones) {
       return elegirTransportadora(p, ids, opciones);
@@ -1633,9 +1655,8 @@ export function crearDropiNavegador(config = {}) {
       // espera el numero local (3001112233), el pais va en su propio selector
       const telefonoLocal = telefono;
       await p.locator('[data-cy="order-create-client-phone-number-field"]').fill(telefonoLocal);
-      await p
-        .locator('[data-cy="client-address"]')
-        .fill(oficinaInter ? direccionOficinaInter(datos.direccion) : String(datos.direccion ?? ""));
+      const direccionEscrita = oficinaInter ? direccionOficinaInter(datos.direccion) : String(datos.direccion ?? "");
+      await p.locator('[data-cy="client-address"]').fill(direccionEscrita);
       if (datos.email) await p.locator('[data-cy="client-email"]').fill(String(datos.email));
       // dejar que el formulario valide el cliente antes de tocar ciudad/depto
       await p.waitForTimeout(600);
@@ -1744,6 +1765,8 @@ export function crearDropiNavegador(config = {}) {
       if (ciudadDropi !== String(datos.ciudad ?? "")) ubicacion.corregimiento = { nombre: corregimiento, elegido: ubicacion.ciudad.elegido };
       // dejar que la ciudad quede registrada antes de tocar la transportadora
       await p.waitForTimeout(1000);
+      // la direccion sigue escrita? (Dropi la borra a veces al cambiar la ciudad)
+      if (await asegurarDireccion(p, direccionEscrita)) console.log("[dropi] la dirección se había borrado al elegir la ciudad: se volvió a escribir");
 
       // 6) transportadora: la primera de la lista que este disponible y cuyo
       //    envio no pase el tope (hay que esperar a que Dropi cotice)
@@ -1769,6 +1792,12 @@ export function crearDropiNavegador(config = {}) {
       // 6.5) oficina de Interrapidisimo: solo si Dropi ofrece UNA
       let oficina = null;
       if (oficinaInter) {
+        // sin "Oficina Interrapidisimo" en la direccion Dropi no muestra las
+        // oficinas: si se borro, se reescribe y se vuelve a marcar Inter
+        if (await asegurarDireccion(p, direccionEscrita)) {
+          await seleccionarTransportadora(p, selCarrier.id, ciudadDropi).catch(() => null);
+          await p.waitForTimeout(1500);
+        }
         const rOf = await elegirOficinaInter(p, { objetivo: oficinaObjetivo });
         if (!rOf.ok) {
           return { ok: false, creado: false, oficinaHumano: true, oficinas: rOf.oficinas, envio, detalle: rOf.detalle };
