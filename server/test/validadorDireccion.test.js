@@ -388,3 +388,21 @@ test("Google pone el barrio como localidad pero la ciudad esta en la direccion: 
   assert.equal(r.municipio, "Montería");
   assert.match(r.detalle, /solo el barrio/);
 });
+
+test("manzana y casa: un punto aproximado en el municipio vecino no la invalida", async () => {
+  // Google no ubica "Mz 28 Cs 13" y tantea un plus code en Ricaurte (al lado de Girardot)
+  const { v, ruta } = armar(ok({ tipo: "plus_code", precision: "GEOMETRIC_CENTER", municipio: "Ricaurte", depto: "Cundinamarca", texto: "76JP+4H, Girardot-Carmen De Apicalá, Ricaurte, Cundinamarca, Colombia" }));
+  const r = await v.validar({ direccion: "Conjunto José María Córdoba, Manzana 28 Casa 13", ciudad: "Girardot", departamento: "Cundinamarca" });
+  assert.notEqual(r.veredicto, "invalida", r.resumen);
+  assert.equal(r.mapa.sinCobertura, true);
+  assert.match(r.resumen, /manzana y casa/);
+  assert.ok(r.calificacion.puntos >= 50, `calificación ${r.calificacion.puntos}`);
+  fs.rmSync(ruta, { force: true });
+});
+
+test("con calle y placa en otra ciudad (no un punto aproximado) sí se invalida", async () => {
+  const { v, ruta } = armar(ok({ tipo: "route", precision: "GEOMETRIC_CENTER", municipio: "Ricaurte", depto: "Cundinamarca", texto: "Cl. 10, Ricaurte, Cundinamarca, Colombia" }));
+  const r = await v.validar({ direccion: "Calle 10 # 5-20, Centro", ciudad: "Girardot", departamento: "Cundinamarca" });
+  assert.equal(r.veredicto, "invalida");
+  fs.rmSync(ruta, { force: true });
+});

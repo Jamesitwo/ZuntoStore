@@ -456,12 +456,35 @@ export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThi
     if (formato.ok && !tieneBarrio) {
       avisos.push("No trae barrio ni referencia: conviene pedírselo al cliente.");
     }
+    // Manzana/casa o conjunto: Google no ubica esas direcciones (no tienen
+    // calle ni placa), y un punto aproximado (codigo "76JP+4H", sin calle ni
+    // barrio) en otro municipio es un tanteo: el mapa no decide, se valida por
+    // el formato. Si Google halla la placa o la calle en otra ciudad, si frena.
+    const esManzana = formato.ok && /^(sm|mz)\b/i.test(String(formato.normalizada ?? "").trim());
+    const soloPunto =
+      mapa &&
+      !(mapa.tipos ?? []).some((t) => ["street_address", "premise", "subpremise", "route", "neighborhood"].includes(t) || t.startsWith("sublocality"));
+    if (
+      mapa &&
+      ciudad &&
+      ["aproximada", "no-encontrada", "otra-ciudad"].includes(mapa.veredicto) &&
+      (esManzana || (mapa.veredicto === "otra-ciudad" && soloPunto))
+    ) {
+      mapa = {
+        ...mapa,
+        sinCobertura: true,
+        detalle: `${mapa.detalle}. ${
+          esManzana ? "Google no ubica direcciones de manzana y casa" : "Google solo dio un punto aproximado (sin calle ni barrio)"
+        }: se valida por el formato`,
+      };
+    }
     // En un pueblo, que Google no tenga la placa no dice nada de la direccion,
     // y si la "encuentra" en otro municipio suele ser una direccion parecida
     // de otro lado (adivina): solo la placa exacta en el pueblo suma. Nada
     // de eso frena; se decide por el formato.
     if (
       mapa &&
+      !mapa.sinCobertura &&
       ciudad &&
       !esCiudadPrincipal(ciudad) &&
       ["aproximada", "no-encontrada", "otra-ciudad"].includes(mapa.veredicto)
@@ -495,7 +518,13 @@ export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThi
             ? `Formato no válido: ${formato.detalle}`
             : `No se ubica en ${ciudad || "la ciudad del pedido"}: ${mapa?.detalle ?? ""}`
           : mapa?.sinCobertura
-            ? `Formato válido. En ${ciudad} Google Maps no tiene las calles con detalle, así que el mapa no la puede confirmar; se acepta por el formato.`
+            ? esManzana
+              ? "Formato válido. Google Maps no ubica direcciones de manzana y casa, así que el mapa no la puede confirmar; se acepta por el formato."
+              : soloPunto && !esCiudadPrincipal(ciudad)
+                ? `Formato válido. En ${ciudad} Google Maps no tiene las calles con detalle, así que el mapa no la puede confirmar; se acepta por el formato.`
+                : soloPunto
+                  ? "Formato válido. Google solo dio un punto aproximado (sin calle ni barrio), así que el mapa no la puede confirmar; se acepta por el formato."
+                  : `Formato válido. En ${ciudad} Google Maps no tiene las calles con detalle, así que el mapa no la puede confirmar; se acepta por el formato.`
             : mapa?.veredicto === "error"
             ? `Formato válido, pero no se pudo consultar el mapa: ${mapa.detalle}`
             : !mapa
