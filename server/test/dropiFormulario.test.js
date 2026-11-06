@@ -156,6 +156,52 @@ test("si todas pasan el tope: envio caro y no se elige ninguna", async (t) => {
   }
 });
 
+function paginaVariaciones({ ignorarClics = 0 } = {}) {
+  return `<div id="sel" class="p-dropdown"><span class="p-dropdown-label">ARBOL COPO: Árbol 90 Cm</span></div>
+    <div id="panel"></div>
+    <script>
+      const opciones = ["ARBOL COPO: Árbol 90 Cm", "ARBOL COPO: Blanco", "ARBOL COPO: Verde"];
+      let ignorar = ${ignorarClics};
+      const label = document.querySelector(".p-dropdown-label");
+      const panel = document.getElementById("panel");
+      const cerrar = () => { panel.innerHTML = ""; };
+      const elegir = (t) => { label.textContent = t; cerrar(); };
+      document.getElementById("sel").addEventListener("click", () => {
+        if (panel.innerHTML) return cerrar();
+        panel.innerHTML = '<div class="p-dropdown-panel"><ul>' + opciones.map((o, i) => '<li role="option" data-i="' + i + '">' + o + "</li>").join("") + "</ul></div>";
+        panel.querySelectorAll("li").forEach((li) => li.addEventListener("click", () => {
+          if (ignorar > 0) { ignorar--; cerrar(); return; } // Dropi se "come" el clic
+          elegir(li.textContent);
+        }));
+      });
+    </script>`;
+}
+
+test("variación: si Dropi no registra el clic se reintenta hasta que queda elegida", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  const p = await pagina(paginaVariaciones({ ignorarClics: 1 }));
+  try {
+    const r = await nav.elegirVariacion(p, p.locator("#sel"), { hayVariacion: true, varianteDropi: "77", valores: ["Verde"] });
+    assert.equal(r.ok, true, r.detalle);
+    assert.equal(r.elegida, "ARBOL COPO: Verde");
+    assert.equal(r.intentos, 2);
+  } finally {
+    await p.close();
+  }
+});
+
+test("variación: si nunca queda elegida, lo dice (no sube la equivocada)", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  const p = await pagina(paginaVariaciones({ ignorarClics: 99 }));
+  try {
+    const r = await nav.elegirVariacion(p, p.locator("#sel"), { hayVariacion: true, varianteDropi: "77", valores: ["Verde"] });
+    assert.equal(r.ok, false);
+    assert.match(r.detalle, /tras 3 intentos \(quedó «ARBOL COPO: Árbol 90 Cm»\)/);
+  } finally {
+    await p.close();
+  }
+});
+
 test("si Dropi borró la dirección (al cambiar la ciudad), se vuelve a escribir", async (t) => {
   if (motivoSalto) return t.skip(motivoSalto);
   const p = await pagina(`<input data-cy="client-address" value="">

@@ -987,13 +987,39 @@ export function crearDropiNavegador(config = {}) {
       await p.keyboard.press("Escape").catch(() => {});
       return { ok: false, detalle: `no se encontró la variación «${valores.join(" / ")}» en Dropi: ${r.error} (opciones: ${textos.join(" | ")})` };
     }
-    await opciones.nth(r.indice).click();
-    await p.waitForTimeout(800);
-    const quedo = (await sel.locator(".p-dropdown-label").first().innerText().catch(() => "")).trim();
-    if (normalVariante(quedo) !== normalVariante(textos[r.indice])) {
-      return { ok: false, detalle: `Dropi no dejó elegida la variación «${textos[r.indice]}» (quedó «${quedo}»)` };
+    // el desplegable de Dropi a veces no registra el clic (la lista aun se
+    // esta abriendo o la opcion queda fuera de vista): se reintenta de tres
+    // formas y se comprueba lo que quedo elegido cada vez
+    const objetivo = normalVariante(textos[r.indice]);
+    const etiqueta = async () => (await sel.locator(".p-dropdown-label").first().innerText().catch(() => "")).trim();
+    const abrir = async () => {
+      if (await opciones.count().catch(() => 0)) return true;
+      await sel.click().catch(() => {});
+      for (let i = 0; i < 8 && !(await opciones.count().catch(() => 0)); i++) await p.waitForTimeout(400);
+      return (await opciones.count().catch(() => 0)) > 0;
+    };
+    let quedo = "";
+    for (let intento = 0; intento < 3; intento++) {
+      if (intento > 0 && !(await abrir())) break;
+      const op = opciones.nth(r.indice);
+      if (intento === 0) {
+        await p.waitForTimeout(300);
+        await op.click().catch(() => {});
+      } else if (intento === 1) {
+        await op.scrollIntoViewIfNeeded().catch(() => {});
+        await op.click({ force: true }).catch(() => {});
+      } else {
+        // por teclado: desde la primera, bajar hasta la opcion y Enter
+        await p.keyboard.press("Home").catch(() => {});
+        for (let k = 0; k < r.indice; k++) await p.keyboard.press("ArrowDown").catch(() => {});
+        await p.keyboard.press("Enter").catch(() => {});
+      }
+      await p.waitForTimeout(1000);
+      quedo = await etiqueta();
+      if (normalVariante(quedo) === objetivo) return { ok: true, elegida: quedo, ...(intento ? { intentos: intento + 1 } : {}) };
     }
-    return { ok: true, elegida: quedo };
+    await p.keyboard.press("Escape").catch(() => {});
+    return { ok: false, detalle: `Dropi no dejó elegida la variación «${textos[r.indice]}» tras 3 intentos (quedó «${quedo}»)` };
   }
 
   /**
@@ -1355,6 +1381,11 @@ export function crearDropiNavegador(config = {}) {
     /** Elige la transportadora en un formulario ya abierto (se usa en pruebas). */
     seleccionarTransportadora(p, idCarrier, ciudad) {
       return seleccionarTransportadora(p, idCarrier, ciudad);
+    },
+
+    /** Elige la variacion en un formulario ya abierto (se usa en pruebas). */
+    elegirVariacion(p, sel, opciones) {
+      return elegirVariacion(p, sel, opciones);
     },
 
     /** Revisa que la direccion siga escrita (se usa en pruebas). */
