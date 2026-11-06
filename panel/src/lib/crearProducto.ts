@@ -2,6 +2,7 @@
 // igual que lo hace el panel oficial: addproducto (nombre, valor y la primera
 // variante) y luego updateproducto con la ficha completa.
 import { auth, productos } from "../api/endpoints";
+import { backend } from "../api/backend";
 import { armarCuerpoProducto, parsearMensajeInicial, serializarMensajeInicial } from "./productos";
 
 /** Pais de la tienda (47 = Colombia si no se sabe). */
@@ -144,5 +145,33 @@ export async function guardarMensajeInicialLucid(id: string | number, texto: str
     return "clasico";
   } catch (e) {
     throw e instanceof Error ? e : new Error(String(e));
+  }
+}
+
+/**
+ * Agrega el producto al Google Sheets de productos (por el Apps Script de la
+ * hoja). Devuelve "agregado" | "ya-estaba" | "sin-script" (no esta conectado).
+ */
+export async function agregarAlSheet(d: {
+  nombre: string;
+  idDropi: string | null | undefined;
+  nombreDropi?: string | null;
+  dropiLink?: string | null;
+}): Promise<"agregado" | "ya-estaba" | "sin-script"> {
+  if (!d.idDropi) throw new Error("El producto no tiene el id de Dropi");
+  try {
+    const r: any = await backend("/api/dropi/productos/agregar", {
+      method: "POST",
+      body: {
+        Nombre: d.nombre,
+        idProductoDropi: String(d.idDropi),
+        nameProductoDropi: d.nombreDropi ?? d.nombre,
+        dropiLink: d.dropiLink ?? `https://app.dropi.co/dashboard/product-details/${d.idDropi}`,
+      },
+    });
+    return r?.yaEstaba ? "ya-estaba" : "agregado";
+  } catch (e: any) {
+    if (e?.status === 409 || /Conecta primero el script/.test(String(e?.message ?? e))) return "sin-script";
+    throw e;
   }
 }

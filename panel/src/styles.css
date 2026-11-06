@@ -5617,3 +5617,9 @@ tr.fila-marcada > td { background: color-mix(in srgb, var(--primary, #7c3aed) 9%
 }
 .chip-check input { width: 14px; height: 14px; margin: 0; flex: none; }
 .chip-check:has(input:checked) { border-color: var(--primary, #7c3aed); background: rgba(124, 58, 237, .08); }
+
+/* sheet de productos: escribir con Apps Script */
+.sheet-escritura { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; }
+.sheet-escritura > summary { cursor: pointer; font-weight: 600; }
+.pasos-script { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 6px; }
+.codigo-script { width: 100%; margin-top: 8px; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; }

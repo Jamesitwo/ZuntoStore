@@ -949,6 +949,8 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
             variantes: txt(pr.variantes, 500),
             // si vino de Dropi: para crearlo en LucidSales enlazado
             idDropi: /^\d{1,12}$/.test(String(pr.idDropi ?? "")) ? String(pr.idDropi) : null,
+            dropiLink: /^https:\/\/([\w-]+\.)?dropi\.co\//i.test(String(pr.dropiLink ?? "")) ? String(pr.dropiLink).slice(0, 400) : null,
+            nombreDropi: txt(pr.nombreDropi, 200) || null,
             precioProveedor: Number(pr.precioProveedor) > 0 ? Math.round(Number(pr.precioProveedor)) : null,
             precioSugerido: Number(pr.precioSugerido) > 0 ? Math.round(Number(pr.precioSugerido)) : null,
           },

@@ -48,6 +48,8 @@ export interface Proyecto {
     contenido: string;
     variantes: string;
     idDropi?: string | null;
+    dropiLink?: string | null;
+    nombreDropi?: string | null;
     precioProveedor?: number | null;
     precioSugerido?: number | null;
   };

@@ -18,7 +18,7 @@ import { Modal } from "../components/Modal";
 import { SubirMedia } from "../components/SubirMedia";
 import { useToast } from "../components/Toast";
 import { Campo, ErrorBanner, PageHeader, Spinner } from "../components/ui";
-import { crearProductoLucid, guardarFichaLucid, guardarMensajeInicialLucid } from "../lib/crearProducto";
+import { crearProductoLucid, guardarFichaLucid, guardarMensajeInicialLucid, agregarAlSheet } from "../lib/crearProducto";
 import { prodId, prodImg, prodImgs, prodName, prodPrice, useCatalogo } from "../lib/catalogo";
 
 const arreglo = (v: unknown): any[] => {
@@ -215,7 +215,21 @@ function ListaProyectos({ lista, onNuevo }: { lista: ResumenProyecto[] | null; o
 
 // =================================================================== nuevo
 
+/** Agrega al Google Sheets el producto recien creado y avisa como quedo (nunca rompe). */
+async function agregarAlSheetConAviso(toast: ReturnType<typeof useToast>, d: Parameters<typeof agregarAlSheet>[0]) {
+  if (!d.idDropi) return;
+  try {
+    const r = await agregarAlSheet(d);
+    if (r === "agregado") toast.success("También quedó agregado al Google Sheets de productos");
+    else if (r === "ya-estaba") toast.success("Ya estaba en el Google Sheets de productos");
+    else toast.error("No se agregó al Google Sheets: conecta el script en Ajustes → Sheet de productos");
+  } catch (e) {
+    toast.error(`El producto quedó creado, pero no se agregó al Google Sheets: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
 function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
+  const alSheet = (d: Parameters<typeof agregarAlSheet>[0]) => agregarAlSheetConAviso(toast, d);
   const { session } = useAuth();
   const idEmpresa = session!.tiendaActiva;
   const { catalogo, cargando } = useCatalogo(idEmpresa);
@@ -252,7 +266,14 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
   // ---- desde el link del producto en Dropi
   const [linkDropi, setLinkDropi] = useState("");
   const [trayendo, setTrayendo] = useState(false);
-  const [deDropi, setDeDropi] = useState<{ proveedor: number | null; sugerido: number | null; stock: number; idDropi: string | null } | null>(null);
+  const [deDropi, setDeDropi] = useState<{
+    proveedor: number | null;
+    sugerido: number | null;
+    stock: number;
+    idDropi: string | null;
+    nombre?: string;
+    url?: string;
+  } | null>(null);
   const [creandoLucid, setCreandoLucid] = useState(false);
   /** Crea en LucidSales el producto que se trajo de Dropi y lo deja elegido. */
   const crearEnLucid = async () => {
@@ -273,6 +294,7 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
       setCreadoLucid({ id, nombre: form.nombre.trim() });
       setProductoId(id);
       toast.success("Producto creado en LucidSales");
+      await alSheet({ nombre: form.nombre.trim(), idDropi: deDropi?.idDropi, nombreDropi: deDropi?.nombre, dropiLink: deDropi?.url });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -295,7 +317,14 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
         setDisponibles((d) => [...new Set([...f.imagenes, ...d])]);
         setFotos(f.imagenes.slice(0, 6));
       }
-      setDeDropi({ proveedor: f.precioProveedor, sugerido: f.precioSugerido, stock: f.stock, idDropi: f.idDropi });
+      setDeDropi({
+        proveedor: f.precioProveedor,
+        sugerido: f.precioSugerido,
+        stock: f.stock,
+        idDropi: f.idDropi,
+        nombre: f.nombre,
+        url: f.url || linkDropi.trim(),
+      });
       // ¿ya esta en el catalogo de LucidSales? (mismo id de Dropi)
       const ya = f.idDropi ? catalogo.find((x: any) => String(x?.idProductoDropi ?? "") === String(f.idDropi)) : null;
       if (ya) {
@@ -358,6 +387,8 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
           id: productoId || null,
           ...form,
           idDropi: deDropi?.idDropi ?? null,
+          dropiLink: deDropi?.url ?? null,
+          nombreDropi: deDropi?.nombre ?? null,
           precioProveedor: deDropi?.proveedor ?? null,
           precioSugerido: deDropi?.sugerido ?? null,
         },
@@ -926,6 +957,7 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
 
 function DetalleProyecto({ id }: { id: string }) {
   const toast = useToast();
+  const alSheet = (d: Parameters<typeof agregarAlSheet>[0]) => agregarAlSheetConAviso(toast, d);
   const navigate = useNavigate();
   const copiar = useCopiar();
   const [p, setP] = useState<Proyecto | null>(null);
@@ -974,6 +1006,14 @@ function DetalleProyecto({ id }: { id: string }) {
           precioSugerido: p.producto.precioSugerido ?? null,
         });
         const r = await creador.editar(id, { productoId: idNuevo });
+        if (p.producto.idDropi) {
+          await alSheet({
+            nombre: p.producto.nombre,
+            idDropi: p.producto.idDropi,
+            nombreDropi: p.producto.nombreDropi,
+            dropiLink: p.producto.dropiLink,
+          });
+        }
         if (p.bienvenida) {
           try {
             await guardarMensajeInicialLucid(idNuevo, p.bienvenida, p.fotos);

@@ -6,6 +6,7 @@
 // La clave de union es `idProductoDropi`: es el id con el que Dropi conoce el
 // producto, y es el MISMO que trae LucidSales en `obtenerProducto(id).idProductoDropi`.
 // De ahi se saca el `dropiLink` (URL navegable con el slug) y la transportadora.
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { ErrorApi } from "./errores.js";
@@ -97,12 +98,28 @@ export function crearProductosDropi({
   const delEnv = String(url ?? "").trim();
   // el link guardado desde el panel (config/productosDropi.json) manda
   let enPanel = "";
-  if (ruta) {
+  // escritura: Apps Script pegado a la hoja que agrega filas (opcional)
+  let escritura = { scriptUrl: "", secreto: "" };
+  const leerArchivo = () => {
+    if (!ruta) return {};
     try {
-      enPanel = String(JSON.parse(fs.readFileSync(ruta, "utf8"))?.link ?? "").trim();
+      return JSON.parse(fs.readFileSync(ruta, "utf8")) ?? {};
     } catch {
-      enPanel = "";
+      return {};
     }
+  };
+  const escribirArchivo = (cambios) => {
+    if (!ruta) throw new ErrorApi(500, "No hay dónde guardar la configuración del sheet");
+    fs.mkdirSync(path.dirname(ruta), { recursive: true });
+    fs.writeFileSync(ruta, JSON.stringify({ ...leerArchivo(), ...cambios, actualizado: new Date().toISOString() }, null, 2), "utf8");
+  };
+  {
+    const a = leerArchivo();
+    enPanel = String(a?.link ?? "").trim();
+    escritura = {
+      scriptUrl: String(a?.escritura?.scriptUrl ?? "").trim(),
+      secreto: String(a?.escritura?.secreto ?? "").trim(),
+    };
   }
   url = enPanel ? urlCsvDeSheet(enPanel) ?? enPanel : delEnv;
 
@@ -171,7 +188,109 @@ export function crearProductosDropi({
       link: enPanel || delEnv,
       csv: url,
       origen: enPanel ? "panel" : delEnv ? ".env" : null,
+      escritura: { configurada: Boolean(escritura.scriptUrl && escritura.secreto), scriptUrl: escritura.scriptUrl },
     };
+  }
+
+  /** gid de la pestaña del sheet (del link) para que el script escriba en esa. */
+  function gidDelLink() {
+    const l = enPanel || delEnv;
+    try {
+      const u = new URL(l);
+      return u.searchParams.get("gid") ?? u.hash.match(/gid=(\d+)/)?.[1] ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Secreto compartido con el Apps Script (se crea la primera vez). */
+  function secretoEscritura() {
+    if (escritura.secreto) return escritura.secreto;
+    escritura = { ...escritura, secreto: crypto.randomBytes(18).toString("hex") };
+    escribirArchivo({ escritura });
+    return escritura.secreto;
+  }
+
+  /** Codigo del Apps Script para pegar en la hoja (Extensiones -> Apps Script). */
+  function codigoScript() {
+    return textoScript(secretoEscritura(), gidDelLink());
+  }
+
+  async function llamarScript(scriptUrl, cuerpo) {
+    let r;
+    try {
+      r = await fetchImpl(scriptUrl, {
+        method: "POST",
+        headers: { "content-type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(cuerpo),
+        redirect: "follow",
+        signal: AbortSignal.timeout(25000),
+      });
+    } catch (e) {
+      throw new ErrorApi(504, `El script del sheet no respondió: ${e?.message ?? e}`);
+    }
+    const texto = await r.text().catch(() => "");
+    let datos = null;
+    try {
+      datos = JSON.parse(texto);
+    } catch {
+      const html = /^\s*<(!doctype|html)/i.test(texto);
+      throw new ErrorApi(
+        502,
+        html
+          ? "El script respondió una página en vez de datos: en la implementación, «Quién tiene acceso» debe ser «Cualquier usuario»"
+          : `El script respondió algo inesperado (HTTP ${r.status})`,
+      );
+    }
+    if (!datos?.ok) throw new ErrorApi(400, `El script del sheet dijo: ${datos?.msg ?? "error"}`);
+    return datos;
+  }
+
+  const URL_SCRIPT = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
+
+  /** Prueba la URL del script (o la guardada). */
+  async function probarEscritura(scriptUrl) {
+    const u = String(scriptUrl ?? escritura.scriptUrl ?? "").trim();
+    if (!URL_SCRIPT.test(u)) throw new ErrorApi(400, "Pega la URL de la implementación del script (https://script.google.com/macros/s/…/exec)");
+    const r = await llamarScript(u, { secreto: secretoEscritura(), probar: true });
+    const cab = (r.columnas ?? []).map((c) => String(c).trim().toLowerCase());
+    if (!cab.includes("idproductodropi")) {
+      throw new ErrorApi(400, `La pestaña «${r.hoja ?? "?"}» no tiene la columna idProductoDropi (columnas: ${(r.columnas ?? []).join(", ")})`);
+    }
+    return { ok: true, hoja: r.hoja ?? "", columnas: r.columnas ?? [] };
+  }
+
+  /** Guarda la URL del script (la prueba antes). "" = desconectar. */
+  async function guardarEscritura(scriptUrl) {
+    const u = String(scriptUrl ?? "").trim();
+    if (!u) {
+      escritura = { ...escritura, scriptUrl: "" };
+      escribirArchivo({ escritura });
+      return estado();
+    }
+    const prueba = await probarEscritura(u);
+    escritura = { ...escritura, scriptUrl: u };
+    escribirArchivo({ escritura });
+    return { ...estado(), prueba };
+  }
+
+  /**
+   * Agrega el producto como fila nueva (si su idProductoDropi no esta ya).
+   * fila: { Nombre, idProductoDropi, nameProductoDropi, dropiLink, transportadora, par }
+   */
+  async function agregar(fila) {
+    if (!escritura.scriptUrl) throw new ErrorApi(409, "Conecta primero el script del Google Sheets (Ajustes → Sheet de productos)");
+    const id = String(fila?.idProductoDropi ?? "").trim();
+    if (!/^\d{1,12}$/.test(id)) throw new ErrorApi(400, "Falta el id del producto en Dropi");
+    const limpia = {};
+    for (const k of ["par", "Nombre", "idProductoDropi", "nameProductoDropi", "dropiLink", "transportadora"]) {
+      const v = k === "idProductoDropi" ? id : String(fila?.[k] ?? "").trim().slice(0, 500);
+      limpia[k] = v;
+    }
+    const r = await llamarScript(escritura.scriptUrl, { secreto: secretoEscritura(), fila: limpia });
+    cache = null;
+    log.log?.(`[productosDropi] ${r.yaEstaba ? "ya estaba en el sheet" : "agregado al sheet"}: ${limpia.Nombre || id} (Dropi ${id})`);
+    return { ok: true, yaEstaba: Boolean(r.yaEstaba), fila: r.fila ?? null };
   }
 
   /** Prueba un link (o el actual): cuantas filas trae y si tienen link. */
@@ -188,7 +307,9 @@ export function crearProductosDropi({
     if (!ruta) throw new ErrorApi(500, "No hay dónde guardar el link del sheet");
     const t = String(link ?? "").trim();
     if (!t) {
-      fs.rmSync(ruta, { force: true });
+      const { link: _l, ...resto } = leerArchivo();
+      if (Object.keys(resto).filter((k) => k !== "actualizado").length) escribirArchivo({ link: "" });
+      else fs.rmSync(ruta, { force: true });
       enPanel = "";
       url = delEnv;
       cache = null;
@@ -197,8 +318,7 @@ export function crearProductosDropi({
     const destino = urlCsvDeSheet(t);
     if (!destino) throw new ErrorApi(400, "Pega el link de un Google Sheets (docs.google.com/spreadsheets/...)");
     const prueba = await probar(t);
-    fs.mkdirSync(path.dirname(ruta), { recursive: true });
-    fs.writeFileSync(ruta, JSON.stringify({ link: t, actualizado: new Date().toISOString() }, null, 2), "utf8");
+    escribirArchivo({ link: t });
     enPanel = t;
     url = destino;
     cache = null;
@@ -211,8 +331,58 @@ export function crearProductosDropi({
     estado,
     probar,
     guardar,
+    codigoScript,
+    probarEscritura,
+    guardarEscritura,
+    agregar,
     get listo() {
       return Boolean(url);
     },
   };
+}
+
+/**
+ * Apps Script que se pega en la hoja: recibe la fila de Zunto y la agrega
+ * debajo, con las columnas en el orden que tenga la hoja. No duplica: si el
+ * idProductoDropi ya esta, no hace nada.
+ */
+export function textoScript(secreto, gid = null) {
+  return `// Zunto: agrega al sheet los productos creados desde un enlace de Dropi.
+// Extensiones -> Apps Script -> pega esto -> Implementar -> Nueva implementación
+// -> Aplicación web (Ejecutar como: yo · Quién tiene acceso: Cualquier usuario).
+const SECRETO = ${JSON.stringify(secreto)};
+const GID = ${gid === null ? "null" : JSON.stringify(String(gid))}; // pestaña del link guardado en Zunto
+
+function doPost(e) {
+  const datos = JSON.parse((e && e.postData && e.postData.contents) || "{}");
+  if (datos.secreto !== SECRETO) return salida({ ok: false, msg: "secreto incorrecto" });
+  const libro = SpreadsheetApp.getActiveSpreadsheet();
+  const hoja = (GID !== null && libro.getSheets().find((h) => String(h.getSheetId()) === GID)) || libro.getSheets()[0];
+  const cab = hoja.getRange(1, 1, 1, Math.max(1, hoja.getLastColumn())).getValues()[0].map((c) => String(c).trim());
+  if (datos.probar) return salida({ ok: true, hoja: hoja.getName(), columnas: cab });
+  const bajas = cab.map((c) => c.toLowerCase());
+  const iId = bajas.indexOf("idproductodropi");
+  if (iId < 0) return salida({ ok: false, msg: "la hoja no tiene la columna idProductoDropi" });
+  const f = datos.fila || {};
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const n = hoja.getLastRow() - 1;
+    const ids = n > 0 ? hoja.getRange(2, iId + 1, n, 1).getValues().map((r) => String(r[0]).trim()) : [];
+    if (ids.indexOf(String(f.idProductoDropi)) >= 0) return salida({ ok: true, yaEstaba: true });
+    const valor = (c) => {
+      const k = Object.keys(f).find((x) => x.toLowerCase() === c);
+      return k ? f[k] : "";
+    };
+    hoja.appendRow(bajas.map(valor));
+    return salida({ ok: true, fila: hoja.getLastRow() });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function salida(o) {
+  return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
+}
+`;
 }

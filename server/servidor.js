@@ -1926,6 +1926,35 @@ export function crearManejador({
 
     // ---- GET/PUT /api/dropi/productos  y  POST /api/dropi/productos/probar ----
     // Link del Google Sheets con el mapa producto -> link de Dropi.
+    // ---- escritura en el sheet (Apps Script) y agregar un producto ----
+    if (ruta === "/api/dropi/productos/escritura" || ruta === "/api/dropi/productos/agregar") {
+      autorizar(req);
+      if (!productosDropi?.agregar) throw new ErrorApi(503, "El sheet de productos no está montado en este servidor");
+      if (ruta === "/api/dropi/productos/agregar" && req.method === "POST") {
+        const cuerpo = await leerCuerpo(req);
+        json(res, 200, await productosDropi.agregar(cuerpo ?? {}));
+        return;
+      }
+      if (ruta === "/api/dropi/productos/escritura") {
+        if (req.method === "GET") {
+          json(res, 200, { ok: true, ...productosDropi.estado().escritura, codigo: productosDropi.codigoScript() });
+          return;
+        }
+        if (req.method === "POST") {
+          const cuerpo = await leerCuerpo(req);
+          json(res, 200, await productosDropi.probarEscritura(cuerpo?.scriptUrl));
+          return;
+        }
+        if (req.method === "PUT") {
+          const cuerpo = await leerCuerpo(req);
+          const e = await productosDropi.guardarEscritura(cuerpo?.scriptUrl ?? "");
+          console.log(`[productosDropi] script de escritura ${e.escritura?.configurada ? "conectado" : "desconectado"} (por ${usuarioDe(req) ?? "?"})`);
+          json(res, 200, { ok: true, ...e });
+          return;
+        }
+      }
+    }
+
     if (ruta === "/api/dropi/productos" || ruta === "/api/dropi/productos/probar") {
       autorizar(req);
       if (!productosDropi?.estado) throw new ErrorApi(503, "El sheet de productos no está montado en este servidor");
