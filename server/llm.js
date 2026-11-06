@@ -22,7 +22,7 @@ Campos exactos:
 - "envioAcordado": costo del envio que se le dijo al cliente en el chat, en pesos (numero entero; 0 si se dijo que es gratis; null si no se menciona).
 - "totalAcordado": total a pagar CON envio que aparece en el chat (por ejemplo en el resumen del pedido: "Total pedido: 119.900"), numero entero; null si no se menciona.
 - "direccion": direccion que dio el cliente (string, "" si no dio)
-- "clienteConfirmo": true solo si el cliente acepto/claramente confirmo el pedido. false si solo pregunto o quedo a medias.
+- "clienteConfirmo": true si el cliente acepto el pedido. No hace falta que diga "si" literal: despues del resumen o de la pregunta de confirmacion cuentan como aceptacion respuestas como "listo", "dale", "de una", "ok", "perfecto", "asi esta bien", "yo lo reclamo", "me avisas cuando llegue", "cuando llega?" o agradecer la compra, siempre que no corrija datos, no diga que no y no cancele despues. Tambien cuenta si el cliente dio todos sus datos y despues siguio la conversacion como compra hecha sin objetar el resumen. false si nunca acepto, si rechazo o cancelo, si pidio cambios que no quedaron resueltos, o si la conversacion quedo a medias antes del resumen.
 - "entregaFutura": true si el cliente pidió que se entregue/reciba en una fecha posterior a hoy o pidió aplazarla; false si no pidió una fecha futura; null si no se puede determinar.
 - "fechaEntregaSolicitada": fecha o expresión de fecha solicitada por el cliente (string; "" si no existe).
 - "fechaEntregaISO": si entregaFutura es true, la fecha concreta pedida como "AAAA-MM-DD", calculada con la fecha de hoy que se te da y los timestamps del chat ("" si no se puede saber el dia exacto).
