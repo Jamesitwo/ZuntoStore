@@ -241,6 +241,11 @@ export function coincidePrecio(precioChat, resumen, tolerancia = 0.01, { envio =
 
 /** ¿La direccion del chat se parece a la del pedido? (contencion de palabras) */
 export function coincideDireccion(chat, pedido, { referencias = "" } = {}) {
+  // "25_63" o "25–63" = "25-63" (el guion bajo pegaba los numeros)
+  const limpiar = (v) => String(v ?? "").replace(/[_–—]/g, "-");
+  chat = limpiar(chat);
+  pedido = limpiar(pedido);
+  referencias = limpiar(referencias);
   if (!tokens(chat).length) {
     return { ok: false, razon: "no se entendio la direccion del chat" };
   }

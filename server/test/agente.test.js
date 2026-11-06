@@ -444,3 +444,14 @@ test("coincideProducto: un combo/kit del chat no pasa como la pieza sola", () =>
   assert.equal(coincideProducto("cargador 12v", [{ nombre: "Cargador 12V PRO" }]).ok, true);
   assert.equal(coincideProducto("Pulverizadora Raptor + kit de raches", [{ nombre: "Pulverizadora Raptor + kit de raches" }]).ok, true);
 });
+
+test("coincideDireccion: «25_63» con guion bajo es «25-63» (la ciudad y el barrio de más no frenan)", () => {
+  const r = coincideDireccion(
+    "calle 26 A # 25_63 de pósito maderas YAYA, Villavicencio, Meta, Barrio Porvenir",
+    "Calle 26 A # 25-63, Depósito Maderas YAYA",
+    { referencias: "Porvenir" },
+  );
+  assert.equal(r.ok, true, r.razon);
+  // otra placa sigue frenando
+  assert.equal(coincideDireccion("calle 26 A # 25_64 deposito maderas yaya", "Calle 26 A # 25-63, Depósito Maderas YAYA").ok, false);
+});
