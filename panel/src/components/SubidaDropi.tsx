@@ -58,6 +58,15 @@ function textoDuracion(seg: number): string {
 
 /** Se pega en la consola de app.dropi.co: copia su localStorage (la sesion). */
 const COMANDO_SESION = "copy(JSON.stringify(localStorage))";
+/**
+ * Lo mismo para el celular (sin consola): un marcador cuya direccion es este
+ * codigo. Tocado dentro de app.dropi.co copia la sesion (o la muestra para
+ * copiarla si el navegador no deja copiar solo).
+ */
+const MARCADOR_SESION =
+  "javascript:(()=>{const t=JSON.stringify(localStorage);const m=()=>prompt('Copia TODO este texto y pégalo en Zunto:',t);" +
+  "if(!/dropi\\.co$/.test(location.hostname)){alert('Abre primero app.dropi.co con tu sesión iniciada');return}" +
+  "navigator.clipboard?navigator.clipboard.writeText(t).then(()=>alert('Sesión de Dropi copiada. Vuelve a Zunto y pégala.'),m):m()})()";
 
 function textoEstadoSesion(s: any): { texto: string; ok: boolean } {
   const desde = s?.desde ? new Date(s.desde).toLocaleString("es-CO") : "";
@@ -396,6 +405,14 @@ export function SubidaDropi() {
     }
   };
 
+  const copiarMarcador = async () => {
+    try {
+      await navigator.clipboard.writeText(MARCADOR_SESION);
+      toast.success("Código del marcador copiado");
+    } catch {
+      window.prompt("Copia este código:", MARCADOR_SESION);
+    }
+  };
   const copiarComando = async () => {
     try {
       await navigator.clipboard.writeText(COMANDO_SESION);
@@ -635,6 +652,31 @@ export function SubidaDropi() {
             </li>
             <li>Vuelve aquí, pega con Ctrl+V en el cuadro y pulsa «Actualizar sesión».</li>
           </ol>
+          <details className="sesion-celular">
+            <summary className="small">¿Estás en el celular? (sin F12)</summary>
+            <ol className="small">
+              <li>
+                Copia este código:{" "}
+                <button className="btn sm" onClick={() => void copiarMarcador()}>
+                  Copiar código del marcador
+                </button>
+              </li>
+              <li>
+                En Chrome (Android) o Safari (iPhone), guarda cualquier página como <strong>favorito</strong> y edítalo:
+                nómbralo <strong>Zunto sesión</strong> y en la <strong>dirección (URL)</strong> borra lo que haya y pega
+                el código. Esto se hace una sola vez.
+              </li>
+              <li>
+                Abre <strong>app.dropi.co</strong> con tu sesión iniciada. Toca la barra de direcciones, escribe{" "}
+                <strong>Zunto sesión</strong> y toca el favorito que aparece (el de la estrella). En iPhone ábrelo desde
+                Favoritos.
+              </li>
+              <li>
+                Sale «Sesión de Dropi copiada» (o un cuadro con el texto: tócalo, selecciona todo y copia). Vuelve aquí,
+                pégalo en el cuadro y pulsa «Actualizar sesión».
+              </li>
+            </ol>
+          </details>
           <div className="field">
             <label htmlFor="dropi-sesion">Sesión copiada de Dropi</label>
             <textarea
