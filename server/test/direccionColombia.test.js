@@ -257,3 +257,16 @@ test("punto en vez de guion entre cruce y placa: 23.47 = 23-47", async () => {
   assert.match(r.normalizada, /^Calle 10 # 5-20/);
   assert.equal(validarDireccion("Calle 10 No. 5-20").normalizada, "Calle 10 # 5-20");
 });
+
+test("casa/lote dentro de un conjunto o urbanización (sin manzana)", () => {
+  const r = validarDireccion("Villas de Vizcaya, Lote 5 Casa 49");
+  assert.equal(r.ok, true, r.detalle);
+  assert.equal(r.normalizada, "Lt 5 Cs 49, Villas de Vizcaya");
+  assert.equal(validarDireccion("Conjunto Los Pinos casa 12").normalizada, "Cs 12, Conjunto Los Pinos");
+  // con manzana sigue igual
+  assert.equal(validarDireccion("Mz B Cs 12, Los Almendros").normalizada, "Mz B Cs 12, Los Almendros");
+  // sin nombre del sitio, descriptiva o rural: no
+  assert.equal(validarDireccion("Lote 5").ok, false);
+  assert.equal(validarDireccion("casa 3 al lado de la tienda").ok, false);
+  assert.equal(validarDireccion("Lote 4, Vereda El Hato").ok, false);
+});

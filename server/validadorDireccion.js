@@ -460,7 +460,7 @@ export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThi
     // calle ni placa), y un punto aproximado (codigo "76JP+4H", sin calle ni
     // barrio) en otro municipio es un tanteo: el mapa no decide, se valida por
     // el formato. Si Google halla la placa o la calle en otra ciudad, si frena.
-    const esManzana = formato.ok && /^(sm|mz)\b/i.test(String(formato.normalizada ?? "").trim());
+    const esManzana = formato.ok && /^(smz|sm|mz|lt|cs)\b/i.test(String(formato.normalizada ?? "").trim());
     const soloPunto =
       mapa &&
       !(mapa.tipos ?? []).some((t) => ["street_address", "premise", "subpremise", "route", "neighborhood"].includes(t) || t.startsWith("sublocality"));

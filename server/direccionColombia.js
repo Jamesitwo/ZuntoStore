@@ -211,6 +211,8 @@ export function digitosDireccion(texto) {
 const SIN_NOMENCLATURA = /\b(vereda|finca|corregimiento|km|kilometro|sector rural|parcela|hacienda)\b/;
 
 // ---- formato manzana ----
+/** Palabras de conjunto/urbanizacion (para "Casa 12" sin manzana). */
+const CONJUNTO = /\b(conjunto|conj|urbanizacion|urb|villas?|condominio|residencial|residencias|ciudadela|parcelacion|agrupacion|multifamiliar|unidad|etapa|portal|reserva|altos|jardines)\b/;
 const ID = String.raw`(\d{1,4}[a-z]?|[a-z]{1,2}\d{0,2})`;
 const PARTES_MZ = {
   supermanzana: new RegExp(String.raw`\b(?:supermanzana|super manzana|supermz|smz|sm)\.?\s*(?:n[o°º]\.?\s*)?` + ID + String.raw`\b`),
@@ -224,9 +226,11 @@ function idMz(v) {
   return String(v ?? "").trim().toUpperCase();
 }
 
-/** Arma "Smz 7 Mz B Cs 12" con las partes presentes. */
-function armarManzana(p) {
-  return ["supermanzana", "manzana", "casa", "lote"]
+/** Arma "Smz 7 Mz B Cs 12" con las partes presentes (casa y lote en el orden del cliente). */
+function armarManzana(p, orden = null) {
+  const claves = ["supermanzana", "manzana", "casa", "lote"];
+  if (orden && p.casa && p.lote && orden.lote < orden.casa) claves.splice(2, 2, "lote", "casa");
+  return claves
     .filter((k) => p[k])
     .map((k) => `${ETIQUETA_MZ[k]} ${idMz(p[k])}`)
     .join(" ");
@@ -250,11 +254,13 @@ export function parsearManzana(direccion) {
   const original = String(direccion ?? "").replace(/\s+/g, " ").trim();
   const t = normalizarTextoDir(original);
   const partes = {};
+  const orden = {};
   let resto = original.normalize("NFC");
   for (const k of ["supermanzana", "manzana", "casa", "lote"]) {
     const m = t.match(PARTES_MZ[k]);
     if (!m) continue;
     partes[k] = m[1];
+    orden[k] = m.index;
     // se quita del texto original la misma porcion (mismo largo: NFD no cambia
     // la longitud de letras sin tilde; con tildes se usa el texto normalizado)
     const desde = normalizarTextoDir(resto).indexOf(m[0]);
@@ -264,9 +270,20 @@ export function parsearManzana(direccion) {
       resto = `${resto.slice(0, desde)} ${resto.slice(desde + m[0].length)}`.replace(/\s+/g, " ").trim();
     }
   }
-  if (!partes.manzana || !(partes.casa || partes.lote)) return null;
+  if (!(partes.casa || partes.lote)) return null;
   const barrio = limpiarBarrio(capitalizarResto(resto));
-  const base = armarManzana(partes);
+  // sin manzana: casa/lote dentro de un conjunto o urbanizacion con nombre
+  // ("Villas de Vizcaya, Lote 5 Casa 49"). Hace falta el nombre del sitio y
+  // numeros de verdad; con solo "casa" el nombre debe ser de un conjunto.
+  if (!partes.manzana) {
+    const numerico = (v) => /^\d{1,4}[a-z]?$/i.test(String(v ?? ""));
+    if (!barrio) return null;
+    if (SIN_NOMENCLATURA.test(normalizarTextoDir(barrio))) return null;
+    const conLote = partes.lote && numerico(partes.lote) && (!partes.casa || numerico(partes.casa));
+    const soloCasa = !partes.lote && numerico(partes.casa) && CONJUNTO.test(normalizarTextoDir(barrio));
+    if (!conLote && !soloCasa) return null;
+  }
+  const base = armarManzana(partes, orden);
   return { partes, barrio, normalizada: barrio ? `${base}, ${barrio}` : base };
 }
 
