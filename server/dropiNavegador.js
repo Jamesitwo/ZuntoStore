@@ -1100,11 +1100,11 @@ export function crearDropiNavegador(config = {}) {
             .map((el) => (el.innerText || "").replace(/\s+/g, " ").trim())
             .filter(Boolean)
             .slice(0, 3);
-          return { direccion: dir ? dir.value : null, marcada, relacionados, avisos };
+          return { direccion: dir ? dir.value : null, bloqueada: Boolean(dir?.disabled || dir?.readOnly), marcada, relacionados, avisos };
         })
         .catch(() => null);
       const extra = visto
-        ? ` En el formulario: dirección «${String(visto.direccion ?? "").slice(0, 120)}»` +
+        ? ` En el formulario: dirección «${String(visto.direccion ?? "").slice(0, 120)}»${visto.bloqueada ? " (bloqueada por Dropi)" : ""}` +
           `, transportadora marcada: ${visto.marcada.length ? visto.marcada.join(", ") : "ninguna"}` +
           `, campos de oficina: ${visto.relacionados.length ? visto.relacionados.join(", ") : "ninguno"}` +
           (visto.avisos.length ? `, avisos: ${visto.avisos.join(" | ").slice(0, 200)}` : "") +
@@ -1113,6 +1113,8 @@ export function crearDropiNavegador(config = {}) {
       return {
         ok: false,
         oficinas: [],
+        sinSelector: true,
+        direccion: visto?.direccion ?? null,
         detalle: `Dropi no mostró el selector de oficinas de Interrapidísimo (la dirección debe decir «Oficina Interrapidísimo»).${extra}`,
       };
     }
@@ -1903,7 +1905,30 @@ export function crearDropiNavegador(config = {}) {
           await seleccionarTransportadora(p, selCarrier.id, ciudadDropi).catch(() => null);
           await p.waitForTimeout(1500);
         }
-        const rOf = await elegirOficinaInter(p, { objetivo: oficinaObjetivo });
+        let rOf = await elegirOficinaInter(p, { objetivo: oficinaObjetivo });
+        // Plan B: Dropi dejo la direccion VACIA y bloqueada al marcar Inter,
+        // asi que no carga las oficinas. Se marca otra transportadora (Dropi
+        // desbloquea el campo), se reescribe y se vuelve a marcar Inter.
+        if (!rOf.ok && !rOf.oficinas?.length && rOf.sinSelector && !String(rOf.direccion ?? "").trim()) {
+          const otra = await p
+            .evaluate((actual) => {
+              const ids = [...document.querySelectorAll('[data-cy^="order-create-carrier-option-"]')].map((el) =>
+                Number(el.getAttribute("data-cy").replace("order-create-carrier-option-", "")),
+              );
+              return ids.find((x) => Number.isInteger(x) && x > 0 && x !== actual) ?? null;
+            }, selCarrier.id)
+            .catch(() => null);
+          if (otra) {
+            console.log("[dropi] Inter dejó la dirección vacía y bloqueada: se marca otra transportadora, se reescribe y se vuelve a Inter");
+            await seleccionarTransportadora(p, otra, ciudadDropi).catch(() => null);
+            await p.waitForTimeout(1200);
+            await asegurarDireccion(p, direccionEscrita);
+            await seleccionarTransportadora(p, selCarrier.id, ciudadDropi).catch(() => null);
+            await p.waitForTimeout(1500);
+            const r2 = await elegirOficinaInter(p, { objetivo: oficinaObjetivo });
+            rOf = r2.ok ? r2 : { ...r2, detalle: `${r2.detalle} (se intentó reescribir la dirección cambiando de transportadora)` };
+          }
+        }
         if (!rOf.ok) {
           return { ok: false, creado: false, oficinaHumano: true, oficinas: rOf.oficinas, envio, detalle: rOf.detalle };
         }
