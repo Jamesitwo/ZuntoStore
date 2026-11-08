@@ -1081,7 +1081,7 @@ export function SubidaDropi() {
                   ) : null}
                 </div>
                 <p className="campo-ayuda">
-                  A esa hora revisa todos los pedidos pendientes. Si hay muchos (más de 200) o alguno falla y toca reintentar, da hasta{" "}
+                  A esa hora revisa todos los pedidos pendientes. Si hay muchos (más de 700) o alguno falla y toca reintentar, da hasta{" "}
                   {form.horario.vueltas} vueltas seguidas, con 1,5 minutos entre una y otra. El resto del día no sube nada solo; el botón
                   «Probar ahora» sigue funcionando.
                 </p>

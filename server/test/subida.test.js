@@ -1356,8 +1356,8 @@ test("marca manual en un pedido frenado: pasa a esperar su fecha", async () => {
   fs.rmSync(ruta, { force: true });
 });
 
-test("cada vuelta mira hasta 200 pedidos por tienda (2 paginas de 100)", async () => {
-  const todos = Array.from({ length: 250 }, (_, i) => ({ id: i + 1, EstadoPedido: 5, completo: { ...COMPLETO, id: i + 1 } }));
+test("cada vuelta mira hasta 700 pedidos por tienda (7 paginas de 100)", async () => {
+  const todos = Array.from({ length: 750 }, (_, i) => ({ id: i + 1, EstadoPedido: 5, completo: { ...COMPLETO, id: i + 1 } }));
   const paginas = [];
   const cliente = {
     async listarPedidos({ page, itemsPerPage }) {
@@ -1371,7 +1371,7 @@ test("cada vuelta mira hasta 200 pedidos por tienda (2 paginas de 100)", async (
   const { s, ruta } = armar({ cliente });
   s.configurar({ automatico: true, dryRun: true, estados: [0] });
   await s.tick({ forzar: true });
-  assert.deepEqual(paginas, [1, 2]);
+  assert.deepEqual(paginas, [1, 2, 3, 4, 5, 6, 7]);
   s.detener();
   fs.rmSync(ruta, { force: true });
 });

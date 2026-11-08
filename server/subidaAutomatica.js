@@ -121,7 +121,7 @@ export async function variantesParaDropi(cliente, resumen) {
 }
 
 /** Pedidos mas recientes que mira cada vuelta, por tienda (en paginas de 100). */
-const MAX_PEDIDOS_VUELTA = 200;
+const MAX_PEDIDOS_VUELTA = 700;
 const POR_PAGINA = 100;
 /** Dias hacia atras en que otro pedido del mismo telefono cuenta como posible repetido. */
 const DIAS_DUPLICADO = 7;
@@ -899,7 +899,7 @@ export function crearSubidaAutomatica({
       // unica por vuelta (dos vueltas en el mismo milisegundo no se juntan)
       const claveVuelta = `${new Date().toISOString()}#${++numeroVuelta}`;
       vueltaTiendas: for (const idEmpresa of tiendas) {
-        // los mas recientes de la tienda, en paginas de 100 (hasta 200)
+        // los mas recientes de la tienda, en paginas de 100 (hasta 700)
         const pedidos = [];
         const vistos = new Set();
         for (let pagina = 1; pagina * POR_PAGINA <= MAX_PEDIDOS_VUELTA; pagina++) {
@@ -1584,7 +1584,7 @@ export function crearSubidaAutomatica({
   }
 
   /**
-   * Ronda de la hora programada: una vuelta y, si hizo algo (hay mas de 200
+   * Ronda de la hora programada: una vuelta y, si hizo algo (hay mas de 700
    * pedidos o reintentos pendientes), otras seguidas hasta `vueltas`.
    */
   async function ronda() {
