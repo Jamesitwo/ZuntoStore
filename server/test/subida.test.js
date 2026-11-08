@@ -1799,3 +1799,40 @@ test("dirección inválida sin respuesta del cliente: al vencer el plazo queda i
   assert.match(s.estadoPedido(1).detalle, /no respondió con una dirección válida en 1 h/);
   fs.rmSync(ruta, { force: true });
 });
+
+test("dirección inválida: si el cliente responde que prefiere la oficina de Interrapidísimo, se corrige a oficina", async () => {
+  const pedido = { id: 1, EstadoPedido: 0, completo: { ...COMPLETO, Direccion: "casa verde al lado de la panaderia pedro" } };
+  const actualizados = [];
+  const cliente = {
+    ...clienteFalso([pedido]),
+    async actualizarPedido(body) {
+      actualizados.push(body);
+      pedido.completo = { ...pedido.completo, Direccion: body.Direccion };
+      return { ok: true };
+    },
+  };
+  let extraido = {
+    producto: "Taladro Inalambrico 68V", cantidad: 1, precioAcordado: 105690,
+    direccion: "casa verde al lado de la panaderia pedro", clienteConfirmo: true, entregaFutura: false, incertidumbre: [],
+  };
+  const lucidBotContactos = {
+    async notificar() { return { ok: true }; },
+    async obtenerConversacion() { return { ok: true, configurado: true, mensajes: [{ de: "cliente", texto: "hola" }] }; },
+    async enviarTexto() { return { ok: true }; },
+  };
+  const { s, ruta, subidos } = armar({ cliente, lucidBotContactos, get extraido() { return extraido; } });
+  s.configurar({ automatico: true, dryRun: false, corregirDireccion: { activo: true, esperarMin: 5 } });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.equal(s.estadoPedido(1).accion, "esperando-direccion");
+  // el cliente: "mejor a la oficina de interrapidisimo"
+  atrasarPedido(ruta, 1, 10 * 60_000);
+  extraido = { ...extraido, direccion: "Oficina Interrapidisimo" };
+  await s.tick({ forzar: true });
+  assert.equal(actualizados[0].Direccion, "Oficina Interrapidisimo", "la dirección quedó como oficina en LucidSales");
+  // con la opción de oficinas de Inter apagada, la sube una persona eligiendo la oficina
+  assert.equal(s.estadoPedido(1).accion, "requiere-humano");
+  assert.match(s.estadoPedido(1).detalle, /corrigió la dirección.*oficina de Inter Rapidísimo/);
+  assert.equal(subidos.length, 0);
+  fs.rmSync(ruta, { force: true });
+});

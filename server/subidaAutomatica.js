@@ -390,9 +390,9 @@ export function asignarFallidosDe(c) {
 
 /** Mensaje por defecto para pedirle al cliente que corrija la direccion. */
 export const MENSAJE_CORREGIR_DIRECCION =
-  "Hola {nombre} 👋 Para despachar tu pedido necesitamos confirmar la dirección. La que tenemos es: «{direccion}», y así la transportadora no la puede ubicar.\n\n" +
-  "¿Nos la escribes completa, por favor? Por ejemplo: *Calle 10 # 5-20, Barrio Centro* (tipo de vía, número # número-número y barrio).\n\n" +
-  "Si te queda más fácil, también te lo podemos enviar a una *oficina de Interrapidísimo* cerca de ti y lo recoges allá 📦";
+  "Hola {nombre} 👋 La dirección que nos diste («{direccion}») no es válida para la transportadora.\n\n" +
+  "¿Nos puedes dar otra dirección completa? Por ejemplo: *Calle 10 # 5-20, Barrio Centro* (tipo de vía, número # número-número y barrio).\n\n" +
+  "O, si prefieres, te lo enviamos a una *oficina de Interrapidísimo* cerca de ti y lo recoges allá 📦";
 
 /** Configuracion de "pedir que corrija la direccion" (con valores por defecto). */
 export function corregirDireccionDe(c) {

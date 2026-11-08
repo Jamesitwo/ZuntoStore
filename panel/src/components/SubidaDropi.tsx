@@ -35,7 +35,7 @@ const MAX_SEGUNDOS = 12 * 3600;
 /** Resultados que se pueden reintentar desde el panel. */
 /** Mensaje de Zunto para pedir la direccion (el servidor usa el mismo). */
 const MENSAJE_CORREGIR_DEFECTO =
-  "Hola {nombre} 👋 Para despachar tu pedido necesitamos confirmar la dirección. La que tenemos es: «{direccion}», y así la transportadora no la puede ubicar.\n\n¿Nos la escribes completa, por favor? Por ejemplo: *Calle 10 # 5-20, Barrio Centro* (tipo de vía, número # número-número y barrio).\n\nSi te queda más fácil, también te lo podemos enviar a una *oficina de Interrapidísimo* cerca de ti y lo recoges allá 📦";
+  "Hola {nombre} 👋 La dirección que nos diste («{direccion}») no es válida para la transportadora.\n\n¿Nos puedes dar otra dirección completa? Por ejemplo: *Calle 10 # 5-20, Barrio Centro* (tipo de vía, número # número-número y barrio).\n\nO, si prefieres, te lo enviamos a una *oficina de Interrapidísimo* cerca de ti y lo recoges allá 📦";
 
 /** Motivos por los que el bot no sube un pedido y se le puede asignar a alguien. */
 const MOTIVOS_ASIGNABLES: Array<[string, string]> = [
