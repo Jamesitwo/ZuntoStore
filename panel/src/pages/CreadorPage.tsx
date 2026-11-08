@@ -245,6 +245,7 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
   const [videos, setVideos] = useState(3);
   const [conPersonaje, setConPersonaje] = useState(Boolean(ajustes.fotoModelo));
   const [creatividad, setCreatividad] = useState<Creatividad>("equilibrada");
+  const [textosVideo, setTextosVideo] = useState(false);
   const [presupuesto, setPresupuesto] = useState(String(ajustes.presupuesto));
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -397,6 +398,7 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
         videos,
         conPersonaje,
         creatividad,
+        textosVideo,
         presupuesto: Number(presupuesto),
         notas: form.notas,
       });
@@ -535,6 +537,15 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
       <label className="check-linea">
         <input type="checkbox" checked={conPersonaje} disabled={!ajustes.fotoModelo} onChange={(e) => setConPersonaje(e.target.checked)} />
         Videos con la modelo {ajustes.fotoModelo ? "" : "(sube su foto en Ajustes)"}
+      </label>
+      <label className="check-linea">
+        <input type="checkbox" checked={textosVideo} onChange={(e) => setTextosVideo(e.target.checked)} />
+        Textos en pantalla en los videos
+        <span className="muted small">
+          {textosVideo
+            ? " (la IA de video a veces deforma las letras: revisa cada video)"
+            : " · apagado: la voz dice marca y precio; el texto va en el copy"}
+        </span>
       </label>
       <div className="field">
         <label>Libertad creativa</label>
@@ -1192,6 +1203,7 @@ function DetalleProyecto({ id }: { id: string }) {
             <span className="muted small">
               {p.ia ? `Plan escrito por ${p.ia}` : ""}
               {p.creatividad ? ` · libertad ${CREATIVIDADES.find((n) => n.id === p.creatividad)?.nombre.toLowerCase() ?? ""}` : ""}
+              {p.textosVideo ? " · videos con texto" : " · videos sin texto"}
             </span>
             {!campanaHecha && !generando && !p.planeando ? (
               <button type="button" className="btn ghost sm" onClick={() => setConfirmar("replanear")}>
@@ -1543,7 +1555,7 @@ function DetalleProyecto({ id }: { id: string }) {
               onClick={() => {
                 setConfirmar(null);
                 void accion("plan", async () => {
-                  await creador.editar(id, { creatividad: p.creatividad ?? "equilibrada", notas: p.notas });
+                  await creador.editar(id, { creatividad: p.creatividad ?? "equilibrada", textosVideo: p.textosVideo === true, notas: p.notas });
                   return creador.planear(id);
                 });
               }}
@@ -1572,6 +1584,10 @@ function DetalleProyecto({ id }: { id: string }) {
             </button>
           ))}
         </div>
+        <label className="check-linea">
+          <input type="checkbox" checked={p.textosVideo === true} onChange={(e) => setP({ ...p, textosVideo: e.target.checked })} />
+          Textos en pantalla en los videos
+        </label>
         <Campo id="rp-notas" label="Indicaciones (opcional)">
           <textarea id="rp-notas" rows={2} value={p.notas ?? ""} onChange={(e) => setP({ ...p, notas: e.target.value })} placeholder="Ej.: más humor, algo navideño, sin modelo" />
         </Campo>

@@ -313,3 +313,16 @@ test("el proyecto guarda el id de Dropi y se puede enlazar al producto de LucidS
   assert.equal(c.editar(p.id, { productoId: 4321 }).producto.id, "4321");
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("videos sin texto en pantalla por defecto; con la opción, con textos", async () => {
+  const { promptSistema } = await import("../creadorCampanas.js");
+  const sin = promptSistema({ marca: "ZUNTO" });
+  assert.match(sin, /VIDEOS SIN TEXTO EN PANTALLA/);
+  assert.match(sin, /sin texto en pantalla, sin subtítulos, sin letreros ni letras de ningún tipo/);
+  assert.doesNotMatch(sin, /TEXTOS EN PANTALLA con el segundo exacto/);
+  // las imagenes siguen llevando sus textos
+  assert.match(sin, /Textos sobre la imagen/);
+  const con = promptSistema({ marca: "ZUNTO", textosVideo: true });
+  assert.doesNotMatch(con, /VIDEOS SIN TEXTO EN PANTALLA/);
+  assert.match(con, /TEXTOS EN PANTALLA con el segundo exacto/);
+});

@@ -56,7 +56,9 @@ export const CREATIVIDAD = {
  * Instrucciones de la IA: unas REGLAS FIJAS (marca, precio, WhatsApp,
  * fidelidad del producto, Meta) y LIBERTAD CREATIVA para todo lo demas.
  */
-export function promptSistema({ marca = "ZUNTO", contraEntrega = false, creatividad = "equilibrada" } = {}) {
+export function promptSistema({ marca = "ZUNTO", contraEntrega = false, creatividad = "equilibrada", textosVideo = false } = {}) {
+  // los modelos de video deforman las letras: por defecto, videos sin texto
+  const sinTextoVideo = !textosVideo;
   return `Eres el director creativo de ${marca}, una tienda online colombiana que vende por Meta Ads con destino WhatsApp.
 Actúas como un diseñador y estratega creativo de verdad: piensas en quién compra, por qué lo compra y qué lo haría detenerse a mirar en el feed. Escribes en español colombiano. Devuelves SOLO un JSON.
 
@@ -70,7 +72,12 @@ Actúas como un diseñador y estratega creativo de verdad: piensas en quién com
 7. Seguridad cuando aplique: herramientas con las dos manos, guarda puesta, gafas y guantes.
 8. Referencias de fotos: en prompts de IMAGEN las fotos son Image1, Image2…; en prompts de VIDEO son <<<Image1>>>, <<<Image2>>>…
 9. Voz de los videos: español colombiano con acento de Bogotá, cálido y seguro; nada de acento paisa, costeño, argentino, mexicano o de España; trato de "tú" (nunca voseo); números siempre en palabras ("ciento noventa y nueve mil novecientos"). Las marcas extranjeras se pronuncian como se dicen en Colombia (DeWalt = "DiWolt") pero se escriben bien en pantalla.
-10. Videos de 12 s en 9:16 (gancho en los primeros 2–3 s, cierre con precio + WhatsApp + ${marca}); imágenes en 4:5.
+10. Videos de 12 s en 9:16 (gancho en los primeros 2–3 s, cierre con precio + WhatsApp + ${marca}); imágenes en 4:5.${
+    sinTextoVideo
+      ? `
+11. VIDEOS SIN TEXTO EN PANTALLA (las IA de video deforman las letras): en los prompts de VIDEO no pidas ningún texto escrito: ni titulares, subtítulos, precios, letreros, stickers con letras, logos escritos, burbujas de chat con texto ni la marca bordada. ${marca}, el precio y el llamado a WhatsApp se DICEN en la voz; lo escrito va en el copy del anuncio. Escribe siempre en el prompt de video: "sin texto en pantalla, sin subtítulos, sin letreros ni letras de ningún tipo". En este caso la regla 1 aplica solo a las imágenes.`
+      : ""
+  }
 
 ══════ LIBERTAD CREATIVA ══════
 Antes de escribir, analiza el producto: categoría, quién lo compra en Colombia (y quién lo regala), qué problema resuelve, qué deseo despierta, dónde se usa, si es de temporada, qué objeciones tiene el comprador (¿funciona?, ¿es frágil?, ¿llega bien?). Con eso define un CONCEPTO de campaña y elige, para ESTE producto, los formatos y estilos que mejor lo venden. No hay plantilla fija.
@@ -81,14 +88,18 @@ Repertorio para inspirarte (no es obligatorio usarlo, inventa otros):
 • Ángulos: problema → solución, antes/después del espacio u objeto, comparación con lo que usan hoy, "lo que nadie te cuenta", regalo perfecto, ahorro de tiempo/dinero, prueba de resistencia, un día con el producto, error común, curiosidad, lista "3 razones", urgencia real de temporada, estatus/orgullo de tenerlo, humor cotidiano colombiano.
 • Estilos de imagen: foto editorial de revista, flat lay cenital ordenado, macro de detalles y texturas, lifestyle en un lugar real colombiano (obra, taller, cocina de apartamento en Bogotá, finca, carro, oficina), split-screen comparativo, collage tipo historia de Instagram, captura de chat de WhatsApp, estilo póster minimalista con mucho aire, fondo de color sólido vibrante, bodegón con luz dramática, infografía limpia con llamadas, kit desplegado "todo esto por…", render 3D tipo producto premium, estilo "meme" respetuoso, nota adhesiva / escrito a mano.
 • Formatos de video: UGC a cámara, POV ("POV: por fin…"), ASMR / satisfactorio, tutorial de 3 pasos, prueba o reto, comparación lado a lado, mini historia con giro, unboxing, reacción, transformación del espacio, cámara lenta de detalles, "3 cosas que hace", cliente que escribe por WhatsApp.
-• Personaje (cuando hay foto de modelo): úsalo solo donde sume; descríbelo como "la misma persona de <<<ImageN>>>: mismo rostro, ojos, sonrisa, tono de piel y cabello" y viste acorde al producto y siempre de cuello cerrado (herramientas: polo negra con "${marca}" bordado en amarillo, gafas y guantes; hogar/temporada: ropa casual o navideña; belleza/moda: sobria). No uses la ropa de la foto de referencia.
+• Personaje (cuando hay foto de modelo): úsalo solo donde sume; descríbelo como "la misma persona de <<<ImageN>>>: mismo rostro, ojos, sonrisa, tono de piel y cabello" y viste acorde al producto y siempre de cuello cerrado (herramientas: polo negra${sinTextoVideo ? " lisa en los videos (con \"" + marca + "\" bordado en amarillo solo en las imágenes)" : ` con "${marca}" bordado en amarillo`}, gafas y guantes; hogar/temporada: ropa casual o navideña; belleza/moda: sobria). No uses la ropa de la foto de referencia.
 
 Nivel de riesgo creativo pedido: ${CREATIVIDAD[creatividad] ?? CREATIVIDAD.equilibrada}
 
 ══════ CÓMO ESCRIBIR CADA PROMPT ══════
 Imagen: Estilo → Escena/locación → Producto (bloque de fidelidad, regla 5) → Composición (dónde va el producto, jerarquía, espacio para textos) → Textos sobre la imagen (exactos, entre comillas, cortos y legibles: titular, apoyo, precio, ${marca}, WhatsApp) → Look (luz, paleta, tipografía, acabado fotográfico realista).
 Largo: cada prompt entre 120 y 250 palabras (detallado en el producto, sin relleno); cada copy de máximo 110 palabras.
-Video: CONCEPTO → ESCENA → GUION con tiempos (0–3 s gancho, desarrollo, últimos 3 s precio + WhatsApp + ${marca}) → TEXTOS EN PANTALLA con el segundo exacto → AUDIO (voz, música, sonidos) → reglas de cámara (una acción por plano, movimientos suaves, el producto sin giros bruscos).
+${
+    sinTextoVideo
+      ? `Video: CONCEPTO → ESCENA → GUION con tiempos (0–3 s gancho, desarrollo, últimos 3 s la voz dice precio + WhatsApp + ${marca}) → SIN TEXTOS (la frase de la regla 11) → AUDIO (voz, música, sonidos) → reglas de cámara (una acción por plano, movimientos suaves, el producto sin giros bruscos).`
+      : `Video: CONCEPTO → ESCENA → GUION con tiempos (0–3 s gancho, desarrollo, últimos 3 s precio + WhatsApp + ${marca}) → TEXTOS EN PANTALLA con el segundo exacto (pocos, cortos y grandes) → AUDIO (voz, música, sonidos) → reglas de cámara (una acción por plano, movimientos suaves, el producto sin giros bruscos).`
+  }
 
 ══════ COPY (uno por creativo) ══════
 Debe continuar la idea de su creativo (mismo gancho y tono). Varía la estructura entre creativos: pregunta, historia corta, lista, dato curioso, diálogo… Siempre termina con precio, envío gratis y la invitación a escribir por WhatsApp. "titulo" máximo 40 caracteres. "descripcion" corta.
@@ -962,6 +973,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
           },
           notas: txt(datos.notas, 1000),
           creatividad: CREATIVIDAD[datos.creatividad] ? datos.creatividad : "equilibrada",
+          textosVideo: datos.textosVideo === true,
           presupuesto: Number(datos.presupuesto) > 0 ? Math.round(Number(datos.presupuesto)) : Number(a.presupuesto) || PRESUPUESTO_DEFECTO,
           meta: { cuentaId: datos.cuentaId || a.cuentaId || "", paginaId: datos.paginaId || a.paginaId || "" },
           creativos: [],
@@ -994,7 +1006,12 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
         void (async () => {
           try {
             const conPersonaje = p.conPersonaje && Boolean(a.fotoModelo);
-            const sistema = promptSistema({ marca: a.marca || "ZUNTO", contraEntrega: Boolean(a.contraEntrega), creatividad: p.creatividad });
+            const sistema = promptSistema({
+              marca: a.marca || "ZUNTO",
+              contraEntrega: Boolean(a.contraEntrega),
+              creatividad: p.creatividad,
+              textosVideo: p.textosVideo === true,
+            });
             const usuarioIA = promptUsuario(p, { conPersonaje, recientes: estilosRecientes() });
             const crudo = conClaude
               ? await pedirPlanClaude({
@@ -1052,6 +1069,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
           }
         }
         if (CREATIVIDAD[cambios.creatividad]) p.creatividad = cambios.creatividad;
+        if (typeof cambios.textosVideo === "boolean") p.textosVideo = cambios.textosVideo;
         if (typeof cambios.notas === "string") p.notas = txt(cambios.notas, 1000);
         if (typeof cambios.bienvenida === "string") p.bienvenida = txt(cambios.bienvenida, 1500);
         if (typeof cambios.mensajePredefinido === "string") p.mensajePredefinido = txt(cambios.mensajePredefinido, 300);

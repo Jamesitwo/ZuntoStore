@@ -58,6 +58,8 @@ export interface Proyecto {
   cantidades: { imagenes: number; videos: number };
   notas: string;
   creatividad?: Creatividad;
+  /** textos en pantalla en los videos (por defecto no: la IA de video deforma las letras) */
+  textosVideo?: boolean;
   /** la gran idea de la campaña */
   concepto?: string;
   presupuesto: number;
