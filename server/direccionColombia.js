@@ -34,7 +34,7 @@ const TIPOS = [
   [/^(avenida\s+carrera|av\.?\s*(cra|carrera|kr|kra)|ak)\b/, "Av. Carrera"],
   [/^(avenida\s+calle|av\.?\s*(cl|cll|calle)|ac)\b/, "Av. Calle"],
   // tambien como lo escriben los clientes: "Krra", "Karrera", "Carera"...
-  [/^(carrera|cra|kra|kr|cr|carr|crr|car|krra|krr|crra|karrera|karera|carera|carreara|carrrera)\b/, "Cra"],
+  [/^(carrera|cra|kra|kr|cr|carr|crr|car|krra|krr|crra|karrera|karera|carera|carreara|carrrera|krera|kerera|kerrera|crera|carrea|carrra|karrea)\b/, "Cra"],
   [/^(calle|cll|cl|call|clle|cale|kalle|kll)\b/, "Calle"],
   [/^(diagonal|diag|dg|dgl|diagnal)\b/, "Diagonal"],
   [/^(transversal|transv|trans|tv|tr|tranv|tranversal|trv)\b/, "Transversal"],
@@ -88,7 +88,7 @@ function capitalizarResto(r) {
 }
 
 // Palabras de tipo de via (las mismas de TIPOS) para reconocer dos vias seguidas
-const TIPO_PALABRA = String.raw`(?:avenida\s+carrera|avenida\s+calle|carrera|cra|kra|kr|cr|carr|crr|car|krra|krr|crra|karrera|karera|carera|carreara|carrrera|calle|cll|cl|call|clle|cale|kalle|kll|diagonal|diag|dg|dgl|diagnal|transversal|transv|trans|tv|tr|tranv|tranversal|trv|circular|circ|cq|cir|avenida|av|ak|ac)`;
+const TIPO_PALABRA = String.raw`(?:avenida\s+carrera|avenida\s+calle|carrera|cra|kra|kr|cr|carr|crr|car|krra|krr|crra|karrera|karera|carera|carreara|carrrera|krera|kerera|kerrera|crera|carrea|carrra|karrea|calle|cll|cl|call|clle|cale|kalle|kll|diagonal|diag|dg|dgl|diagnal|transversal|transv|trans|tv|tr|tranv|tranversal|trv|circular|circ|cq|cir|avenida|av|ak|ac)`;
 // numero de via simple: 12, 12A, 12 A, 12 Bis, 12A Bis B, 12 Sur
 const NUM_SIMPLE = String.raw`\d{1,3}(?:\s?[a-z](?![a-z]))?(?:\s?bis)?(?:\s?[a-z](?![a-z]))?(?:\s+(?:sur|este)\b)?`;
 

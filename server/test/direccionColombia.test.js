@@ -292,3 +292,9 @@ test("vía con nombre, cruce escrito con su tipo y la placa como «casa»", () =
   // sigue sin aceptar referencias
   assert.equal(validarDireccion("frente a la cra 5 # 3-2").ok, false);
 });
+
+test("«Krera», «Kerrera», «Crera»… también son Carrera", () => {
+  for (const t of ["Krera", "Kerrera", "Kerera", "Crera", "Carrea"]) {
+    assert.equal(validarDireccion(`${t} 27 A # 20-52, Mirador del Norte`).normalizada, "Cra 27A # 20-52, Mirador del Norte", t);
+  }
+});
