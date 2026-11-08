@@ -147,6 +147,20 @@ const normalizarUbicacion = (t) =>
  * ciudad. Cada grupo son equivalentes; el primero de la lista es el que mas
  * usa Dropi y se prueba a escribir si el nombre completo no aparece.
  */
+/**
+ * ¿Dropi rechazo la orden por la transportadora elegida? ("La ciudad no tiene
+ * habilitado el método de envío: CON RECAUDO - UBALA-...-COORDINADORA-...")
+ */
+export function rechazaTransportadora(mensaje) {
+  const t = String(mensaje ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return /no tiene habilitad[oa] el (metodo|medoto) de envio|con recaudo|no tiene cobertura|sin cobertura|transportadora no (disponible|habilitada)/.test(t);
+}
+
+function motivoCorto(mensaje) {
+  const m = String(mensaje ?? "");
+  return /con recaudo/i.test(m) ? "sin contraentrega en esa ciudad" : m.replace(/\s+/g, " ").slice(0, 120);
+}
+
 /** Ventanas flotantes (chat de Intercom) que pueden tapar botones de Dropi. */
 export const SELECTOR_ESTORBOS =
   '#intercom-container, .intercom-lightweight-app, .intercom-app, iframe[name^="intercom"], iframe[data-intercom-frame]';
@@ -1557,7 +1571,32 @@ export function crearDropiNavegador(config = {}) {
       };
     },
 
+    /**
+     * Una orden. Si al crear Dropi rechaza la transportadora (p. ej. en esa
+     * ciudad no hace contraentrega: "no tiene habilitado el método de envío:
+     * CON RECAUDO"), se vuelve a armar con la siguiente de la lista. Dropi no
+     * creo nada, asi que repetir es seguro.
+     */
     async subirUna(datos = {}) {
+      const excluir = [...(Array.isArray(datos.excluirTransportadoras) ? datos.excluirTransportadoras : [])];
+      const rechazos = [];
+      for (let i = 0; i < 5; i++) {
+        const r = await this.subirUnaVez({ ...datos, excluirTransportadoras: excluir });
+        if (!r?.transportadoraRechazada) {
+          if (rechazos.length && r && typeof r === "object") {
+            const nota = `Dropi rechazó antes ${rechazos.map((x) => x.nombre).join(", ")} (${rechazos[0].motivo})`;
+            return { ...r, rechazadas: rechazos, detalle: r.ok ? `${r.detalle ?? ""}; ${nota}` : `${r.detalle ?? ""}. ${nota}` };
+          }
+          return r;
+        }
+        rechazos.push({ id: r.transportadoraRechazada, nombre: r.envio?.transportadora ?? `transportadora ${r.transportadoraRechazada}`, motivo: r.motivoRechazo });
+        excluir.push(r.transportadoraRechazada);
+        console.log(`[dropi] ${rechazos.at(-1).nombre} rechazada por Dropi al crear (${r.motivoRechazo}); se prueba con la siguiente`);
+      }
+      return { ok: false, creado: false, sinTransportadora: true, rechazadas: rechazos, detalle: "Dropi rechazó todas las transportadoras al crear la orden" };
+    },
+
+    async subirUnaVez(datos = {}) {
       if (subidaEnCurso) {
         return { ok: false, creado: false, ocupado: true, detalle: "Ya hay otra subida a Dropi en curso en este servidor; espera su resultado antes de reintentar." };
       }
@@ -1579,6 +1618,20 @@ export function crearDropiNavegador(config = {}) {
       )
         .map(Number)
         .filter((x, i, a) => Number.isInteger(x) && x > 0 && a.indexOf(x) === i);
+      // las que Dropi ya rechazo al crear (contraentrega no habilitada, etc.)
+      const excluidas = new Set((datos.excluirTransportadoras ?? []).map(Number));
+      if (excluidas.size) {
+        const quedan = candidatas.filter((x) => !excluidas.has(x));
+        if (!quedan.length) {
+          return {
+            ok: false,
+            creado: false,
+            sinTransportadora: true,
+            detalle: `En ${datos.ciudad ?? "esa ciudad"} Dropi no aceptó ninguna de tus transportadoras para este pedido (no habilitan el envío con recaudo); lo revisa una persona.`,
+          };
+        }
+        candidatas.splice(0, candidatas.length, ...quedan);
+      }
       const maxEnvio = Number(datos.maxEnvio) > 0 ? Number(datos.maxEnvio) : null;
       // ganancia minima: con ella, un envio sobre el tope se acepta si la
       // ganancia que muestra Dropi no baja de este valor
@@ -1980,11 +2033,15 @@ export function crearDropiNavegador(config = {}) {
         resultado = null;
       }
       if (!respuesta.ok() || resultado?.isSuccess !== true) {
+        const motivo = String(resultado?.message ?? resultado?.msg ?? `Dropi respondió HTTP ${respuesta.status()} sin confirmar la creación.`);
         return {
           ok: false,
           creado: false,
           seguro: seguroActivado,
-          detalle: String(resultado?.message ?? resultado?.msg ?? `Dropi respondió HTTP ${respuesta.status()} sin confirmar la creación.`),
+          envio,
+          // la transportadora no sirve en esa ciudad (p. ej. sin contraentrega): se prueba otra
+          ...(rechazaTransportadora(motivo) ? { transportadoraRechazada: envio.id, motivoRechazo: motivoCorto(motivo) } : {}),
+          detalle: motivo,
           url: p.url(),
         };
       }

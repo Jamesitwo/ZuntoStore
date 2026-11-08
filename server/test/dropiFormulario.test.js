@@ -555,6 +555,26 @@ test("Calima - El Darien en Dropi es Darien (calima)", () => {
   assert.equal(coincideUbicacion("Cali", v, "Valle"), false);
 });
 
+test("si Dropi rechaza la transportadora al crear (sin contraentrega), se prueba con la siguiente", async () => {
+  const { crearDropiNavegador, rechazaTransportadora } = await import("../dropiNavegador.js");
+  const MSG = '3. La ciudad no tiene habilitado el médoto de envío: CON RECAUDO - UBALA-CUNDINAMARCA-COORDINADORA-["SIN RECAUDO"]-';
+  assert.equal(rechazaTransportadora(MSG), true);
+  assert.equal(rechazaTransportadora("El teléfono no es válido"), false);
+  const n = crearDropiNavegador({});
+  const vistas = [];
+  n.subirUnaVez = async (d) => {
+    vistas.push(d.excluirTransportadoras.slice());
+    const quedan = d.transportadoras.filter((x) => !d.excluirTransportadoras.includes(x));
+    if (quedan[0] === 3) return { ok: false, creado: false, transportadoraRechazada: 3, motivoRechazo: "sin contraentrega en esa ciudad", envio: { id: 3, transportadora: "Coordinadora" }, detalle: MSG };
+    return { ok: true, creado: true, idDropi: 999, envio: { id: quedan[0], transportadora: "Interrapidísimo" }, detalle: "Orden confirmada por Dropi" };
+  };
+  const r = await n.subirUna({ transportadoras: [3, 4], ciudad: "Ubalá" });
+  assert.equal(r.creado, true);
+  assert.equal(r.envio.transportadora, "Interrapidísimo");
+  assert.deepEqual(vistas, [[], [3]]);
+  assert.match(r.detalle, /rechazó antes Coordinadora \(sin contraentrega en esa ciudad\)/);
+});
+
 test("Puerto Leguizamo en Dropi es Leguizamo", () => {
   const v = variantesUbicacion("Puerto Leguízamo");
   assert.ok(v.includes("leguizamo"));
