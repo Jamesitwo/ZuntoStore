@@ -2482,7 +2482,15 @@ export function crearManejador({
           const cuerpo = await leerCuerpo(req);
           if (!accion) return responder(() => ({ proyecto: c.editar(id, cuerpo ?? {}) }));
           if (accion === "planear") return responder(() => ({ proyecto: c.planear(id) }));
-          if (accion === "creativos") return responder(() => ({ proyecto: c.agregarCreativo(id, cuerpo?.tipo) }));
+          if (accion === "creativos") {
+            // con idear: la IA escribe el prompt y el copy (de uno nuevo o de uno existente: cid)
+            if (cuerpo?.idear) {
+              return responder(() => ({
+                proyecto: c.idearCreativo(id, { cid: cuerpo?.cid ?? null, tipo: cuerpo?.tipo, indicacion: cuerpo?.indicacion ?? "" }),
+              }));
+            }
+            return responder(() => ({ proyecto: c.agregarCreativo(id, cuerpo?.tipo) }));
+          }
           if (accion === "generar") return responder(async () => ({ proyecto: await c.generar(id, { ids: cuerpo?.ids ?? null }) }));
           if (accion === "campana") return responder(() => ({ proyecto: c.crearCampana(id) }));
           if (accion === "activar") {

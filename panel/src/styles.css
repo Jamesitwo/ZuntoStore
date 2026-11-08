@@ -5627,3 +5627,4 @@ tr.fila-marcada > td { background: color-mix(in srgb, var(--primary, #7c3aed) 9%
 /* sesion de Dropi desde el celular */
 .sesion-celular { margin: 4px 0 10px; }
 .sesion-celular > summary { cursor: pointer; color: var(--primary, #7c3aed); font-weight: 600; }
+.creador-error-idea { display: block; margin-top: 6px; color: var(--danger, #dc2626); font-size: 12px; }

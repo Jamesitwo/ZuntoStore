@@ -1046,6 +1046,100 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
         return p;
       },
 
+      /**
+       * La IA escribe UN creativo (prompt + copy) con el concepto de la
+       * campaña y distinto de los que ya hay. Sobre uno existente (cid) o uno
+       * nuevo del tipo pedido. En segundo plano: el panel consulta el proyecto.
+       */
+      idearCreativo(id, { cid = null, tipo = "imagen", indicacion = "" } = {}) {
+        const clave = `${slug}/${id}`;
+        if (ocupados.has(clave)) throw new Error("Este proyecto ya está trabajando: espera un momento");
+        const a = leerAjustes(slug);
+        const conClaude = iaDe(a) === "claude";
+        if (conClaude && !a.claudeKey) throw new Error("Falta la API key de Claude (Creador IA > Ajustes)");
+        if (!conClaude && !llm?.apiKey) throw new Error("No hay API key de la IA (Ajustes > Subida a Dropi > IA que lee los chats)");
+        let p = proyecto(id);
+        if (!cid) {
+          p = this.agregarCreativo(id, tipo);
+          cid = p.creativos.at(-1).id;
+        }
+        const c = p.creativos.find((x) => x.id === cid);
+        if (!c) throw new Error("Ese creativo no existe");
+        if (c.estado === "generando") throw new Error("Ese creativo se está generando en TopView: espera a que termine");
+        c.ideando = ahora();
+        delete c.errorIdea;
+        guardarP(slug, p);
+        ocupados.add(clave);
+        const pista = txt(indicacion, 500);
+        void (async () => {
+          try {
+            const conPersonaje = p.conPersonaje && Boolean(a.fotoModelo);
+            const sistema = promptSistema({
+              marca: a.marca || "ZUNTO",
+              contraEntrega: Boolean(a.contraEntrega),
+              creatividad: p.creatividad,
+              textosVideo: p.textosVideo === true,
+            });
+            const otros = p.creativos
+              .filter((x) => x.id !== cid && (x.prompt || x.angulo))
+              .map((x) => `- ${x.tipo}: ${x.angulo}${x.estilo ? ` (${x.estilo})` : ""}`);
+            const usuarioIA = [
+              promptUsuario(p, { conPersonaje, recientes: [] }).replace(/\nGenera \d+ creativos de imagen y \d+ de video, en ese orden\.$/, ""),
+              p.concepto ? `Concepto de la campaña (síguelo): ${p.concepto}` : "",
+              otros.length ? `Creativos que ya tiene la campaña (el nuevo debe ser distinto en idea, gancho y estilo):\n${otros.join("\n")}` : "",
+              pista ? `Para este creativo el usuario pide: ${pista}` : "",
+              `Escribe SOLO 1 creativo nuevo de ${c.tipo === "video" ? "VIDEO" : "IMAGEN"} con su copy. Responde solo con {"creativos":[{...}]} (sin ficha, bienvenida ni lo demás).`,
+            ]
+              .filter(Boolean)
+              .join("\n");
+            const crudo = conClaude
+              ? await pedirPlanClaude({
+                  apiKey: a.claudeKey,
+                  modelo: a.claudeModelo,
+                  fetcher,
+                  sistema,
+                  usuario: usuarioIA,
+                  fotos: [...p.fotos, ...(conPersonaje ? [a.fotoModelo] : [])],
+                })
+              : await pedirPlanIA({ ...llm, fetcher, sistema, usuario: usuarioIA });
+            const lista = Array.isArray(crudo?.creativos) ? crudo.creativos : [];
+            const nuevo =
+              lista.find((x) => String(x?.tipo ?? "").toLowerCase().startsWith(c.tipo === "video" ? "vid" : "imag")) ?? lista[0];
+            if (!nuevo?.prompt) throw new Error("La IA no devolvió el creativo");
+            const fresco = proyecto(id);
+            const x = fresco.creativos.find((y) => y.id === cid);
+            if (x) {
+              Object.assign(x, {
+                angulo: txt(nuevo.angulo, 80) || x.angulo,
+                estilo: txt(nuevo.estilo, 80),
+                porque: txt(nuevo.porque, 240),
+                prompt: txt(nuevo.prompt, 7000),
+                copy: {
+                  texto: txt(nuevo.copy?.texto, 2000),
+                  titulo: txt(nuevo.copy?.titulo, 40),
+                  descripcion: txt(nuevo.copy?.descripcion, 120),
+                },
+              });
+              if (x.estado === "fallo") x.estado = "borrador";
+              delete x.ideando;
+              guardarP(slug, fresco);
+            }
+          } catch (e) {
+            const fresco = leerP(slug, id);
+            const x = fresco?.creativos?.find((y) => y.id === cid);
+            if (x) {
+              delete x.ideando;
+              x.errorIdea = e?.message ?? String(e);
+              guardarP(slug, fresco);
+            }
+            log.warn?.("[creador] idear creativo:", e?.message ?? e);
+          } finally {
+            ocupados.delete(clave);
+          }
+        })();
+        return proyecto(id);
+      },
+
       /** Cambios del usuario: prompts, copys, incluir, ficha, presupuesto... */
       editar(id, cambios = {}) {
         const p = proyecto(id);

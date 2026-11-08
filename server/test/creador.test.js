@@ -326,3 +326,42 @@ test("videos sin texto en pantalla por defecto; con la opción, con textos", asy
   assert.doesNotMatch(con, /VIDEOS SIN TEXTO EN PANTALLA/);
   assert.match(con, /TEXTOS EN PANTALLA con el segundo exacto/);
 });
+
+test("+ Imagen con IA: la IA escribe un creativo nuevo distinto de los que ya hay", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "creador-"));
+  const pedidos = [];
+  const fetcher = async (url, op = {}) => {
+    const body = JSON.parse(op.body);
+    pedidos.push(body);
+    const texto = body.messages[0].content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+    const respuesta = /Escribe SOLO 1 creativo/.test(texto)
+      ? { creativos: [{ tipo: "imagen", angulo: "Regalo perfecto", estilo: "Bodegón navideño", porque: "temporada", prompt: "Foto de regalo con Image1…", copy: { texto: "¿Buscas regalo?", titulo: "El regalo ideal", descripcion: "Envío gratis" } }] }
+      : PLAN;
+    return { ok: true, status: 200, json: async () => ({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(respuesta) }] }) };
+  };
+  const creador = crearCreadorCampanas({ baseDir: dir, credencialMeta: () => null, fetcher, log: { warn() {} } });
+  const c = creador.para("ana@zunto.co", { llm: null });
+  c.guardarAjustes({ claudeKey: "sk-ant-123456789012" });
+  const p = c.crear({ producto: { nombre: "Taladro", precio: 199900 }, fotos: ["https://fotos.test/1.jpg"], imagenes: 1, videos: 1 });
+  c.planear(p.id);
+  await espera(() => c.get(p.id).estado === "plan");
+
+  // nuevo creativo de imagen escrito por la IA
+  const r = c.idearCreativo(p.id, { tipo: "imagen", indicacion: "algo navideño" });
+  const nuevo = r.creativos.at(-1);
+  assert.equal(nuevo.id, "img2");
+  assert.ok(nuevo.ideando, "queda marcado mientras la IA escribe");
+  await espera(() => !c.get(p.id).creativos.find((x) => x.id === "img2").ideando);
+  const listo = c.get(p.id).creativos.find((x) => x.id === "img2");
+  assert.equal(listo.angulo, "Regalo perfecto");
+  assert.match(listo.prompt, /Image1/);
+  assert.equal(listo.copy.titulo, "El regalo ideal");
+  // la IA recibió el concepto, los creativos que ya había y la indicación
+  const pedido = pedidos.at(-1).messages[0].content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+  assert.match(pedido, /Creativos que ya tiene la campaña/);
+  assert.match(pedido, /algo navideño/);
+  assert.match(pedido, /SOLO 1 creativo nuevo de IMAGEN/);
+  assert.doesNotMatch(pedido, /Genera 1 creativos de imagen/);
+  // los demás creativos no se tocan
+  assert.equal(c.get(p.id).creativos.length, 3);
+});

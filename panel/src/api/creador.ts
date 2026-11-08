@@ -18,6 +18,9 @@ export interface Creativo {
   estado: EstadoCreativo;
   error?: string;
   tarea?: { tipo: string; taskId: string; desde: string };
+  /** la IA esta escribiendo su prompt y copy */
+  ideando?: string;
+  errorIdea?: string;
   resultado?: { url: string; portada?: string | null; creditos?: number | null; listo?: string };
 }
 
@@ -160,6 +163,9 @@ export const creador = {
   planear: (id: string) => backend<{ ok: boolean; proyecto: Proyecto }>(`${P}/proyectos/${id}/planear`, { method: "POST", body: {} }),
   agregarCreativo: (id: string, tipo: "imagen" | "video") =>
     backend<{ ok: boolean; proyecto: Proyecto }>(`${P}/proyectos/${id}/creativos`, { method: "POST", body: { tipo } }),
+  /** La IA escribe un creativo: uno nuevo del tipo pedido, o uno existente (cid). */
+  idearCreativo: (id: string, d: { tipo?: "imagen" | "video"; cid?: string; indicacion?: string }) =>
+    backend<{ ok: boolean; proyecto: Proyecto }>(`${P}/proyectos/${id}/creativos`, { method: "POST", body: { idear: true, ...d } }),
   generar: (id: string, ids?: string[]) =>
     backend<{ ok: boolean; proyecto: Proyecto }>(`${P}/proyectos/${id}/generar`, { method: "POST", body: ids ? { ids } : {} }),
   crearCampana: (id: string) =>

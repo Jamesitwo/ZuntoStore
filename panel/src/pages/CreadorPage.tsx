@@ -978,6 +978,8 @@ function DetalleProyecto({ id }: { id: string }) {
   const [confirmar, setConfirmar] = useState<null | "generar" | "campana" | "activar" | "borrar" | "replanear">(null);
   const [creditos, setCreditos] = useState<number | null>(null);
   const [editando, setEditando] = useState<Creativo | null>(null);
+  // creativo que la IA va a escribir: nuevo (tipo) o uno existente (cid)
+  const [idear, setIdear] = useState<{ tipo: "imagen" | "video"; cid?: string; nombre?: string; indicacion: string } | null>(null);
   const [descargando, setDescargando] = useState<string | null>(null);
   const { session } = useAuth();
   const preguntar = useConfirmar();
@@ -1099,7 +1101,10 @@ function DetalleProyecto({ id }: { id: string }) {
 
   // mientras algo corre en el servidor, se consulta cada 4 s
   const corriendo = Boolean(
-    p && (p.planeando || p.campana?.estado === "creando" || p.creativos.some((c) => c.estado === "generando")),
+    p &&
+    (p.planeando ||
+      p.campana?.estado === "creando" ||
+      p.creativos.some((c) => c.estado === "generando" || c.ideando)),
   );
   useEffect(() => {
     if (!corriendo) return;
@@ -1262,6 +1267,7 @@ function DetalleProyecto({ id }: { id: string }) {
                 onGuardar={(cambio) => guardarCreativo(c.id, cambio)}
                 onPrompt={() => setEditando(c)}
                 onRegenerar={() => void accion("generar", () => creador.generar(id, [c.id]), "Enviado a TopView")}
+                onIdear={() => setIdear({ tipo: c.tipo, cid: c.id, nombre: c.angulo, indicacion: "" })}
                 onCopiar={copiar}
                 descargando={descargando === c.id}
                 onDescargar={() => void descargar(`/api/creador/proyectos/${id}/descargar?c=${encodeURIComponent(c.id)}`, c.id)}
@@ -1269,15 +1275,64 @@ function DetalleProyecto({ id }: { id: string }) {
             ))}
           </div>
           {!campanaHecha ? (
-            <div className="row gap">
+            <div className="row gap wrap">
+              <button type="button" className="btn sm" disabled={Boolean(trabajando)} onClick={() => setIdear({ tipo: "imagen", indicacion: "" })}>
+                ✨ Imagen con IA
+              </button>
+              <button type="button" className="btn sm" disabled={Boolean(trabajando)} onClick={() => setIdear({ tipo: "video", indicacion: "" })}>
+                ✨ Video con IA
+              </button>
               <button type="button" className="btn ghost sm" onClick={() => void accion("agregar", () => creador.agregarCreativo(id, "imagen"))}>
-                + Imagen
+                + Imagen vacía
               </button>
               <button type="button" className="btn ghost sm" onClick={() => void accion("agregar", () => creador.agregarCreativo(id, "video"))}>
-                + Video
+                + Video vacío
               </button>
             </div>
           ) : null}
+          <Modal
+            open={Boolean(idear)}
+            title={idear?.cid ? `Reescribir «${idear.nombre ?? ""}» con IA` : `Nuevo ${idear?.tipo === "video" ? "video" : "imagen"} con IA`}
+            onClose={() => setIdear(null)}
+            footer={
+              <>
+                <button type="button" className="btn ghost" onClick={() => setIdear(null)}>
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={() => {
+                    const d = idear;
+                    setIdear(null);
+                    if (d) {
+                      void accion(
+                        "idear",
+                        () => creador.idearCreativo(id, { tipo: d.tipo, cid: d.cid, indicacion: d.indicacion }),
+                        "La IA está escribiendo el creativo",
+                      );
+                    }
+                  }}
+                >
+                  ✨ Escribir con IA
+                </button>
+              </>
+            }
+          >
+            <p>
+              La IA escribe el prompt y el copy siguiendo el concepto de la campaña y distinto de los creativos que ya tienes
+              {idear?.cid ? " (reemplaza el prompt y el copy de este creativo)" : ""}. Tarda menos de un minuto.
+            </p>
+            <Campo id="idear-indicacion" label="¿Qué quieres en este creativo? (opcional)">
+              <textarea
+                id="idear-indicacion"
+                rows={3}
+                value={idear?.indicacion ?? ""}
+                onChange={(e) => setIdear((x) => (x ? { ...x, indicacion: e.target.value } : x))}
+                placeholder="Ej.: algo navideño, en una obra, con humor, mostrando el maletín abierto"
+              />
+            </Campo>
+          </Modal>
         </section>
       ) : null}
 
@@ -1673,10 +1728,12 @@ function TarjetaCreativo({
   onGuardar,
   onPrompt,
   onRegenerar,
+  onIdear,
   onCopiar,
   onDescargar,
   descargando,
 }: {
+  onIdear: () => void;
   onDescargar: () => void;
   descargando: boolean;
   c: Creativo;
@@ -1701,12 +1758,17 @@ function TarjetaCreativo({
           )
         ) : (
           <div className={`creador-medio-estado ${c.estado}`}>
-            {c.estado === "generando" ? (
+            {c.ideando ? (
+              <Spinner label="La IA está escribiendo el prompt y el copy…" />
+            ) : c.estado === "generando" ? (
               <Spinner label={c.tipo === "video" ? "Generando video (3–5 min)…" : "Generando imagen…"} />
             ) : c.estado === "fallo" ? (
               <span>⚠ {c.error ?? "Falló"}</span>
             ) : (
-              <span>{c.tipo === "video" ? "🎬 Video 9:16" : "🖼 Imagen 4:5"} sin generar</span>
+              <span>
+                {c.tipo === "video" ? "🎬 Video 9:16" : "🖼 Imagen 4:5"} {c.prompt ? "sin generar" : "sin prompt"}
+                {c.errorIdea ? <span className="creador-error-idea">⚠ La IA no pudo escribirlo: {c.errorIdea}</span> : null}
+              </span>
             )}
           </div>
         )}
@@ -1736,7 +1798,12 @@ function TarjetaCreativo({
         <button type="button" className="btn ghost sm" onClick={onPrompt}>
           Prompt
         </button>
-        {!bloqueado && c.estado !== "generando" && c.prompt ? (
+        {!bloqueado && c.estado !== "generando" && !c.ideando ? (
+          <button type="button" className="btn ghost sm" onClick={onIdear} title="La IA escribe el prompt y el copy">
+            ✨ {c.prompt ? "Reescribir con IA" : "Escribir con IA"}
+          </button>
+        ) : null}
+        {!bloqueado && c.estado !== "generando" && !c.ideando && c.prompt ? (
           <button type="button" className="btn ghost sm" onClick={onRegenerar}>
             {c.estado === "listo" ? "Regenerar" : c.estado === "fallo" ? "Reintentar" : "Generar"}
           </button>
