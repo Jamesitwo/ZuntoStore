@@ -188,6 +188,43 @@ export function crearLucidBotContactos({ ruta, fetcher = fetch, timeoutMs = 1200
     return { ok: true };
   }
 
+  /**
+   * Manda un texto al cliente del pedido por Lucid Bot
+   * (POST /contacts/{id}/send/text). Lo usa la subida para pedirle que
+   * corrija la direccion.
+   */
+  async function enviarTexto({ pedido, chatUrl, texto } = {}) {
+    const c = leer();
+    if (!c.token) return { ok: false, detalle: "Falta X-ACCESS-TOKEN de Lucid Bot" };
+    const t = String(texto ?? "").trim();
+    if (!t) return { ok: false, detalle: "mensaje vacío" };
+    const fuente = pedido && typeof pedido === "object" ? pedido : {};
+    const phone = normalizarTelefono(fuente.Movil ?? fuente.phone ?? fuente.telefono);
+    const contactId =
+      idContactoDesdeEnlace(chatUrl ?? fuente.chatUrl ?? fuente.chat_url ?? fuente.inboxUrl ?? fuente.linkChat) || phone.replace(/\D/g, "");
+    if (!contactId) return { ok: false, detalle: "No se pudo identificar el contacto desde el enlace del chat ni el teléfono" };
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
+    try {
+      const r = await fetcher(`https://panel.lucidbot.co/api/contacts/${encodeURIComponent(contactId)}/send/text`, {
+        method: "POST",
+        signal: ctl.signal,
+        headers: { accept: "application/json", "content-type": "application/json", "X-ACCESS-TOKEN": c.token },
+        body: JSON.stringify({ text: t.slice(0, 4000) }),
+      });
+      const body = await r.json().catch(() => null);
+      if (!r.ok || body?.success === false || body?.isSuccess === false) {
+        const razon = textoSeguro(body?.message ?? body?.msg ?? body?.detail, 200);
+        return { ok: false, detalle: `Lucid Bot no envió el mensaje (HTTP ${r.status}${razon ? `: ${razon}` : ""})` };
+      }
+      return { ok: true, contactId };
+    } catch (e) {
+      return { ok: false, detalle: `no se pudo enviar el mensaje: ${e?.name === "AbortError" ? "timeout" : e?.message ?? e}` };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async function obtenerConversacion({ pedido, chatUrl, origen = "panel" } = {}) {
     const c = leer();
     if (!c.conversationFieldId) return { ok: false, configurado: false, detalle: "No hay un ID configurado para el campo de conversación" };
@@ -415,5 +452,5 @@ export function crearLucidBotContactos({ ruta, fetcher = fetch, timeoutMs = 1200
     }
   }
 
-  return { estado, configurar, notificar, obtenerConversacion, pedidoActivo, guardarIdPedido };
+  return { estado, configurar, notificar, obtenerConversacion, enviarTexto, pedidoActivo, guardarIdPedido };
 }

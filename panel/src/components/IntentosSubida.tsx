@@ -38,6 +38,7 @@ const RESULTADO: Record<string, { texto: string; tono: "ok" | "warn" | "mal" }> 
   frenado: { texto: "Frenado", tono: "warn" },
   "requiere-revision": { texto: "En revisión (agotó intentos)", tono: "mal" },
   "direccion-invalida": { texto: "Dirección no válida", tono: "mal" },
+  "esperando-direccion": { texto: "Esperando que el cliente corrija la dirección", tono: "warn" },
   "resultado-incierto": { texto: "Incierto: revisar Dropi", tono: "mal" },
   "requiere-humano": { texto: "Lo sube una persona", tono: "warn" },
   "envio-caro": { texto: "Envío muy caro", tono: "warn" },

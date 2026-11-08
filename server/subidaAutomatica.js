@@ -18,7 +18,7 @@ import path from "node:path";
 import { ErrorApi } from "./errores.js";
 import { ejecutarAgente, parsearPrecio, resumenDePedido, textoVariantes } from "./agente.js";
 import { varianteDeProducto } from "./variantes.js";
-import { cambiarEstado } from "./estado.js";
+import { cambiarEstado, construirBody } from "./estado.js";
 import { direccionConReferencias, recogeEnOficina, validarDireccion } from "./direccionColombia.js";
 import { oficinaQueCoincide } from "./oficinasInter.js";
 import { DIRECCION_OFICINA_INTER } from "./dropiNavegador.js";
@@ -50,7 +50,7 @@ const FINALES = new Set([
   "resuelto-a-mano",
 ]);
 /** Resultados en revision que se dan por resueltos si una persona mueve el pedido. */
-const RESOLUBLES = new Set(["requiere-revision", "direccion-invalida", "envio-caro", "sin-transportadora", "posible-duplicado", "entrega-programada"]);
+const RESOLUBLES = new Set(["esperando-direccion", "requiere-revision", "direccion-invalida", "envio-caro", "sin-transportadora", "posible-duplicado", "entrega-programada"]);
 /**
  * Lo que tarda un envio normal (dias). Una fecha pedida dentro de ese margen
  * no es entrega futura; una mas lejana se programa y se sube cuando faltan
@@ -388,6 +388,54 @@ export function asignarFallidosDe(c) {
   return { activo: a.activo === true, motivos, soloEnTurno: a.soloEnTurno === true };
 }
 
+/** Mensaje por defecto para pedirle al cliente que corrija la direccion. */
+export const MENSAJE_CORREGIR_DIRECCION =
+  "Hola {nombre} 👋 Para despachar tu pedido necesitamos confirmar la dirección. La que tenemos es: «{direccion}», y así la transportadora no la puede ubicar.\n\n" +
+  "¿Nos la escribes completa, por favor? Por ejemplo: *Calle 10 # 5-20, Barrio Centro* (tipo de vía, número # número-número y barrio).\n\n" +
+  "Si te queda más fácil, también te lo podemos enviar a una *oficina de Interrapidísimo* cerca de ti y lo recoges allá 📦";
+
+/** Configuracion de "pedir que corrija la direccion" (con valores por defecto). */
+export function corregirDireccionDe(c) {
+  const a = c?.corregirDireccion ?? {};
+  const n = (v, d, min, max) => Math.max(min, Math.min(max, Number.isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : d));
+  return {
+    activo: a.activo === true,
+    mensaje: String(a.mensaje ?? "").trim() || MENSAJE_CORREGIR_DIRECCION,
+    // cuanto esperar antes de volver a leer el chat
+    esperarMin: Math.round(n(a.esperarMin, 30, 5, 720)),
+    // si no corrige en este plazo, queda como direccion invalida
+    maxHoras: Math.round(n(a.maxHoras, 24, 1, 168)),
+  };
+}
+
+/** El mensaje con los datos del pedido ({nombre}, {direccion}, {ciudad}, {producto}). */
+export function mensajeCorregirDireccion(plantilla, { nombre = "", direccion = "", ciudad = "", producto = "" } = {}) {
+  const primer = String(nombre ?? "").trim().split(/\s+/)[0] ?? "";
+  return String(plantilla ?? MENSAJE_CORREGIR_DIRECCION)
+    .replace(/\{nombre\}/g, primer)
+    .replace(/\{direccion\}/g, String(direccion ?? "").trim() || "(sin dirección)")
+    .replace(/\{ciudad\}/g, String(ciudad ?? "").trim())
+    .replace(/\{producto\}/g, String(producto ?? "").trim())
+    .replace(/Hola\s+👋/, "Hola 👋");
+}
+
+/**
+ * La direccion que el cliente dio en el chat despues de pedirsela: vale si es
+ * distinta de la del pedido y es valida (o es una oficina de transportadora).
+ * Devuelve la direccion lista (normalizada) o null.
+ */
+export function direccionCorregidaDelChat(delChat, delPedido, referencias = "") {
+  const nueva = String(delChat ?? "").replace(/\s+/g, " ").trim();
+  if (!nueva) return null;
+  const igual = (a, b) => String(a ?? "").toLowerCase().replace(/[^a-z0-9]/g, "") === String(b ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (igual(nueva, delPedido)) return null;
+  if (recogeEnOficina(nueva, "")) return nueva.slice(0, 200);
+  const v = validarDireccion(nueva, null, { referencias });
+  if (!v.ok) return null;
+  if (igual(v.normalizada, delPedido)) return null;
+  return v.normalizada;
+}
+
 /** Sesiones de subida que se guardan (las mas recientes). */
 const MAX_SESIONES = 20;
 
@@ -404,6 +452,7 @@ const NOMBRE_MOTIVO = {
   "requiere-captcha": "Dropi pidió captcha",
   "resultado-incierto": "Resultado incierto (verificar en Dropi)",
   "requiere-revision": "Revisión manual (intentos agotados)",
+  "esperando-direccion": "Esperando que el cliente corrija la dirección",
 };
 
 /** Texto de un motivo sin datos de un pedido (numeros, nombres entre comillas). */
@@ -592,6 +641,9 @@ export function crearSubidaAutomatica({
     maxIntentos: 2,
     // pedidos con mas de estos dias no se suben solos (0 = sin limite)
     maxDiasPedido: 5,
+    // direccion invalida: pedirle al cliente que la corrija por WhatsApp y
+    // volver a leer el chat despues (apagado por defecto)
+    corregirDireccion: { activo: false },
     // tienda de LucidSales (idEmpresa) -> nombre exacto de la tienda en Dropi
     tiendasDropi: {},
     procesados: {},
@@ -942,8 +994,9 @@ export function crearSubidaAutomatica({
           let dropiActual = null; // { id, ganancia, envio } cuando Dropi la muestra
           // lo que se va sabiendo de este intento (para el historial)
           const intento = { origen: "automatica", dryRun: c.dryRun === true };
-          const marcarP = (accion, det) => {
+          const marcarP = (accion, det, extra = {}) => {
             const e = marcar(c, id, accion, det, {
+              ...extra,
               tienda: Number(idEmpresa) || null,
               estadoPedido: Number.isInteger(Number(p?.EstadoPedido)) && p?.EstadoPedido !== undefined && p?.EstadoPedido !== null ? Number(p.EstadoPedido) : undefined,
               cliente: { ...contacto },
@@ -1041,6 +1094,15 @@ export function crearSubidaAutomatica({
           }
           if (FINALES.has(anterior?.accion)) continue;
           if (estados.length && !estados.includes(Number(p?.EstadoPedido))) continue;
+          // se le pidio al cliente corregir la direccion: se vuelve a leer el
+          // chat cuando pase el tiempo de espera
+          let esperandoDir = null;
+          if (anterior?.accion === "esperando-direccion") {
+            const confCD = corregirDireccionDe(c);
+            const desde = Date.parse(anterior.pidio ?? anterior.ts ?? "");
+            if (Number.isFinite(desde) && Date.now() - desde < confCD.esperarMin * 60_000) continue;
+            esperandoDir = anterior;
+          }
           // pedido viejo: no se sube solo (salvo una entrega programada, que
           // es vieja a proposito). Si se sube el limite, se vuelve a mirar.
           const maxDias = Number(c.maxDiasPedido ?? DEFECTO.maxDiasPedido) || 0;
@@ -1072,10 +1134,10 @@ export function crearSubidaAutomatica({
           // pedido (sin consultar el chat ni la IA) y quedan finales.
           //  - recoge en oficina de Inter Rapidisimo / Coordinadora
           //  - "Sin Recaudo" (prepago)
-          const oficina = recogeEnOficina(resumen?.direccion, resumen?.referencias);
+          let oficina = recogeEnOficina(resumen?.direccion, resumen?.referencias);
           // Inter con la opcion encendida sigue el flujo normal (y solo se
           // sube si Dropi ofrece UNA oficina); Coordinadora siempre a mano
-          const oficinaAuto = oficina === "Inter Rapidísimo" && c.oficinaInter === true;
+          let oficinaAuto = oficina === "Inter Rapidísimo" && c.oficinaInter === true;
           if (oficina && !oficinaAuto) {
             marcarP("requiere-humano", `recoge en oficina de ${oficina}: lo sube una persona eligiendo la oficina en Dropi`);
             detalle.push({ id, accion: "requiere-humano", detalle: `oficina de ${oficina}` });
@@ -1120,6 +1182,45 @@ export function crearSubidaAutomatica({
             continue;
           }
 
+          // direccion invalida: pedirle al cliente que la corrija (si esta
+          // activado) y esperar su respuesta. true = ya se manejo el pedido.
+          const pedirCorreccion = async (motivo) => {
+            const conf = corregirDireccionDe(c);
+            if (!conf.activo || c.dryRun || !lucidBotContactos?.enviarTexto) return false;
+            if (esperandoDir) {
+              const desde = Date.parse(esperandoDir.pidio ?? "");
+              if (Number.isFinite(desde) && Date.now() - desde < conf.maxHoras * 3600_000) {
+                marcarP("esperando-direccion", `esperando que el cliente corrija la dirección (se le pidió por WhatsApp); ${motivo}`, {
+                  pidio: esperandoDir.pidio,
+                  direccionAnterior: esperandoDir.direccionAnterior ?? resumen?.direccion ?? "",
+                });
+                detalle.push({ id, accion: "esperando-direccion" });
+                return true;
+              }
+              return false; // vencio: queda como direccion invalida
+            }
+            const texto = mensajeCorregirDireccion(conf.mensaje, {
+              nombre: resumen?.cliente,
+              direccion: resumen?.direccion,
+              ciudad: resumen?.ciudad,
+              producto: resumen?.productos?.[0]?.nombre,
+            });
+            const env = await lucidBotContactos.enviarTexto({ pedido: pedidoCompleto, chatUrl, texto }).catch((e) => ({ ok: false, detalle: e?.message ?? String(e) }));
+            if (!env.ok) {
+              log.warn?.(`[subida] no se pudo pedir la corrección de la dirección del pedido ${id}: ${env.detalle}`);
+              return false;
+            }
+            marcarP("esperando-direccion", `se le pidió al cliente corregir la dirección por WhatsApp; ${motivo}`, {
+              pidio: new Date().toISOString(),
+              direccionAnterior: resumen?.direccion ?? "",
+            });
+            log.log(`[subida] pedido ${id}: se le pidió al cliente corregir la dirección`);
+            detalle.push({ id, accion: "esperando-direccion" });
+            return true;
+          };
+          const vencioCorreccion = () =>
+            esperandoDir ? ` (se le pidió corregirla por WhatsApp y no respondió con una dirección válida en ${corregirDireccionDe(c).maxHoras} h)` : "";
+
           // la tienda de Dropi sale de la configuracion; sin ella no se sube
           // (se mira antes del agente para no gastar el LLM en balde)
           const tiendaDropi = tiendaDropiDe(c, resumen?.idEmpresa || idEmpresa);
@@ -1143,8 +1244,36 @@ export function crearSubidaAutomatica({
             ? []
             : otrosPedidosDelCliente(p, pedidos, { procesados: c.procesados });
           await completarNombres(cliente, resumen);
-          const r2 = await ejecutarAgente({ resumen, mensajes, extraer, oficina: oficinaAuto ? oficina : null, otrosPedidos, entregaProgramada, diasEntrega: confProg(c).diasAntes });
+          let r2 = await ejecutarAgente({ resumen, mensajes, extraer, oficina: oficinaAuto ? oficina : null, otrosPedidos, entregaProgramada, diasEntrega: confProg(c).diasAntes });
           analisisActual = resumirAnalisis(r2);
+          // se le habia pedido corregir la direccion: ¿respondio con una valida
+          // (o pidio oficina)? Se corrige el pedido en LucidSales y sigue.
+          let notaCorreccion = "";
+          if (esperandoDir && !r2.falloIA) {
+            const nueva = direccionCorregidaDelChat(r2?.extraido?.direccion, resumen?.direccion, resumen?.referencias);
+            if (nueva) {
+              try {
+                await cliente.actualizarPedido(construirBody({ ...pedidoCompleto, Direccion: nueva }), idEmpresa);
+              } catch (e) {
+                marcarP("error", `el cliente corrigió la dirección («${nueva}») pero LucidSales no la guardó: ${e?.message ?? e}`);
+                detalle.push({ id, accion: "error" });
+                continue;
+              }
+              notaCorreccion = `el cliente corrigió la dirección en el chat: «${resumen?.direccion ?? ""}» → «${nueva}»`;
+              log.log(`[subida] pedido ${id}: ${notaCorreccion}`);
+              pedidoCompleto = { ...pedidoCompleto, Direccion: nueva };
+              resumen.direccion = nueva;
+              oficina = recogeEnOficina(nueva, resumen?.referencias);
+              oficinaAuto = oficina === "Inter Rapidísimo" && c.oficinaInter === true;
+              if (oficina && !oficinaAuto) {
+                marcarP("requiere-humano", `${notaCorreccion}; recoge en oficina de ${oficina}: lo sube una persona eligiendo la oficina en Dropi`);
+                detalle.push({ id, accion: "requiere-humano", detalle: `oficina de ${oficina}` });
+                continue;
+              }
+              r2 = await ejecutarAgente({ resumen, mensajes, extraer, oficina: oficinaAuto ? oficina : null, otrosPedidos, entregaProgramada, diasEntrega: confProg(c).diasAntes });
+              analisisActual = resumirAnalisis(r2);
+            }
+          }
           // la IA no respondio (timeout, saldo, clave): error tecnico, no un
           // pedido frenado por su contenido
           if (r2.falloIA) {
@@ -1155,7 +1284,9 @@ export function crearSubidaAutomatica({
           // direccion que no es de nomenclatura colombiana: no se sube, queda
           // marcada (final) y se avisa al admin. Reintentar no la arregla sola.
           if (r2.direccionInvalida) {
-            const det = r2.problemas.map((x) => `${x.campo}: ${x.detalle}`).join("; ");
+            const det0 = r2.problemas.map((x) => `${x.campo}: ${x.detalle}`).join("; ");
+            if (await pedirCorreccion(det0)) continue;
+            const det = det0 + vencioCorreccion();
             marcarP("direccion-invalida", det);
             invalidas.push({ id, detalle: det, contacto: { ...contacto } });
             frenados++;
@@ -1251,7 +1382,8 @@ export function crearSubidaAutomatica({
               intento.direccion = ev.validacion ?? null;
               if (analisisActual) analisisActual.checks = [...(analisisActual.checks ?? []), ev.check];
               if (!ev.ok) {
-                marcarP("direccion-invalida", ev.check.detalle);
+                if (await pedirCorreccion(ev.check.detalle)) continue;
+                marcarP("direccion-invalida", ev.check.detalle + vencioCorreccion());
                 invalidas.push({ id, detalle: ev.check.detalle, contacto: { ...contacto } });
                 frenados++;
                 detalle.push({ id, accion: "direccion-invalida", calificacion: ev.calificacion });
@@ -1262,7 +1394,8 @@ export function crearSubidaAutomatica({
             // numero pegado: si el mapa no lo separo (o no se miro), no se sube
             if (r2.direccionEnvio?.numeroPegado && !validarDireccion(direccionEnvio).ok) {
               const det = `el número de la dirección viene pegado («${direccionEnvio}») y el mapa no confirmó cómo se separa: corrígela en el pedido (p. ej. «# 30-21»)`;
-              marcarP("direccion-invalida", det);
+              if (await pedirCorreccion(det)) continue;
+              marcarP("direccion-invalida", det + vencioCorreccion());
               invalidas.push({ id, detalle: det, contacto: { ...contacto } });
               frenados++;
               detalle.push({ id, accion: "direccion-invalida" });
@@ -1699,6 +1832,7 @@ export function crearSubidaAutomatica({
         procesados: Object.keys(procesados ?? {}).length,
         horario: horarioDe(c),
         asignarFallidos: asignarFallidosDe(c),
+        corregirDireccion: corregirDireccionDe(c),
         // para el temporizador del panel (no se guarda)
         reloj: {
           ahora: new Date().toISOString(),
@@ -1736,6 +1870,12 @@ export function crearSubidaAutomatica({
           maxPorcentaje: topePct(patch.envio.maxPorcentaje),
           gananciaMin: topePesos(patch.envio.gananciaMin),
         };
+      }
+      if ("corregirDireccion" in patch && patch.corregirDireccion && typeof patch.corregirDireccion === "object") {
+        const x = { ...corregirDireccionDe(c), ...patch.corregirDireccion };
+        const limpio = corregirDireccionDe({ corregirDireccion: x });
+        // se guarda el mensaje solo si es distinto del de por defecto
+        c.corregirDireccion = { ...limpio, mensaje: limpio.mensaje === MENSAJE_CORREGIR_DIRECCION ? "" : limpio.mensaje.slice(0, 1500) };
       }
       if ("asignarFallidos" in patch && patch.asignarFallidos && typeof patch.asignarFallidos === "object") {
         c.asignarFallidos = asignarFallidosDe({ asignarFallidos: { ...asignarFallidosDe(c), ...patch.asignarFallidos } });

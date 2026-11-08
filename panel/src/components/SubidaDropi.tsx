@@ -33,6 +33,10 @@ import { Campo, ErrorBanner, Spinner } from "./ui";
 const MAX_SEGUNDOS = 12 * 3600;
 
 /** Resultados que se pueden reintentar desde el panel. */
+/** Mensaje de Zunto para pedir la direccion (el servidor usa el mismo). */
+const MENSAJE_CORREGIR_DEFECTO =
+  "Hola {nombre} 👋 Para despachar tu pedido necesitamos confirmar la dirección. La que tenemos es: «{direccion}», y así la transportadora no la puede ubicar.\n\n¿Nos la escribes completa, por favor? Por ejemplo: *Calle 10 # 5-20, Barrio Centro* (tipo de vía, número # número-número y barrio).\n\nSi te queda más fácil, también te lo podemos enviar a una *oficina de Interrapidísimo* cerca de ti y lo recoges allá 📦";
+
 /** Motivos por los que el bot no sube un pedido y se le puede asignar a alguien. */
 const MOTIVOS_ASIGNABLES: Array<[string, string]> = [
   ["direccion-invalida", "Dirección inválida"],
@@ -85,6 +89,7 @@ function normalizaConfig(c: any): {
   maxIntentos: number;
   maxDiasPedido: number;
   asignarFallidos: { activo: boolean; motivos: string[]; soloEnTurno: boolean };
+  corregirDireccion: { activo: boolean; mensaje: string; esperarMin: number; maxHoras: number };
   tiendas: string[];
   estados: number[];
   tiendasDropi: Record<string, string>;
@@ -131,6 +136,12 @@ function normalizaConfig(c: any): {
       activo: c?.asignarFallidos?.activo === true,
       motivos: Array.isArray(c?.asignarFallidos?.motivos) ? c.asignarFallidos.motivos.map(String) : MOTIVOS_ASIGNABLES.map(([m]) => m),
       soloEnTurno: c?.asignarFallidos?.soloEnTurno === true,
+    },
+    corregirDireccion: {
+      activo: c?.corregirDireccion?.activo === true,
+      mensaje: String(c?.corregirDireccion?.mensaje ?? ""),
+      esperarMin: Number(c?.corregirDireccion?.esperarMin) || 30,
+      maxHoras: Number(c?.corregirDireccion?.maxHoras) || 24,
     },
     maxDiasPedido: Number.isFinite(Number(c?.maxDiasPedido)) ? Math.max(0, Math.min(365, Math.floor(Number(c.maxDiasPedido)))) : 5,
     tiendas: (Array.isArray(c?.tiendas) ? c.tiendas : []).map(String) as string[],
@@ -1193,6 +1204,71 @@ export function SubidaDropi() {
               />
             </Campo>
 
+          </div>
+
+          <div className="asignar-fallidos">
+            <label className="switch" htmlFor="sub-corregir-dir">
+              <input
+                id="sub-corregir-dir"
+                type="checkbox"
+                checked={form.corregirDireccion.activo}
+                onChange={(e) => setForm((f) => ({ ...f, corregirDireccion: { ...f.corregirDireccion, activo: e.target.checked } }))}
+              />
+              <span className="switch-pista" aria-hidden="true" />
+              <span className="switch-texto">
+                {form.corregirDireccion.activo
+                  ? "Si la dirección no sirve, el bot le pide al cliente que la corrija"
+                  : "Si la dirección no sirve, queda como dirección inválida"}
+              </span>
+            </label>
+            <p className="campo-ayuda">
+              Zunto le escribe al cliente por Lucid Bot, espera, vuelve a leer el chat y, si respondió con una dirección válida
+              (o pidió una oficina de Interrapidísimo), corrige el pedido en LucidSales y lo sube. Si no responde a tiempo, queda
+              como dirección inválida. En el modo «preparar sin crear» no se escribe a nadie.
+            </p>
+            {form.corregirDireccion.activo ? (
+              <>
+                <div className="row gap wrap">
+                  <Campo id="sub-corregir-espera" label="Volver a leer el chat a los (minutos)">
+                    <input
+                      id="sub-corregir-espera"
+                      type="number"
+                      min={5}
+                      max={720}
+                      value={form.corregirDireccion.esperarMin}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, corregirDireccion: { ...f.corregirDireccion, esperarMin: Number(e.target.value) || 30 } }))
+                      }
+                    />
+                  </Campo>
+                  <Campo id="sub-corregir-plazo" label="Plazo para que responda (horas)">
+                    <input
+                      id="sub-corregir-plazo"
+                      type="number"
+                      min={1}
+                      max={168}
+                      value={form.corregirDireccion.maxHoras}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, corregirDireccion: { ...f.corregirDireccion, maxHoras: Number(e.target.value) || 24 } }))
+                      }
+                    />
+                  </Campo>
+                </div>
+                <Campo
+                  id="sub-corregir-msg"
+                  label="Mensaje al cliente"
+                  ayuda="Puedes usar {nombre}, {direccion}, {ciudad} y {producto}. Vacío = el mensaje de Zunto."
+                >
+                  <textarea
+                    id="sub-corregir-msg"
+                    rows={6}
+                    value={form.corregirDireccion.mensaje}
+                    placeholder={MENSAJE_CORREGIR_DEFECTO}
+                    onChange={(e) => setForm((f) => ({ ...f, corregirDireccion: { ...f.corregirDireccion, mensaje: e.target.value } }))}
+                  />
+                </Campo>
+              </>
+            ) : null}
           </div>
 
           <div className="asignar-fallidos">

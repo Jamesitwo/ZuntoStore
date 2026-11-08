@@ -87,11 +87,31 @@ function capitalizarResto(r) {
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : "";
 }
 
+// Palabras de tipo de via (las mismas de TIPOS) para reconocer dos vias seguidas
+const TIPO_PALABRA = String.raw`(?:avenida\s+carrera|avenida\s+calle|carrera|cra|kra|kr|cr|carr|crr|car|krra|krr|crra|karrera|karera|carera|carreara|carrrera|calle|cll|cl|call|clle|cale|kalle|kll|diagonal|diag|dg|dgl|diagnal|transversal|transv|trans|tv|tr|tranv|tranversal|trv|circular|circ|cq|cir|avenida|av|ak|ac)`;
+// numero de via simple: 12, 12A, 12 A, 12 Bis, 12A Bis B, 12 Sur
+const NUM_SIMPLE = String.raw`\d{1,3}(?:\s?[a-z](?![a-z]))?(?:\s?bis)?(?:\s?[a-z](?![a-z]))?(?:\s+(?:sur|este)\b)?`;
+
+/**
+ * "Cra 12 calle 12-12" / "Cra 12 con calle 12 - 12" / "Cra 12 con Cl 12 # 12":
+ * la via que cruza escrita con su tipo en vez de "#". Se reescribe como
+ * "Cra 12 # 12-12". Los numeros no cambian.
+ */
+export function reescribirCruceConVia(direccion) {
+  const re = new RegExp(
+    String.raw`(^|[\s,])(` + TIPO_PALABRA + String.raw`)\.?\s*(` + NUM_SIMPLE + String.raw`)\s*(?:,\s*)?(?:(?:con|y|x|esquina|esq\.?)\s+)?` +
+      TIPO_PALABRA + String.raw`\.?\s*(?:#|no\.?|n[°º]|nro\.?|numero)?\s*(` + NUM_SIMPLE + String.raw`)\s*(?:[-–]|#|\bno\.?\s*|\s)\s*(\d{1,3})(?![\d])`,
+    "i",
+  );
+  return String(direccion ?? "").replace(re, (_m, pre, tipo, via, cruce, placa) => `${pre}${tipo} ${via.trim()} # ${cruce.trim()}-${placa}`);
+}
+
 /**
  * Reconoce la direccion con reglas fijas. Devuelve {tipoVia, via, cruce,
  * placa, resto, normalizada} o null si no tiene el formato.
  */
 export function parsearDireccion(direccion) {
+  direccion = reescribirCruceConVia(direccion);
   // La calle puede no estar al principio ("Etapa Tres, Calle KR 5 No. 19-105"):
   // se busca desde cada tipo de via y lo que va antes pasa al final (barrio,
   // etapa...). Con dos tipos seguidos que no forman uno compuesto ("Calle KR
@@ -123,7 +143,9 @@ function parsearDesdeElInicio(original) {
     // "número 50f34" = número 50F 34
     .replace(/((?:\bn[o°º]\.?|\bnro\.?|\bn[uú]mero|\bnum\.?)\s*\d{1,3}\s*[a-zA-Z])(\d{1,3})\b/i, "$1 $2")
     // punto en vez de guion entre cruce y placa: "# 23.47" = # 23-47
-    .replace(/((?:#|\bn[o°º]\.?|\bnro\.?|\bn[uú]mero|\bnum\.?)\s*\d{1,3}\s*[a-zA-Z]?)\s*\.\s*(\d{1,3})\b/i, "$1-$2");
+    .replace(/((?:#|\bn[o°º]\.?|\bnro\.?|\bn[uú]mero|\bnum\.?)\s*\d{1,3}\s*[a-zA-Z]?)\s*\.\s*(\d{1,3})\b/i, "$1-$2")
+    // la placa escrita como "casa": "Cra 12 # 21 casa 21" = Cra 12 # 21-21
+    .replace(/((?:#|\bn[o°º]\.?|\bnro\.?|\bn[uú]mero|\bnum\.?)\s*\d{1,3}\s*[a-zA-Z]?)\s+(?:casa|csa|cs)\.?\s*(?:n[o°º]\.?\s*)?(\d{1,3})\b(?!\s*[-–]\s*\d)/i, "$1-$2");
   const t = normalizarTextoDir(direccion)
     .replace(/\s*#\s*/g, " # ")
     // letra del cruce pegada a la placa: "# 82 C19" / "# 82c19" = cruce 82C, placa 19
@@ -136,7 +158,7 @@ function parsearDesdeElInicio(original) {
   if (!m) m = t.match(RE_DIR_SIN_NUMERAL);
   const soloEspacios = !m;
   if (!m) m = t.match(RE_DIR_ESPACIOS);
-  if (!m) return null;
+  if (!m) return viaConNombre(direccion);
   const tipoVia = tipoViaCanonico(m[1]);
   if (!tipoVia) return null;
   // el "tipo" no puede traer texto de mas ("frente a la cra" no es un tipo)
@@ -155,6 +177,38 @@ function parsearDesdeElInicio(original) {
   );
   const normalizada = `${tipoVia} ${via} # ${cruce}-${placa}${resto ? `, ${resto}` : ""}`;
   return { tipoVia, via, cruce, placa, resto, normalizada, sinGuion };
+}
+
+/**
+ * Via con NOMBRE en vez de numero: "Calle Colombia # 12-34", "Avenida Boyacá
+ * # 12-34". Exige "#" (o No.) y guion: el nombre son 1 a 4 palabras sin
+ * numeros y sin otro tipo de via.
+ */
+const RE_VIA_NOMBRE = new RegExp(
+  String.raw`^(` + TIPO_PALABRA + String.raw`)\.?\s+([a-zñ][a-zñ ]{1,40}?)\s*(?:#|\bno\.?|n[°º]|\bnro\.?|\bnumero\b)\s*(\d{1,3})\s*([a-z])?(?:\s*(bis))?\s*[-–]\s*(\d{1,3})(?:\s+(sur|este))?\b\s*[,.]?\s*(.*)$`,
+);
+function viaConNombre(original) {
+  const texto = String(original ?? "").replace(/\s+/g, " ").trim();
+  const t = normalizarTextoDir(texto);
+  const m = t.match(RE_VIA_NOMBRE);
+  if (!m) return null;
+  const tipoVia = tipoViaCanonico(m[1]);
+  const nombreBajo = m[2].trim();
+  if (!tipoVia || nombreBajo.split(" ").length > 4) return null;
+  if (new RegExp(String.raw`\b` + TIPO_PALABRA + String.raw`\b|\b(con|frente|lado|cerca|barrio|casa|apto|manzana)\b`).test(nombreBajo)) return null;
+  // el nombre con sus tildes y mayusculas del original (mismo largo en minusculas)
+  const desde = t.indexOf(nombreBajo, m[1].length);
+  const nombre = texto
+    .slice(desde, desde + nombreBajo.length)
+    .split(" ")
+    .map((w) => (w.length > 3 || /^(san|sur)$/i.test(w) ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w.toLowerCase()))
+    .join(" ");
+  const via = nombre.charAt(0).toUpperCase() + nombre.slice(1);
+  const cruce = armarNumero(m[3], m[4], m[5]);
+  const placa = String(m[6]) + (m[7] ? ` ${m[7][0].toUpperCase()}${m[7].slice(1)}` : "");
+  const resto = capitalizarResto(texto.slice(texto.length - m[8].length));
+  const normalizada = `${tipoVia} ${via} # ${cruce}-${placa}${resto ? `, ${resto}` : ""}`;
+  return { tipoVia, via, cruce, placa, resto, normalizada, sinGuion: false, viaNombre: true };
 }
 
 /**

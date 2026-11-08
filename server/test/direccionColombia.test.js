@@ -270,3 +270,25 @@ test("casa/lote dentro de un conjunto o urbanización (sin manzana)", () => {
   assert.equal(validarDireccion("casa 3 al lado de la tienda").ok, false);
   assert.equal(validarDireccion("Lote 4, Vereda El Hato").ok, false);
 });
+
+test("vía con nombre, cruce escrito con su tipo y la placa como «casa»", () => {
+  const casos = [
+    ["Calle Colombia #12-34", "Calle Colombia # 12-34"],
+    ["Avenida Boyacá # 12-34 Sur, Kennedy", "Avenida Boyacá # 12-34 Sur, Kennedy"],
+    ["Cra 12 calle 12-12", "Cra 12 # 12-12"],
+    ["cra 12 calle 12 - 12 barrio x", "Cra 12 # 12-12, Barrio x"],
+    ["Carrera 12 con calle 12 # 12", "Cra 12 # 12-12"],
+    ["Cra 12 con Cl 12 #12, Centro", "Cra 12 # 12-12, Centro"],
+    ["cra 12 #21 casa 21", "Cra 12 # 21-21"],
+    ["cra 12 # 21 casa 21, Barrio Centro", "Cra 12 # 21-21, Barrio Centro"],
+    // con placa, la casa es complemento
+    ["Cra 12 # 21-30 casa 21", "Cra 12 # 21-30, Casa 21"],
+  ];
+  for (const [d, esperada] of casos) {
+    const r = validarDireccion(d);
+    assert.equal(r.ok, true, `${d}: ${r.detalle}`);
+    assert.equal(r.normalizada, esperada, d);
+  }
+  // sigue sin aceptar referencias
+  assert.equal(validarDireccion("frente a la cra 5 # 3-2").ok, false);
+});

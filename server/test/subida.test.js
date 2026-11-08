@@ -1717,3 +1717,85 @@ test("asignar los que no se suben: el pedido frenado queda a cargo de una person
   fs.rmSync(ruta, { force: true });
   fs.rmSync(rutaAsig, { force: true });
 });
+
+/** Simula que paso el tiempo desde que se le pidio la direccion al cliente. */
+function atrasarPedido(ruta, id, ms) {
+  const c = JSON.parse(fs.readFileSync(ruta, "utf8"));
+  c.procesados[String(id)].pidio = new Date(Date.now() - ms).toISOString();
+  fs.writeFileSync(ruta, JSON.stringify(c));
+}
+
+test("dirección inválida: se le pide al cliente corregirla, se espera y con su respuesta se corrige y se sube", async () => {
+  const pedido = { id: 1, EstadoPedido: 0, completo: { ...COMPLETO, Direccion: "casa verde al lado de la panaderia pedro" } };
+  const enviados = [];
+  const actualizados = [];
+  const cliente = {
+    ...clienteFalso([pedido]),
+    async actualizarPedido(body) {
+      actualizados.push(body);
+      pedido.completo = { ...pedido.completo, Direccion: body.Direccion };
+      return { ok: true };
+    },
+  };
+  let extraido = {
+    producto: "Taladro Inalambrico 68V", cantidad: 1, precioAcordado: 105690,
+    direccion: "casa verde al lado de la panaderia pedro", clienteConfirmo: true, entregaFutura: false, incertidumbre: [],
+  };
+  const lucidBotContactos = {
+    async notificar() { return { ok: true }; },
+    async obtenerConversacion() { return { ok: true, configurado: true, mensajes: [{ de: "cliente", texto: "hola" }] }; },
+    async enviarTexto(a) { enviados.push(a); return { ok: true }; },
+  };
+  const { s, ruta, subidos } = armar({ cliente, lucidBotContactos, get extraido() { return extraido; } });
+  s.configurar({ automatico: true, dryRun: false, corregirDireccion: { activo: true, esperarMin: 5 } });
+  s.detener();
+
+  // 1) direccion invalida: se le escribe al cliente y queda esperando
+  await s.tick({ forzar: true });
+  assert.equal(enviados.length, 1);
+  assert.match(enviados[0].texto, /casa verde al lado de la panaderia pedro/);
+  assert.match(enviados[0].texto, /oficina de Interrapidísimo/);
+  assert.equal(s.estadoPedido(1).accion, "esperando-direccion");
+  assert.equal(subidos.length, 0);
+
+  // 2) antes del tiempo de espera no se vuelve a mirar ni se escribe otra vez
+  await s.tick({ forzar: true });
+  assert.equal(enviados.length, 1);
+  assert.equal(s.estadoPedido(1).accion, "esperando-direccion");
+
+  // 3) paso el tiempo y el cliente respondio con una direccion valida
+  atrasarPedido(ruta, 1, 10 * 60_000);
+  extraido = { ...extraido, direccion: "Carrera 92 # 78B-02, Barrio Centro" };
+  await s.tick({ forzar: true });
+  assert.equal(actualizados[0].Direccion, "Cra 92 # 78B-02, Barrio Centro", "se corrigió la dirección en LucidSales");
+  assert.equal(actualizados[0].EstadoPedido, 0, "sin tocar el estado al corregir");
+  assert.equal(subidos.length, 1, "y se subió");
+  assert.match(subidos[0].direccion, /Cra 92 # 78B-02/);
+  assert.equal(actualizados.at(-1).EstadoPedido, 2, "luego quedó Confirmado");
+  assert.equal(actualizados.at(-1).Direccion, "Cra 92 # 78B-02, Barrio Centro");
+  assert.equal(enviados.length, 1, "no se le volvió a escribir");
+  fs.rmSync(ruta, { force: true });
+});
+
+test("dirección inválida sin respuesta del cliente: al vencer el plazo queda inválida", async () => {
+  const pedido = { id: 1, EstadoPedido: 0, completo: { ...COMPLETO, Direccion: "casa verde al lado de la panaderia pedro" } };
+  const lucidBotContactos = {
+    async notificar() { return { ok: true }; },
+    async obtenerConversacion() { return { ok: true, configurado: true, mensajes: [{ de: "cliente", texto: "hola" }] }; },
+    async enviarTexto() { return { ok: true }; },
+  };
+  const { s, ruta } = armar({
+    pedidos: [pedido],
+    lucidBotContactos,
+    extraido: { producto: "Taladro Inalambrico 68V", cantidad: 1, precioAcordado: 105690, direccion: "casa verde al lado de la panaderia pedro", clienteConfirmo: true, entregaFutura: false, incertidumbre: [] },
+  });
+  s.configurar({ automatico: true, dryRun: false, corregirDireccion: { activo: true, esperarMin: 5, maxHoras: 1 } });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.equal(s.estadoPedido(1).accion, "esperando-direccion");
+  atrasarPedido(ruta, 1, 2 * 3600_000);
+  await s.tick({ forzar: true });
+  assert.equal(s.estadoPedido(1).accion, "direccion-invalida");
+  assert.match(s.estadoPedido(1).detalle, /no respondió con una dirección válida en 1 h/);
+  fs.rmSync(ruta, { force: true });
+});
