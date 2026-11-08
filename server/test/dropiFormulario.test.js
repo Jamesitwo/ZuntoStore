@@ -555,6 +555,12 @@ test("Calima - El Darien en Dropi es Darien (calima)", () => {
   assert.equal(coincideUbicacion("Cali", v, "Valle"), false);
 });
 
+test("Puerto Leguizamo en Dropi es Leguizamo", () => {
+  const v = variantesUbicacion("Puerto Leguízamo");
+  assert.ok(v.includes("leguizamo"));
+  assert.equal(coincideUbicacion("LEGUIZAMO", v, "Putumayo"), true);
+});
+
 test("Chibolo en Dropi es Chivolo", () => {
   const v = variantesUbicacion("Chibolo");
   assert.ok(v.includes("chivolo"));

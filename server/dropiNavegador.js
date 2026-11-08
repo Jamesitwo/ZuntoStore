@@ -178,6 +178,8 @@ const EQUIVALENTES_UBICACION = [
   ["inirida", "puerto inirida"],
   // Calima - El Darien (Valle): en Dropi es "Darien (calima)"
   ["darien calima", "darien", "calima el darien", "calima darien", "el darien", "calima"],
+  // Puerto Leguizamo (Putumayo): en Dropi es solo "Leguizamo"
+  ["leguizamo", "puerto leguizamo"],
   // Chivolo (Magdalena): se escribe con v en Dropi
   ["chivolo", "chibolo"],
   // Dosquebradas (Risaralda): en Dropi va junto
