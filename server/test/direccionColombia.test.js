@@ -263,6 +263,9 @@ test("orientación Oeste y Norte (Cali): Calle 4B Oeste 71A-03", async () => {
   assert.equal(r.normalizada, "Cra 4 Oeste # 3-20");
   r = validarDireccion("Calle 4B Norte # 71A-03");
   assert.equal(r.normalizada, "Calle 4B Norte # 71A-03");
+  r = validarDireccion("Carrera 28 No. 4 Norte-35");
+  assert.equal(r.ok, true, r.detalle);
+  assert.equal(r.normalizada, "Cra 28 # 4 Norte-35");
   r = validarDireccion("Cra 5 # 10-20 Oeste");
   assert.equal(r.normalizada, "Cra 5 # 10-20 Oeste");
   // sigue igual lo de siempre
