@@ -244,6 +244,16 @@ test("tipos de vía como los escriben los clientes: Krra, Karrera, Cale...", asy
   assert.match(r.normalizada, /^Cra 63 # 18-49 Sur/);
 });
 
+test("letra del cruce separada con guion: 11-B-13 = 11B-13", async () => {
+  const { validarDireccion } = await import("../direccionColombia.js");
+  let r = validarDireccion("Carrera 8 #11-B-13, Edificio Asis Apto 501");
+  assert.equal(r.ok, true, r.detalle);
+  assert.equal(r.normalizada, "Cra 8 # 11B-13, Edificio Asis Apto 501");
+  r = validarDireccion("Cra 8 # 11 - b - 13");
+  assert.equal(r.ok, true, r.detalle);
+  assert.equal(r.normalizada, "Cra 8 # 11B-13");
+});
+
 test("punto en vez de guion entre cruce y placa: 23.47 = 23-47", async () => {
   const { validarDireccion } = await import("../direccionColombia.js");
   let r = validarDireccion("Cll 50 B # 23.47 B, Piso 1");
