@@ -244,6 +244,22 @@ test("tipos de vía como los escriben los clientes: Krra, Karrera, Cale...", asy
   assert.match(r.normalizada, /^Cra 63 # 18-49 Sur/);
 });
 
+test("orientación Oeste y Norte (Cali): Calle 4B Oeste 71A-03", async () => {
+  const { validarDireccion } = await import("../direccionColombia.js");
+  let r = validarDireccion("Calle 4B Oeste 71A-03, Casa");
+  assert.equal(r.ok, true, r.detalle);
+  assert.equal(r.normalizada, "Calle 4B Oeste # 71A-03, Casa");
+  r = validarDireccion("Cra 4 Oeste # 3-20");
+  assert.equal(r.normalizada, "Cra 4 Oeste # 3-20");
+  r = validarDireccion("Calle 4B Norte # 71A-03");
+  assert.equal(r.normalizada, "Calle 4B Norte # 71A-03");
+  r = validarDireccion("Cra 5 # 10-20 Oeste");
+  assert.equal(r.normalizada, "Cra 5 # 10-20 Oeste");
+  // sigue igual lo de siempre
+  r = validarDireccion("Calle 78Asur # 5-10");
+  assert.equal(r.normalizada, "Calle 78A Sur # 5-10");
+});
+
 test("'casa' en lugar del numeral: Carrera 1 Casa 8-59 = Cra 1 # 8-59", async () => {
   const { validarDireccion } = await import("../direccionColombia.js");
   let r = validarDireccion("Carrera 1 Casa 8-59");

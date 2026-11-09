@@ -51,25 +51,25 @@ export function tipoViaCanonico(texto) {
 }
 
 // numero de via: 1-3 digitos + letra opcional + Bis opcional + letra + Sur/Este
-const NUM = String.raw`(\d{1,3})\s*([a-z])?(?:\s*(bis))?(?:\s*([a-z]))?(?:\s+(sur|este))?`;
+const NUM = String.raw`(\d{1,3})\s*([a-z])?(?:\s*(bis))?(?:\s*([a-z]))?(?:\s+(sur|este|oeste|norte))?`;
 const SEP_NUM = String.raw`\s*(?:#|no\.?|n[°º]|nro\.?|numero|num\.?)\s*`;
 const RE_DIR = new RegExp(
-  String.raw`^(.+?)\.?\s*` + NUM + SEP_NUM + NUM + String.raw`\s*[-–]\s*(\d{1,3})(?:\s+(sur|este))?\b\s*[,.]?\s*(.*)$`,
+  String.raw`^(.+?)\.?\s*` + NUM + SEP_NUM + NUM + String.raw`\s*[-–]\s*(\d{1,3})(?:\s+(sur|este|oeste|norte))?\b\s*[,.]?\s*(.*)$`,
 );
 // lo mismo SIN guion entre cruce y placa ("Cra 91a # 128 f 14", "Cl 10 # 5 20"):
 // muy comun; la placa son 1-3 digitos sueltos despues del cruce
 // Sin "#" ("Car 5, 4-98", "Cra 5 4-98"): coma o espacio entre via y cruce,
 // pero SOLO con guion en la placa (si no, los numeros serian ambiguos)
 const RE_DIR_SIN_NUMERAL = new RegExp(
-  String.raw`^(.+?)\.?\s*` + NUM + String.raw`\s*(?:,\s*|\s+)` + NUM + String.raw`\s*[-–]\s*(\d{1,3})(?:\s+(sur|este))?\b\s*[,.]?\s*(.*)$`,
+  String.raw`^(.+?)\.?\s*` + NUM + String.raw`\s*(?:,\s*|\s+)` + NUM + String.raw`\s*[-–]\s*(\d{1,3})(?:\s+(sur|este|oeste|norte))?\b\s*[,.]?\s*(.*)$`,
 );
 // Solo espacios ("Calle 40 AA Sur 36 30"): TRES grupos de numeros despues
 // del tipo de via = via, cruce y placa (con dos grupos seria ambiguo)
 const RE_DIR_ESPACIOS = new RegExp(
-  String.raw`^(.+?)\.?\s*` + NUM + String.raw`\s+` + NUM + String.raw`\s+(\d{1,3})(?:\s+(sur|este))?\b(?![a-z\d])\s*[,.]?\s*(.*)$`,
+  String.raw`^(.+?)\.?\s*` + NUM + String.raw`\s+` + NUM + String.raw`\s+(\d{1,3})(?:\s+(sur|este|oeste|norte))?\b(?![a-z\d])\s*[,.]?\s*(.*)$`,
 );
 const RE_DIR_SIN_GUION = new RegExp(
-  String.raw`^(.+?)\.?\s*` + NUM + SEP_NUM + NUM + String.raw`\s+(\d{1,3})(?:\s+(sur|este))?\b(?![a-z\d])\s*[,.]?\s*(.*)$`,
+  String.raw`^(.+?)\.?\s*` + NUM + SEP_NUM + NUM + String.raw`\s+(\d{1,3})(?:\s+(sur|este|oeste|norte))?\b(?![a-z\d])\s*[,.]?\s*(.*)$`,
 );
 
 function armarNumero(n, letra, bis, letra2, cardinal) {
@@ -90,7 +90,7 @@ function capitalizarResto(r) {
 // Palabras de tipo de via (las mismas de TIPOS) para reconocer dos vias seguidas
 const TIPO_PALABRA = String.raw`(?:avenida\s+carrera|avenida\s+calle|carrera|cra|kra|kr|cr|carr|crr|car|krra|krr|crra|karrera|karera|carera|carreara|carrrera|krera|kerera|kerrera|crera|carrea|carrra|karrea|calle|cll|cl|call|clle|cale|kalle|kll|diagonal|diag|dg|dgl|diagnal|transversal|transv|trans|tv|tr|tranv|tranversal|trv|circular|circ|cq|cir|avenida|av|ak|ac)`;
 // numero de via simple: 12, 12A, 12 A, 12 Bis, 12A Bis B, 12 Sur
-const NUM_SIMPLE = String.raw`\d{1,3}(?:\s?[a-z](?![a-z]))?(?:\s?bis)?(?:\s?[a-z](?![a-z]))?(?:\s+(?:sur|este)\b)?`;
+const NUM_SIMPLE = String.raw`\d{1,3}(?:\s?[a-z](?![a-z]))?(?:\s?bis)?(?:\s?[a-z](?![a-z]))?(?:\s+(?:sur|este|oeste|norte)\b)?`;
 
 /**
  * "Cra 12 calle 12-12" / "Cra 12 con calle 12 - 12" / "Cra 12 con Cl 12 # 12":
@@ -137,13 +137,13 @@ export function parsearDireccion(direccion) {
 
 function parsearDesdeElInicio(original) {
   const direccion = String(original ?? "")
-    // "78Asur" = 78A Sur
-    .replace(/(\d\s*[a-zA-Z]?)(sur|este)\b/gi, "$1 $2")
+    // "78Asur" = 78A Sur ("4 Oeste" no es la letra O + "este")
+    .replace(/(\d\s*[a-zA-Z]??)(oeste|norte|sur|este)\b/gi, "$1 $2")
     // letra del cruce pegada a la placa tambien despues de "No"/"número":
     // "número 50f34" = número 50F 34
     .replace(/((?:\bn[o°º]\.?|\bnro\.?|\bn[uú]mero|\bnum\.?)\s*\d{1,3}\s*[a-zA-Z])(\d{1,3})\b/i, "$1 $2")
     // "casa" en lugar del numeral: "Carrera 1 Casa 8-59" = Cra 1 # 8-59
-    .replace(/^([a-zA-Z.]+(?:\s+[a-zA-Z.]+)?\s+\d{1,3}\s*[a-zA-Z]?(?:\s+(?:bis|sur|este))?)\s+(?:casa|csa|cs)\.?\s*(?:n[o°º]\.?\s*)?(?=\d{1,3}\s*[a-zA-Z]?\s*[-–]\s*\d)/i, "$1 # ")
+    .replace(/^([a-zA-Z.]+(?:\s+[a-zA-Z.]+)?\s+\d{1,3}\s*[a-zA-Z]?(?:\s+(?:bis|sur|este|oeste|norte))?)\s+(?:casa|csa|cs)\.?\s*(?:n[o°º]\.?\s*)?(?=\d{1,3}\s*[a-zA-Z]?\s*[-–]\s*\d)/i, "$1 # ")
     // letra del cruce separada con guion: "# 11-B-13" / "# 11 - b - 13" = # 11B-13
     .replace(/((?:#|\bn[o°º]\.?|\bnro\.?|\bn[uú]mero|\bnum\.?)\s*\d{1,3})\s*[-–]\s*([a-zA-Z])\s*[-–]\s*(\d{1,3})\b/i, "$1$2-$3")
     // punto en vez de guion entre cruce y placa: "# 23.47" = # 23-47
@@ -189,7 +189,7 @@ function parsearDesdeElInicio(original) {
  * numeros y sin otro tipo de via.
  */
 const RE_VIA_NOMBRE = new RegExp(
-  String.raw`^(` + TIPO_PALABRA + String.raw`)\.?\s+([a-zñ][a-zñ ]{1,40}?)\s*(?:#|\bno\.?|n[°º]|\bnro\.?|\bnumero\b)\s*(\d{1,3})\s*([a-z])?(?:\s*(bis))?\s*[-–]\s*(\d{1,3})(?:\s+(sur|este))?\b\s*[,.]?\s*(.*)$`,
+  String.raw`^(` + TIPO_PALABRA + String.raw`)\.?\s+([a-zñ][a-zñ ]{1,40}?)\s*(?:#|\bno\.?|n[°º]|\bnro\.?|\bnumero\b)\s*(\d{1,3})\s*([a-z])?(?:\s*(bis))?\s*[-–]\s*(\d{1,3})(?:\s+(sur|este|oeste|norte))?\b\s*[,.]?\s*(.*)$`,
 );
 function viaConNombre(original) {
   const texto = String(original ?? "").replace(/\s+/g, " ").trim();
@@ -239,7 +239,7 @@ function restoOriginal(original) {
   const t = String(original ?? "").replace(/\s+/g, " ").trim();
   const desde = t.search(/(#|\bn[o°º]\.?|\bnro\.?|\bnumero\b|\bnum\.?)/i);
   if (desde < 0) return "";
-  const m = t.slice(desde).match(/[-–]\s*\d{1,3}(\s+(sur|este)\b)?/i);
+  const m = t.slice(desde).match(/[-–]\s*\d{1,3}(\s+(sur|este|oeste|norte)\b)?/i);
   if (!m) return "";
   return t.slice(desde + m.index + m[0].length);
 }
@@ -255,7 +255,7 @@ export function claveCalle(texto) {
     if (!tipoViaCanonico(palabras[i])) continue;
     const p = parsearDireccion(palabras.slice(i).join(" "));
     if (!p) continue;
-    const limpio = (x) => normalizarTextoDir(x).replace(/\b(sur|este)\b/g, "").replace(/[^a-z0-9]/g, "").replace(/^0+(?=\d)/, "");
+    const limpio = (x) => normalizarTextoDir(x).replace(/\b(sur|este|oeste|norte)\b/g, "").replace(/[^a-z0-9]/g, "").replace(/^0+(?=\d)/, "");
     return `${p.tipoVia}|${limpio(p.via)}|${limpio(p.cruce)}|${limpio(p.placa)}`;
   }
   return null;

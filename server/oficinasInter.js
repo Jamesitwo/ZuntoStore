@@ -64,7 +64,7 @@ export function claveCliente(direccion) {
   const p = parsearDireccion(direccion);
   if (p) {
     const tipo = tipoComparable(p.tipoVia);
-    const limpio = (x) => normalizarTextoDir(x).replace(/\b(sur|este)\b/g, "").replace(/[^a-z0-9]/g, "").replace(/^0+(?=\d)/, "");
+    const limpio = (x) => normalizarTextoDir(x).replace(/\b(sur|este|oeste|norte)\b/g, "").replace(/[^a-z0-9]/g, "").replace(/^0+(?=\d)/, "");
     if (tipo) return `${tipo}|${limpio(p.via)}|${limpio(p.cruce)}|${limpio(p.placa)}`;
   }
   return claveDireccion(direccion);
