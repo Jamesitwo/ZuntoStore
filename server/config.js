@@ -76,6 +76,8 @@ export function cargarConfig(env = process.env) {
     INTENTOS: String(g("INTENTOS", path.join(dir, "intentos.jsonl"))),
     /** entregas programadas (pedidos para una fecha futura) */
     PROGRAMADOS: String(g("PROGRAMADOS", path.join(dir, "programados.json"))),
+    /** foto diaria del catalogo de Dropi (productos ganadores) */
+    CATALOGO_DIR: String(g("CATALOGO_DIR", path.join(dir, "catalogo"))),
     /** etiquetas de pedidos (las del panel y las de la subida a Dropi) */
     ETIQUETAS: String(g("ETIQUETAS", path.join(dir, "etiquetas.json"))),
     /** clave de la API generada desde el panel (solo su huella) */

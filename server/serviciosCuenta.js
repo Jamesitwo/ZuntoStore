@@ -24,6 +24,7 @@ import { cifrarArchivosEnClaro } from "./secretos.js";
 import { crearAuditoria } from "./auditoria.js";
 import { crearProgramados } from "./programados.js";
 import { crearEtiquetas } from "./etiquetas.js";
+import { crearCatalogoDropi } from "./catalogoDropi.js";
 
 /**
  * Turno del navegador de Dropi, compartido por TODAS las cuentas: un solo
@@ -137,6 +138,13 @@ export function crearServiciosCuenta({ cuenta, config, inter, turnoDropi = null 
     programados,
     etiquetas,
   });
+  // foto diaria del catalogo de Dropi (agente de productos ganadores): usa
+  // el token de la sesion de esta cuenta, leido en su turno del navegador
+  const catalogo = crearCatalogoDropi({
+    dir: config.CATALOGO_DIR,
+    obtenerSesion: () =>
+      turnoDropi ? turnoDropi(cuenta.id, navPropio, () => navPropio.leerSesionApi()) : navPropio.leerSesionApi(),
+  });
   // clave de la API de ESTA cuenta (la variable API_KEY solo vale para la 1)
   const apiKeys = crearApiKeys({ ruta: config.APIKEY_CONFIG, claveEnv: config.API_KEY });
   // cuando llega un pedido, su id se guarda en el contacto de Lucid Bot
@@ -174,16 +182,19 @@ export function crearServiciosCuenta({ cuenta, config, inter, turnoDropi = null 
     pedidosLucidBot,
     estadosEnvio,
     auditoria,
+    catalogo,
     /** Arranca los trabajos automaticos (cada uno mira si esta encendido). */
     arrancar() {
       reparto.arrancar();
       subidaAuto.arrancar();
       pedidosLucidBot.iniciar();
+      catalogo.arrancar();
     },
     detener() {
       reparto.detener();
       subidaAuto.detener();
       pedidosLucidBot.detener();
+      catalogo.detener();
     },
   };
 }

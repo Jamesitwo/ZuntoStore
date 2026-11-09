@@ -1395,6 +1395,41 @@ export function crearDropiNavegador(config = {}) {
       }
     },
 
+    /**
+     * Token de la sesion de Dropi del servidor (para llamar su API directo,
+     * p. ej. la foto diaria del catalogo). No navega si ya esta en Dropi y
+     * deja el navegador como estaba. -> { ok, token, pais } | { ok:false, detalle }
+     */
+    async leerSesionApi() {
+      if (subidaEnCurso) return { ok: false, ocupado: true, detalle: "Dropi está ocupado subiendo un pedido." };
+      const abierto = Boolean(pagina && !pagina.isClosed());
+      subidaEnCurso = true;
+      try {
+        const p = await asegurar();
+        if (!/^https:\/\/app\.dropi\.co\//.test(p.url())) {
+          await p.goto("https://app.dropi.co/dashboard/home", { waitUntil: "domcontentloaded" });
+        }
+        const r = await p.evaluate(() => ({
+          token: localStorage.getItem("DROPI_token") || "",
+          login: localStorage.getItem("DROPI_LoginResult") || "",
+        }));
+        const token = String(r.token).replace(/"/g, "").trim();
+        if (!token) return { ok: false, detalle: "No hay sesión de Dropi en el servidor (cárgala en Ajustes → Subida a Dropi)." };
+        let pais = "COLOMBIA";
+        try {
+          pais = String(JSON.parse(r.login)?.countries?.[0]?.name || pais).toUpperCase();
+        } catch {
+          /* sin datos del login */
+        }
+        return { ok: true, token, pais };
+      } catch (e) {
+        return { ok: false, detalle: `No se pudo leer la sesión de Dropi: ${e?.message ?? e}` };
+      } finally {
+        if (!abierto) await this.cerrar().catch(() => {});
+        subidaEnCurso = false;
+      }
+    },
+
     /** Espera a que se habilite «Enviar al cliente» (se usa en pruebas). */
     async esperarBotonCrear(p) {
       const r = await esperarBotonCrear(p);

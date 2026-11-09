@@ -138,6 +138,8 @@ export function crearManejador({
   programados = null,
   // etiquetas de pedidos (crearEtiquetas)
   etiquetas = null,
+  // foto diaria del catalogo de Dropi (crearCatalogoDropi)
+  catalogo = null,
   // creador de campanas IA (crearCreadorCampanas), comun a todas las cuentas
   creador = null,
 }) {
@@ -1841,6 +1843,41 @@ export function crearManejador({
       const r = subida.parar?.() ?? { ok: false, msg: "No disponible" };
       json(res, 200, { ...r, config: subida.config() });
       return;
+    }
+
+    // ---- Catalogo de Dropi (foto diaria para productos ganadores) ----
+    //   GET  /api/catalogo            -> config, revision en curso, ultimas corridas
+    //   PUT  /api/catalogo/config     { activo, hora, todo, diasGuardar }
+    //   POST /api/catalogo/ejecutar   revisa ya (en segundo plano)
+    //   POST /api/catalogo/parar
+    if (ruta === "/api/catalogo" || ruta.startsWith("/api/catalogo/")) {
+      autorizar(req);
+      if (!catalogo) throw new ErrorApi(503, "La revisión del catálogo no está disponible");
+      if (req.method === "GET" && ruta === "/api/catalogo") {
+        json(res, 200, { ok: true, ...catalogo.resumen() });
+        return;
+      }
+      if (req.method === "PUT" && ruta === "/api/catalogo/config") {
+        const c = catalogo.configurar((await leerCuerpo(req)) ?? {});
+        console.log(`[catalogo] config -> activo=${c.activo} hora=${c.hora} todo=${c.todo} dias=${c.diasGuardar}`);
+        json(res, 200, { ok: true, ...catalogo.resumen() });
+        return;
+      }
+      if (req.method === "POST" && ruta === "/api/catalogo/ejecutar") {
+        if (catalogo.resumen().enCurso) {
+          json(res, 409, { ok: false, msg: "Ya se está revisando el catálogo." });
+          return;
+        }
+        catalogo.ejecutar({ motivo: `manual (${usuarioDe(req) ?? "?"})` }).catch(() => {});
+        json(res, 202, { ok: true, ...catalogo.resumen() });
+        return;
+      }
+      if (req.method === "POST" && ruta === "/api/catalogo/parar") {
+        const parado = catalogo.parar();
+        json(res, 200, { ok: true, parado, ...catalogo.resumen() });
+        return;
+      }
+      throw new ErrorApi(404, "Ruta del catálogo no encontrada");
     }
 
     // ---- POST /api/subida/probar ----

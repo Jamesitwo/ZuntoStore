@@ -5628,3 +5628,7 @@ tr.fila-marcada > td { background: color-mix(in srgb, var(--primary, #7c3aed) 9%
 .sesion-celular { margin: 4px 0 10px; }
 .sesion-celular > summary { cursor: pointer; color: var(--primary, #7c3aed); font-weight: 600; }
 .creador-error-idea { display: block; margin-top: 6px; color: var(--danger, #dc2626); font-size: 12px; }
+
+/* revision del catalogo de Dropi */
+.catalogo-corridas { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 4px; }
+.catalogo-corridas li { padding: 4px 0; border-top: 1px solid var(--border, #eee); }

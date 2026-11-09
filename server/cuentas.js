@@ -30,6 +30,7 @@ const RUTAS = {
   DROPI_PRODUCTOS_CONFIG: "config/productosDropi.json",
   APIKEY_CONFIG: "config/apikey.json",
   DROPI_PERFIL: "dropi-profile",
+  CATALOGO_DIR: "catalogo",
 };
 
 /** Secretos y datos del .env que SOLO son de la cuenta 1. */

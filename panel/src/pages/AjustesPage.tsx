@@ -7,6 +7,7 @@ import { Campo, CheckPermiso, ErrorBanner, JsonView, PageHeader } from "../compo
 import { ListaUsuarios } from "../components/ListaUsuarios";
 import { SubidaDropi } from "../components/SubidaDropi";
 import { MapasConfig } from "../components/MapasConfig";
+import { CatalogoDropi } from "../components/CatalogoDropi";
 import { ApiKeyConfig } from "../components/ApiKeyConfig";
 import { CuentasAdmin } from "../components/CuentasAdmin";
 import { ChecklistCuenta } from "../components/ChecklistCuenta";
@@ -1978,6 +1979,9 @@ function UsuariosTab() {
 
       {/* subida automatica a Dropi: mismo patrón que el reparto automatico */}
       <SubidaDropi />
+
+      {/* foto diaria del catalogo de Dropi (productos ganadores) */}
+      <CatalogoDropi />
 
       {/* validador de direcciones propio: API key de Google Maps */}
       <MapasConfig />
