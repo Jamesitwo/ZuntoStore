@@ -244,6 +244,18 @@ test("tipos de vía como los escriben los clientes: Krra, Karrera, Cale...", asy
   assert.match(r.normalizada, /^Cra 63 # 18-49 Sur/);
 });
 
+test("placa con letra pegada: Calle 10 No. 10-11B = Calle 10 # 10-11B", async () => {
+  const { validarDireccion } = await import("../direccionColombia.js");
+  let r = validarDireccion("Calle 10 No. 10-11B, Centro");
+  assert.equal(r.ok, true, r.detalle);
+  assert.equal(r.normalizada, "Calle 10 # 10-11B, Centro");
+  r = validarDireccion("Cra 5 # 3-20b apto 2");
+  assert.equal(r.normalizada, "Cra 5 # 3-20B, Apto 2");
+  // la palabra que sigue no se toma como letra
+  r = validarDireccion("Calle 10 # 10-11 Barrio Centro");
+  assert.equal(r.normalizada, "Calle 10 # 10-11, Barrio Centro");
+});
+
 test("tipo de vía mal escrito (Ce 10#10-27): vale el de la dirección confirmada en el chat con los mismos números", async () => {
   const { validarDireccion } = await import("../direccionColombia.js");
   const ia = { esNomenclatura: true, formato: "via", tipoVia: "Calle", via: "10", cruce: "10", placa: "27" };

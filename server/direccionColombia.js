@@ -54,14 +54,14 @@ export function tipoViaCanonico(texto) {
 const NUM = String.raw`(\d{1,3})\s*([a-z])?(?:\s*(bis))?(?:\s*([a-z]))?(?:\s+(sur|este|oeste|norte))?`;
 const SEP_NUM = String.raw`\s*(?:#|no\.?|n[°º]|nro\.?|numero|num\.?)\s*`;
 const RE_DIR = new RegExp(
-  String.raw`^(.+?)\.?\s*` + NUM + SEP_NUM + NUM + String.raw`\s*[-–]\s*(\d{1,3})(?:\s+(sur|este|oeste|norte))?\b\s*[,.]?\s*(.*)$`,
+  String.raw`^(.+?)\.?\s*` + NUM + SEP_NUM + NUM + String.raw`\s*[-–]\s*(\d{1,3}(?:[a-z](?![a-z\d]))?)(?:\s+(sur|este|oeste|norte))?\b\s*[,.]?\s*(.*)$`,
 );
 // lo mismo SIN guion entre cruce y placa ("Cra 91a # 128 f 14", "Cl 10 # 5 20"):
 // muy comun; la placa son 1-3 digitos sueltos despues del cruce
 // Sin "#" ("Car 5, 4-98", "Cra 5 4-98"): coma o espacio entre via y cruce,
 // pero SOLO con guion en la placa (si no, los numeros serian ambiguos)
 const RE_DIR_SIN_NUMERAL = new RegExp(
-  String.raw`^(.+?)\.?\s*` + NUM + String.raw`\s*(?:,\s*|\s+)` + NUM + String.raw`\s*[-–]\s*(\d{1,3})(?:\s+(sur|este|oeste|norte))?\b\s*[,.]?\s*(.*)$`,
+  String.raw`^(.+?)\.?\s*` + NUM + String.raw`\s*(?:,\s*|\s+)` + NUM + String.raw`\s*[-–]\s*(\d{1,3}(?:[a-z](?![a-z\d]))?)(?:\s+(sur|este|oeste|norte))?\b\s*[,.]?\s*(.*)$`,
 );
 // Solo espacios ("Calle 40 AA Sur 36 30"): TRES grupos de numeros despues
 // del tipo de via = via, cruce y placa (con dos grupos seria ambiguo)
@@ -173,7 +173,7 @@ function parsearDesdeElInicio(original) {
   if (/,/.test(m[1])) return null;
   const via = armarNumero(m[2], m[3], m[4], m[5], m[6]);
   const cruce = armarNumero(m[7], m[8], m[9], m[10], m[11]);
-  const placa = String(m[12]) + (m[13] ? ` ${m[13][0].toUpperCase()}${m[13].slice(1)}` : "");
+  const placa = String(m[12]).toUpperCase() + (m[13] ? ` ${m[13][0].toUpperCase()}${m[13].slice(1)}` : "");
   // el resto (complemento/barrio) se conserva con su texto original (sin
   // guion no hay donde cortar el original: se usa el del texto normalizado)
   const resto = capitalizarResto(
@@ -241,7 +241,7 @@ function restoOriginal(original) {
   const t = String(original ?? "").replace(/\s+/g, " ").trim();
   const desde = t.search(/(#|\bn[o°º]\.?|\bnro\.?|\bnumero\b|\bnum\.?)/i);
   if (desde < 0) return "";
-  const m = t.slice(desde).match(/[-–]\s*\d{1,3}(\s+(sur|este|oeste|norte)\b)?/i);
+  const m = t.slice(desde).match(/[-–]\s*\d{1,3}(?:[a-z](?![a-z\d]))?(\s+(sur|este|oeste|norte)\b)?/i);
   if (!m) return "";
   return t.slice(desde + m.index + m[0].length);
 }
@@ -435,7 +435,7 @@ function validarDireccionInterna(direccion, ia, preferirIA, referencias = "", co
   const cruce = String(ia.cruce ?? "").trim();
   const placa = String(ia.placa ?? "").trim();
   const parteNum = /^\d{1,3}[A-Za-z]?( Bis)?( [A-Za-z])?( (Sur|Este|Oeste|Norte))?$/i;
-  if (!tipoVia || !parteNum.test(via) || !parteNum.test(cruce) || !/^\d{1,3}( (Sur|Este|Oeste|Norte))?$/i.test(placa)) {
+  if (!tipoVia || !parteNum.test(via) || !parteNum.test(cruce) || !/^\d{1,3}[A-Za-z]?( (Sur|Este|Oeste|Norte))?$/i.test(placa)) {
     return {
       ok: false,
       normalizada: "",
