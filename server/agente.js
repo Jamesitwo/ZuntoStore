@@ -374,7 +374,10 @@ export function validarPedido(resumen, extraido, { oficina = null } = {}) {
   // Si recoge en oficina no hay calle que validar: la oficina la elige Dropi.
   const dirEnvio = oficina
     ? { ok: true, detalle: `recoge en oficina de ${oficina}: no lleva calle, la oficina se elige en Dropi`, normalizada: null }
-    : validarDireccion(resumen?.direccion, extraido?.direccionEnvio ?? null, { referencias: resumen?.referencias ?? "" });
+    : validarDireccion(resumen?.direccion, extraido?.direccionEnvio ?? null, {
+        referencias: resumen?.referencias ?? "",
+        confirmadaEnChat: extraido?.direccion ?? "",
+      });
   // numero pegado ("Cra 110AA #3021"): no se adivina aqui; el mapa decide
   // como se separa en el paso siguiente (si no lo confirma, no se sube)
   if (!oficina && !dirEnvio.ok) {

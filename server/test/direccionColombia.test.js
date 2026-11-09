@@ -244,6 +244,19 @@ test("tipos de vía como los escriben los clientes: Krra, Karrera, Cale...", asy
   assert.match(r.normalizada, /^Cra 63 # 18-49 Sur/);
 });
 
+test("tipo de vía mal escrito (Ce 10#10-27): vale el de la dirección confirmada en el chat con los mismos números", async () => {
+  const { validarDireccion } = await import("../direccionColombia.js");
+  const ia = { esNomenclatura: true, formato: "via", tipoVia: "Calle", via: "10", cruce: "10", placa: "27" };
+  let r = validarDireccion("Ce 10#10-27", ia, { confirmadaEnChat: "Calle 10 # 10-27" });
+  assert.equal(r.ok, true, r.detalle);
+  assert.equal(r.normalizada, "Calle 10 # 10-27");
+  assert.match(r.detalle, /confirmó en el chat/);
+  // sin el chat, o con otros numeros u otro tipo, sigue para revision
+  assert.equal(validarDireccion("Ce 10#10-27", ia).ok, false);
+  assert.equal(validarDireccion("Ce 10#10-27", ia, { confirmadaEnChat: "Calle 10 # 10-28" }).ok, false);
+  assert.equal(validarDireccion("Ce 10#10-27", { ...ia, tipoVia: "Carrera" }, { confirmadaEnChat: "Calle 10 # 10-27" }).ok, false);
+});
+
 test("letra de la vía separada con guion: Carrera 3-D #50-130 = Cra 3D # 50-130", async () => {
   const { validarDireccion } = await import("../direccionColombia.js");
   let r = validarDireccion("Carrera 3-D #50-130");

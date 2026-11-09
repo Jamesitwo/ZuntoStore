@@ -352,15 +352,15 @@ export function parsearManzana(direccion) {
  *   { esNomenclatura, tipoVia, via, cruce, placa, complemento, barrio, motivo }
  * Devuelve { ok, normalizada, corregida, origen, detalle }.
  */
-export function validarDireccion(direccion, ia = null, { referencias = "" } = {}) {
-  const r = validarDireccionInterna(direccion, ia, true, referencias);
+export function validarDireccion(direccion, ia = null, { referencias = "", confirmadaEnChat = "" } = {}) {
+  const r = validarDireccionInterna(direccion, ia, true, referencias, confirmadaEnChat);
   // si se prefirio la IA para una direccion sin guion y no paso, vale la
   // lectura de las reglas (que ya era valida)
-  if (!r.ok && ia && parsearDireccion(direccion)?.sinGuion) return validarDireccionInterna(direccion, null, false, referencias);
+  if (!r.ok && ia && parsearDireccion(direccion)?.sinGuion) return validarDireccionInterna(direccion, null, false, referencias, confirmadaEnChat);
   return r;
 }
 
-function validarDireccionInterna(direccion, ia, preferirIA, referencias = "") {
+function validarDireccionInterna(direccion, ia, preferirIA, referencias = "", confirmadaEnChat = "") {
   const original = String(direccion ?? "").trim();
   if (!original) return { ok: false, normalizada: "", corregida: false, origen: "reglas", detalle: "el pedido no tiene dirección" };
 
@@ -434,8 +434,8 @@ function validarDireccionInterna(direccion, ia, preferirIA, referencias = "") {
   const via = String(ia.via ?? "").trim();
   const cruce = String(ia.cruce ?? "").trim();
   const placa = String(ia.placa ?? "").trim();
-  const parteNum = /^\d{1,3}[A-Za-z]?( Bis)?( [A-Za-z])?( (Sur|Este))?$/i;
-  if (!tipoVia || !parteNum.test(via) || !parteNum.test(cruce) || !/^\d{1,3}( (Sur|Este))?$/i.test(placa)) {
+  const parteNum = /^\d{1,3}[A-Za-z]?( Bis)?( [A-Za-z])?( (Sur|Este|Oeste|Norte))?$/i;
+  if (!tipoVia || !parteNum.test(via) || !parteNum.test(cruce) || !/^\d{1,3}( (Sur|Este|Oeste|Norte))?$/i.test(placa)) {
     return {
       ok: false,
       normalizada: "",
@@ -451,7 +451,14 @@ function validarDireccionInterna(direccion, ia, preferirIA, referencias = "") {
   const tipoEscrito = palabras.some((w, i) =>
     tipoViaCanonico(`${w} ${palabras[i + 1] ?? ""}`) === tipoVia || tipoViaCanonico(w.replace(/\d+.*$/, "")) === tipoVia,
   );
-  if (!tipoEscrito) {
+  // ...o estar en la direccion que el cliente confirmo en el chat (el resumen
+  // dice "Calle 10 # 10-27" y el pedido quedo "Ce 10#10-27"), con los mismos
+  // numeros de via, cruce y placa
+  const delChat = !tipoEscrito && confirmadaEnChat ? parsearDireccion(confirmadaEnChat) : null;
+  const tipoDelChat =
+    delChat?.tipoVia === tipoVia &&
+    digitosDireccion(`${delChat.via} ${delChat.cruce} ${delChat.placa}`) === digitosDireccion(`${via} ${cruce} ${placa}`);
+  if (!tipoEscrito && !tipoDelChat) {
     return {
       ok: false,
       normalizada: "",
@@ -481,7 +488,7 @@ function validarDireccionInterna(direccion, ia, preferirIA, referencias = "") {
     normalizada,
     corregida: true,
     origen: "ia",
-    detalle: `corregida: "${original}" → "${normalizada}"`,
+    detalle: `corregida: "${original}" → "${normalizada}"${tipoDelChat ? " (tipo de vía según la dirección que el cliente confirmó en el chat)" : ""}`,
   };
 }
 
