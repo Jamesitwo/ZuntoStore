@@ -581,6 +581,14 @@ test("Puerto Leguizamo en Dropi es Leguizamo", () => {
   assert.equal(coincideUbicacion("LEGUIZAMO", v, "Putumayo"), true);
 });
 
+test("Tierra Alta en Dropi es Tierralta (letra repetida en la union)", () => {
+  const v = variantesUbicacion("Tierra Alta");
+  assert.ok(v.includes("tierralta"), "se escribe junto sin repetir la a");
+  assert.equal(coincideUbicacion("TIERRALTA", v, "Córdoba"), true);
+  assert.equal(coincideUbicacion("Tierra Alta", variantesUbicacion("Tierralta"), "Córdoba"), true);
+  assert.equal(coincideUbicacion("Tierra Blanca", v, "Córdoba"), false);
+});
+
 test("Chibolo en Dropi es Chivolo", () => {
   const v = variantesUbicacion("Chibolo");
   assert.ok(v.includes("chivolo"));

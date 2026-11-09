@@ -207,12 +207,15 @@ export function variantesUbicacion(texto) {
   const n = normalizarUbicacion(texto);
   const grupo = EQUIVALENTES_UBICACION.find((g) => g.includes(n) || g.some((x) => sinEspacios(x) === sinEspacios(n)));
   // "Dos Quebradas" / "Dosquebradas": tambien se prueba escrito junto
-  const junto = !grupo && n.includes(" ") ? [sinEspacios(n)] : [];
+  // ("Tierra Alta" = "Tierralta": la letra repetida en la union va una vez)
+  const junto = !grupo && n.includes(" ") ? [sinEspacios(n), juntoSinRepetir(n)] : [];
   return [...new Set([n, ...(grupo ?? []), ...junto])].filter(Boolean);
 }
 
 /** Para comparar nombres que se escriben junto o separado ("dos quebradas" = "dosquebradas"). */
 const sinEspacios = (t) => String(t ?? "").replace(/ /g, "");
+/** Junto y sin repetir la letra de la union: "tierra alta" -> "tierralta". */
+const juntoSinRepetir = (t) => String(t ?? "").replace(/(\p{L}) (?=\1\p{L})/gu, "").replace(/ /g, "");
 
 /** Iniciales de un nombre sin "de/del/la/y": "valle del cauca" -> "vc". */
 const iniciales = (n) =>
@@ -228,8 +231,11 @@ const iniciales = (n) =>
  * "Armenia (Q)" = Armenia del Quindio (no la de Antioquia).
  */
 export function coincideUbicacion(opcion, aceptadas, departamento = "") {
-  const juntas = aceptadas.map(sinEspacios);
-  const es = (t) => juntas.includes(sinEspacios(normalizarUbicacion(t)));
+  const juntas = new Set(aceptadas.flatMap((a) => [sinEspacios(a), juntoSinRepetir(a)]));
+  const es = (t) => {
+    const n = normalizarUbicacion(t);
+    return juntas.has(sinEspacios(n)) || juntas.has(juntoSinRepetir(n));
+  };
   if (es(opcion)) return true;
   // la marca del departamento va entre parentesis ("Armenia (Q)") o suelta al
   // final en mayuscula ("Cordoba N" = Cordoba de Narino)
