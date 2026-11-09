@@ -539,6 +539,14 @@ export async function ejecutarAgente({ resumen, mensajes, extraer, oficina = nul
   const lineasPedido = Array.isArray(resumen?.productos) ? resumen.productos : [];
   const extraido = await extraer(mensajes, {
     direccionPedido: resumen?.direccion ?? "",
+    // si el chat tiene varias compras, la IA lee la de ESTE pedido
+    ...(lineasPedido.length
+      ? {
+          pedidoActual:
+            lineasPedido.map((l) => `${l.cantidad} x ${l.nombre}${l.variante?.nombre ? ` (${l.variante.nombre})` : ""}`).join("; ") +
+            (parsearPrecio(resumen?.total) > 0 ? ` · total ${parsearPrecio(resumen.total)}` : ""),
+        }
+      : {}),
     // con varios productos la IA devuelve la lista de lo que pidio el cliente
     ...(lineasPedido.length > 1
       ? {

@@ -123,11 +123,14 @@ test("la IA recibe la direccion del pedido y su analisis se normaliza", async ()
   };
   let r;
   try {
-    r = await extraer([{ de: "cliente", texto: "hola" }], { direccionPedido: "cra 21 #1212" });
+    r = await extraer([{ de: "cliente", texto: "hola" }], { direccionPedido: "cra 21 #1212", pedidoActual: "1 x Taladro 68V + Kit · total 169900" });
   } finally {
     globalThis.fetch = fetchOriginal;
   }
   assert.match(enviado, /Direccion del pedido \(la que se enviara a la transportadora\): cra 21 #1212/);
+  // con varias compras en el chat, la IA lee la de este pedido
+  assert.match(enviado, /Este pedido es: 1 x Taladro 68V \+ Kit · total 169900/);
+  assert.match(enviado, /VARIAS compras distintas/);
   assert.equal(r.direccionEnvio.esNomenclatura, true);
   assert.equal(r.direccionEnvio.via, "21");
   assert.equal(r.direccionEnvio.extra, undefined);

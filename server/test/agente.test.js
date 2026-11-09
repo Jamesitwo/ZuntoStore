@@ -455,3 +455,9 @@ test("coincideDireccion: «25_63» con guion bajo es «25-63» (la ciudad y el b
   // otra placa sigue frenando
   assert.equal(coincideDireccion("calle 26 A # 25_64 deposito maderas yaya", "Calle 26 A # 25-63, Depósito Maderas YAYA").ok, false);
 });
+
+test("la IA sabe cuál es ESTE pedido (el chat puede tener varias compras)", async () => {
+  let contexto = null;
+  await ejecutarAgente({ resumen: RESUMEN, mensajes: [], extraer: async (_m, ctx) => ((contexto = ctx), EXTRAIDO_BIEN) });
+  assert.equal(contexto.pedidoActual, "1 x Taladro Inalambrico 68V · total 105690");
+});

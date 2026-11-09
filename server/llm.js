@@ -49,6 +49,7 @@ Campos exactos:
 
 Reglas:
 - No inventes. Si algo no esta en el chat, usa "" o null.
+- Si en el chat hay varias compras distintas, los datos son los de la compra de los productos del pedido que te paso aparte.
 - Revisa especialmente si el cliente dice algo como "lo quiero para el 30", "entregar mañana", "después del viernes" o "la próxima semana". En esos casos entregaFutura=true aunque haya confirmado el resto. Usa los timestamps de la conversación para decidir si la fecha ya pasó; si no es claro, usa null.
 - No marques entregaFutura=true por frases sin fecha de entrega futura (por ejemplo, "para confirmar" o "para regalo" sin fecha).
 - Los precios van como numero entero en pesos (84900, no "84.900").
@@ -188,6 +189,13 @@ export function crearExtractorLLM(config = {}) {
                     '"segundaCompra": true SOLO si en el chat el cliente pidio claramente una compra NUEVA ademas de esa ' +
                     "(otra unidad, otro producto, volvio a pedir despues de confirmar el primero); false si el chat solo muestra " +
                     "una compra; y en evidencia.segundaCompra la frase del cliente que lo muestra.\n\n"
+                  : "") +
+                (contexto?.pedidoActual
+                  ? `Este pedido es: ${contexto.pedidoActual}\n` +
+                    "Si en el chat hubo VARIAS compras distintas (por ejemplo el cliente confirmo un producto y despues pidio otro como " +
+                    "una orden nueva, con su propio resumen), saca producto, cantidad, precioAcordado, envioAcordado, totalAcordado, " +
+                    "direccion, clienteConfirmo y su evidencia de la compra que corresponde a ESTE pedido (su resumen y su confirmacion), " +
+                    "no de la otra.\n\n"
                   : "") +
                 (contexto?.productosPedido
                   ? `Productos del pedido: ${contexto.productosPedido}\n` +
