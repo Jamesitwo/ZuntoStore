@@ -12,6 +12,7 @@ export interface SesionSubida {
   noSubidos: number;
   motivos: Array<{ motivo: string; n: number }>;
   pedidos: Record<string, string>;
+  telefonos?: Record<string, string>;
   detenido?: string;
   asignadosA?: Record<string, number>;
 }
@@ -72,9 +73,12 @@ function Sesion({ s, abierta }: { s: SesionSubida; abierta: boolean }) {
               </button>
               {verPedidos === m.motivo ? (
                 <div className="sesion-pedidos small muted">
-                  {deMotivo(m.motivo)
-                    .map((id) => `#${id}`)
-                    .join(" · ")}
+                  {deMotivo(m.motivo).map((id, i) => (
+                    <span key={id} title={`Pedido #${id}`}>
+                      {i ? " · " : ""}
+                      {s.telefonos?.[id] || `#${id}`}
+                    </span>
+                  ))}
                 </div>
               ) : null}
             </li>

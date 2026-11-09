@@ -54,3 +54,13 @@ test("plan de envío: la ganancia mínima (general o del producto) viaja con el 
   // sin tope no hace falta (no hay nada que pasar)
   assert.equal(planEnvio({ envio: { gananciaMin: 30000 } }, resumen).gananciaMin, null);
 });
+
+test("las sesiones muestran el telefono del cliente de cada pedido", async () => {
+  const { conTelefonos } = await import("../subidaAutomatica.js");
+  const r = conTelefonos(
+    [{ clave: "a", pedidos: { 1: "", 2: "Dirección inválida", 3: "Dirección inválida" } }],
+    { 1: { cliente: { telefono: "3001112233" } }, 2: { cliente: { telefono: " 3104258561 " } }, 3: {} },
+  );
+  assert.deepEqual(r[0].telefonos, { 1: "3001112233", 2: "3104258561" });
+  assert.equal(conTelefonos(undefined, {}), undefined);
+});

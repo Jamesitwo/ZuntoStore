@@ -517,6 +517,19 @@ export function sumarSesion(sesiones, { clave, desde, hasta, dryRun, detalle, de
   return [sesion, ...lista].sort((a, b) => String(b.desde).localeCompare(String(a.desde))).slice(0, MAX_SESIONES);
 }
 
+/** Agrega a cada sesion { telefonos: { idPedido: telefono } } desde lo procesado. */
+export function conTelefonos(sesiones, procesados) {
+  if (!Array.isArray(sesiones)) return sesiones;
+  return sesiones.map((s) => {
+    const telefonos = {};
+    for (const id of Object.keys(s?.pedidos ?? {})) {
+      const t = String(procesados?.[id]?.cliente?.telefono ?? "").trim();
+      if (t) telefonos[id] = t;
+    }
+    return { ...s, telefonos };
+  });
+}
+
 /** Pausa entre vueltas seguidas de una ronda a hora fija. */
 const ESPERA_ENTRE_VUELTAS_MS = 90 * 1000;
 const ZONA_COLOMBIA_MIN = -5 * 60; // Colombia no tiene horario de verano
@@ -1830,6 +1843,8 @@ export function crearSubidaAutomatica({
       return {
         ...resto,
         procesados: Object.keys(procesados ?? {}).length,
+        // cada pedido de las sesiones con el telefono del cliente (para el panel)
+        sesiones: conTelefonos(resto.sesiones, procesados),
         horario: horarioDe(c),
         asignarFallidos: asignarFallidosDe(c),
         corregirDireccion: corregirDireccionDe(c),
