@@ -244,6 +244,19 @@ test("tipos de vía como los escriben los clientes: Krra, Karrera, Cale...", asy
   assert.match(r.normalizada, /^Cra 63 # 18-49 Sur/);
 });
 
+test("'casa' en lugar del numeral: Carrera 1 Casa 8-59 = Cra 1 # 8-59", async () => {
+  const { validarDireccion } = await import("../direccionColombia.js");
+  let r = validarDireccion("Carrera 1 Casa 8-59");
+  assert.equal(r.ok, true, r.detalle);
+  assert.equal(r.normalizada, "Cra 1 # 8-59");
+  r = validarDireccion("Calle 5A casa 3-20 barrio Centro");
+  assert.equal(r.ok, true, r.detalle);
+  assert.equal(r.normalizada, "Calle 5A # 3-20, Barrio Centro");
+  // "casa" como complemento sigue igual
+  r = validarDireccion("Calle 10 # 5-20 casa 3");
+  assert.equal(r.normalizada, "Calle 10 # 5-20, Casa 3");
+});
+
 test("letra del cruce separada con guion: 11-B-13 = 11B-13", async () => {
   const { validarDireccion } = await import("../direccionColombia.js");
   let r = validarDireccion("Carrera 8 #11-B-13, Edificio Asis Apto 501");
