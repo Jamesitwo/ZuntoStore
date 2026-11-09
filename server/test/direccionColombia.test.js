@@ -244,6 +244,16 @@ test("tipos de vía como los escriben los clientes: Krra, Karrera, Cale...", asy
   assert.match(r.normalizada, /^Cra 63 # 18-49 Sur/);
 });
 
+test("letra de la vía separada con guion: Carrera 3-D #50-130 = Cra 3D # 50-130", async () => {
+  const { validarDireccion } = await import("../direccionColombia.js");
+  let r = validarDireccion("Carrera 3-D #50-130");
+  assert.equal(r.ok, true, r.detalle);
+  assert.equal(r.normalizada, "Cra 3D # 50-130");
+  r = validarDireccion("Calle 12 - b No. 4-20 barrio Centro");
+  assert.equal(r.ok, true, r.detalle);
+  assert.equal(r.normalizada, "Calle 12B # 4-20, Barrio Centro");
+});
+
 test("orientación Oeste y Norte (Cali): Calle 4B Oeste 71A-03", async () => {
   const { validarDireccion } = await import("../direccionColombia.js");
   let r = validarDireccion("Calle 4B Oeste 71A-03, Casa");

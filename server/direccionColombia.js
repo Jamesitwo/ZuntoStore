@@ -142,6 +142,8 @@ function parsearDesdeElInicio(original) {
     // letra del cruce pegada a la placa tambien despues de "No"/"número":
     // "número 50f34" = número 50F 34
     .replace(/((?:\bn[o°º]\.?|\bnro\.?|\bn[uú]mero|\bnum\.?)\s*\d{1,3}\s*[a-zA-Z])(\d{1,3})\b/i, "$1 $2")
+    // letra de la via separada con guion: "Carrera 3-D #50-130" = Cra 3D # 50-130
+    .replace(/^([a-zA-Z.]+(?:\s+[a-zA-Z.]+)?\s+\d{1,3})\s*[-–]\s*([a-zA-Z])(?![a-zA-Z\d])(?=\s*(?:#|\bn[o°º]\.?|\bnro\.?|\bn[uú]mero|\bnum\.?))/i, "$1$2")
     // "casa" en lugar del numeral: "Carrera 1 Casa 8-59" = Cra 1 # 8-59
     .replace(/^([a-zA-Z.]+(?:\s+[a-zA-Z.]+)?\s+\d{1,3}\s*[a-zA-Z]?(?:\s+(?:bis|sur|este|oeste|norte))?)\s+(?:casa|csa|cs)\.?\s*(?:n[o°º]\.?\s*)?(?=\d{1,3}\s*[a-zA-Z]?\s*[-–]\s*\d)/i, "$1 # ")
     // letra del cruce separada con guion: "# 11-B-13" / "# 11 - b - 13" = # 11B-13
