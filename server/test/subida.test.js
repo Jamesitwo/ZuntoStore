@@ -1747,12 +1747,13 @@ test("dirección inválida: se le pide al cliente corregirla, se espera y con su
     async enviarTexto(a) { enviados.push(a); return { ok: true }; },
   };
   const { s, ruta, subidos } = armar({ cliente, lucidBotContactos, get extraido() { return extraido; } });
-  s.configurar({ automatico: true, dryRun: false, corregirDireccion: { activo: true, esperarMin: 5 } });
+  s.configurar({ automatico: true, dryRun: false, corregirDireccion: { activo: true, esperarMin: 5, flujoDespues: "7788" } });
   s.detener();
 
   // 1) direccion invalida: se le escribe al cliente y queda esperando
   await s.tick({ forzar: true });
   assert.equal(enviados.length, 1);
+  assert.equal(enviados[0].flujoDespues, "7788", "con el flujo que apaga el bot");
   assert.match(enviados[0].texto, /casa verde al lado de la panaderia pedro/);
   assert.match(enviados[0].texto, /oficina de Interrapidísimo/);
   assert.equal(s.estadoPedido(1).accion, "esperando-direccion");

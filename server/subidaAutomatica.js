@@ -405,6 +405,9 @@ export function corregirDireccionDe(c) {
     esperarMin: Math.round(n(a.esperarMin, 30, 5, 720)),
     // si no corrige en este plazo, queda como direccion invalida
     maxHoras: Math.round(n(a.maxHoras, 24, 1, 168)),
+    // flujo de Lucid Bot que se ejecuta despues del mensaje (p. ej. apagar
+    // el bot de ventas para que no le conteste al cliente)
+    flujoDespues: String(a.flujoDespues ?? "").trim().replace(/[^\w-]/g, "").slice(0, 60),
   };
 }
 
@@ -1218,12 +1221,16 @@ export function crearSubidaAutomatica({
               ciudad: resumen?.ciudad,
               producto: resumen?.productos?.[0]?.nombre,
             });
-            const env = await lucidBotContactos.enviarTexto({ pedido: pedidoCompleto, chatUrl, texto }).catch((e) => ({ ok: false, detalle: e?.message ?? String(e) }));
+            const env = await lucidBotContactos
+              .enviarTexto({ pedido: pedidoCompleto, chatUrl, texto, flujoDespues: conf.flujoDespues })
+              .catch((e) => ({ ok: false, detalle: e?.message ?? String(e) }));
             if (!env.ok) {
               log.warn?.(`[subida] no se pudo pedir la corrección de la dirección del pedido ${id}: ${env.detalle}`);
               return false;
             }
-            marcarP("esperando-direccion", `se le pidió al cliente corregir la dirección por WhatsApp; ${motivo}`, {
+            if (env.flujo && !env.flujo.ok) log.warn?.(`[subida] pedido ${id}: se envió el mensaje pero ${env.flujo.detalle}`);
+            const notaFlujo = !env.flujo ? "" : env.flujo.ok ? " (y se ejecutó el flujo de Lucid Bot)" : ` (el flujo de Lucid Bot falló: ${env.flujo.detalle})`;
+            marcarP("esperando-direccion", `se le pidió al cliente corregir la dirección por WhatsApp${notaFlujo}; ${motivo}`, {
               pidio: new Date().toISOString(),
               direccionAnterior: resumen?.direccion ?? "",
             });

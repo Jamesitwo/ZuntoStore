@@ -172,3 +172,31 @@ test("chat al día: si el flujo falla, igual lee el campo y avisa", async () => 
   assert.throws(() => lb.configurar({ conversationFlowId: "abc" }), /numérico/);
   fs.rmSync(ruta, { force: true });
 });
+
+test("mensaje al cliente + flujo después (p. ej. apagar el bot de ventas)", async () => {
+  const ruta = path.join(os.tmpdir(), `lucidbot-${Date.now()}-${Math.random()}.json`);
+  const eventos = [];
+  let flujoFalla = false;
+  const fetcher = async (url, opciones) => {
+    eventos.push(`${opciones?.method} ${url.replace("https://panel.lucidbot.co/api", "")}`);
+    if (/\/send\/\d+$/.test(url) && flujoFalla) return { ok: false, status: 404, json: async () => ({ success: false, message: "Flow not found" }) };
+    return { ok: true, status: 200, json: async () => ({ success: true }) };
+  };
+  const lb = crearLucidBotContactos({ ruta, fetcher, esperar: async () => {} });
+  lb.configurar({ token: "tok" });
+  let r = await lb.enviarTexto({ pedido: { Movil: "3009998877" }, texto: "corrige la dirección", flujoDespues: "7788" });
+  assert.deepEqual(eventos, ["POST /contacts/573009998877/send/text", "POST /contacts/573009998877/send/7788"]);
+  assert.deepEqual(r.flujo, { ok: true });
+  // sin flujo: solo el mensaje
+  eventos.length = 0;
+  r = await lb.enviarTexto({ pedido: { Movil: "3009998877" }, texto: "hola" });
+  assert.deepEqual(eventos, ["POST /contacts/573009998877/send/text"]);
+  assert.equal(r.flujo, undefined);
+  // si el flujo falla, el mensaje igual quedo enviado y se avisa
+  flujoFalla = true;
+  r = await lb.enviarTexto({ pedido: { Movil: "3009998877" }, texto: "hola", flujoDespues: "7788" });
+  assert.equal(r.ok, true);
+  assert.equal(r.flujo.ok, false);
+  assert.match(r.flujo.detalle, /flujo 7788.*404.*Flow not found/);
+  fs.rmSync(ruta, { force: true });
+});

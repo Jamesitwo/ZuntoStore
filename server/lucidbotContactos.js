@@ -162,11 +162,19 @@ export function crearLucidBotContactos({ ruta, fetcher = fetch, timeoutMs = 1200
    * Si falla no se frena: se lee lo que tenga el campo.
    */
   async function refrescarConversacion(c, contactId) {
+    const r = await ejecutarFlujo(c, contactId, c.conversationFlowId);
+    if (!r.ok) return { ok: false, detalle: r.detalle.replace("no se pudo ejecutar el flujo", "no se pudo ejecutar el flujo que actualiza el chat") };
+    await pausa(esperaFlujoMs);
+    return { ok: true };
+  }
+
+  /** POST /contacts/{id}/send/{flujo}: ejecuta un flujo de Lucid Bot para el contacto. */
+  async function ejecutarFlujo(c, contactId, flujo) {
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), timeoutMs);
     try {
       const r = await fetcher(
-        `https://panel.lucidbot.co/api/contacts/${encodeURIComponent(contactId)}/send/${encodeURIComponent(c.conversationFlowId)}`,
+        `https://panel.lucidbot.co/api/contacts/${encodeURIComponent(contactId)}/send/${encodeURIComponent(flujo)}`,
         {
           method: "POST",
           signal: ctl.signal,
@@ -177,23 +185,23 @@ export function crearLucidBotContactos({ ruta, fetcher = fetch, timeoutMs = 1200
       const body = await r.json().catch(() => null);
       if (!r.ok || body?.success === false) {
         const razon = textoSeguro(body?.message ?? body?.msg ?? body?.detail, 200);
-        return { ok: false, detalle: `Lucid Bot no ejecutó el flujo ${c.conversationFlowId} (HTTP ${r.status}${razon ? `: ${razon}` : ""})` };
+        return { ok: false, detalle: `Lucid Bot no ejecutó el flujo ${flujo} (HTTP ${r.status}${razon ? `: ${razon}` : ""})` };
       }
+      return { ok: true };
     } catch (e) {
-      return { ok: false, detalle: `no se pudo ejecutar el flujo que actualiza el chat: ${e?.name === "AbortError" ? "timeout" : e?.message ?? e}` };
+      return { ok: false, detalle: `no se pudo ejecutar el flujo ${flujo}: ${e?.name === "AbortError" ? "timeout" : e?.message ?? e}` };
     } finally {
       clearTimeout(timer);
     }
-    await pausa(esperaFlujoMs);
-    return { ok: true };
   }
 
   /**
    * Manda un texto al cliente del pedido por Lucid Bot
    * (POST /contacts/{id}/send/text). Lo usa la subida para pedirle que
-   * corrija la direccion.
+   * corrija la direccion. Con flujoDespues, al enviarlo ejecuta ese flujo
+   * para el mismo contacto (p. ej. el que apaga el bot de ventas).
    */
-  async function enviarTexto({ pedido, chatUrl, texto } = {}) {
+  async function enviarTexto({ pedido, chatUrl, texto, flujoDespues = "" } = {}) {
     const c = leer();
     if (!c.token) return { ok: false, detalle: "Falta X-ACCESS-TOKEN de Lucid Bot" };
     const t = String(texto ?? "").trim();
@@ -217,7 +225,10 @@ export function crearLucidBotContactos({ ruta, fetcher = fetch, timeoutMs = 1200
         const razon = textoSeguro(body?.message ?? body?.msg ?? body?.detail, 200);
         return { ok: false, detalle: `Lucid Bot no envió el mensaje (HTTP ${r.status}${razon ? `: ${razon}` : ""})` };
       }
-      return { ok: true, contactId };
+      const flujo = String(flujoDespues ?? "").trim();
+      if (!flujo) return { ok: true, contactId };
+      clearTimeout(timer);
+      return { ok: true, contactId, flujo: await ejecutarFlujo(c, contactId, flujo) };
     } catch (e) {
       return { ok: false, detalle: `no se pudo enviar el mensaje: ${e?.name === "AbortError" ? "timeout" : e?.message ?? e}` };
     } finally {

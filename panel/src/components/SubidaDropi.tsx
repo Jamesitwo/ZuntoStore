@@ -89,7 +89,7 @@ function normalizaConfig(c: any): {
   maxIntentos: number;
   maxDiasPedido: number;
   asignarFallidos: { activo: boolean; motivos: string[]; soloEnTurno: boolean };
-  corregirDireccion: { activo: boolean; mensaje: string; esperarMin: number; maxHoras: number };
+  corregirDireccion: { activo: boolean; mensaje: string; esperarMin: number; maxHoras: number; flujoDespues: string };
   tiendas: string[];
   estados: number[];
   tiendasDropi: Record<string, string>;
@@ -142,6 +142,7 @@ function normalizaConfig(c: any): {
       mensaje: String(c?.corregirDireccion?.mensaje ?? ""),
       esperarMin: Number(c?.corregirDireccion?.esperarMin) || 30,
       maxHoras: Number(c?.corregirDireccion?.maxHoras) || 24,
+      flujoDespues: String(c?.corregirDireccion?.flujoDespues ?? ""),
     },
     maxDiasPedido: Number.isFinite(Number(c?.maxDiasPedido)) ? Math.max(0, Math.min(365, Math.floor(Number(c.maxDiasPedido)))) : 5,
     tiendas: (Array.isArray(c?.tiendas) ? c.tiendas : []).map(String) as string[],
@@ -1265,6 +1266,22 @@ export function SubidaDropi() {
                     value={form.corregirDireccion.mensaje}
                     placeholder={MENSAJE_CORREGIR_DEFECTO}
                     onChange={(e) => setForm((f) => ({ ...f, corregirDireccion: { ...f.corregirDireccion, mensaje: e.target.value } }))}
+                  />
+                </Campo>
+                <Campo
+                  id="sub-corregir-flujo"
+                  label="Flujo de Lucid Bot al enviar el mensaje (opcional)"
+                  ayuda="ID del flujo que se ejecuta para ese contacto justo después del mensaje, por ejemplo el que apaga el bot de ventas para que no le conteste al cliente mientras corrige la dirección. Vacío = no se ejecuta ninguno."
+                >
+                  <input
+                    id="sub-corregir-flujo"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Ej.: 1712345678901"
+                    value={form.corregirDireccion.flujoDespues}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, corregirDireccion: { ...f.corregirDireccion, flujoDespues: e.target.value.trim() } }))
+                    }
                   />
                 </Campo>
               </>
