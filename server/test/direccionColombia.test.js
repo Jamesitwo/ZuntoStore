@@ -244,6 +244,21 @@ test("tipos de vía como los escriben los clientes: Krra, Karrera, Cale...", asy
   assert.match(r.normalizada, /^Cra 63 # 18-49 Sur/);
 });
 
+test("esquina + número de la casa: Calle 43 con Carrera 17, casa 17-15 = Calle 43 # 17-15", async () => {
+  const { validarDireccion } = await import("../direccionColombia.js");
+  let r = validarDireccion("Calle 43 con Carrera 17, casa 17-15");
+  assert.equal(r.ok, true, r.detalle);
+  assert.equal(r.normalizada, "Calle 43 # 17-15");
+  r = validarDireccion("Calle 43 con Carrera 17, número de la casa 17-15");
+  assert.equal(r.normalizada, "Calle 43 # 17-15");
+  r = validarDireccion("Calle 43 con Carrera 17 #17-15 barrio x");
+  assert.equal(r.normalizada, "Calle 43 # 17-15, Barrio x");
+  // si la casa no empieza por el número de la vía que cruza, no se adivina
+  assert.equal(validarDireccion("Calle 43 con Carrera 18, casa 17-15").ok, false);
+  // lo de antes sigue igual
+  assert.equal(validarDireccion("Cra 12 con calle 12 - 12").normalizada, "Cra 12 # 12-12");
+});
+
 test("placa con letra pegada: Calle 10 No. 10-11B = Calle 10 # 10-11B", async () => {
   const { validarDireccion } = await import("../direccionColombia.js");
   let r = validarDireccion("Calle 10 No. 10-11B, Centro");

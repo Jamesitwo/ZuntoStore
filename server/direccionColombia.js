@@ -93,6 +93,20 @@ const TIPO_PALABRA = String.raw`(?:avenida\s+carrera|avenida\s+calle|carrera|cra
 const NUM_SIMPLE = String.raw`\d{1,3}(?:\s?[a-z](?![a-z]))?(?:\s?bis)?(?:\s?[a-z](?![a-z]))?(?:\s+(?:sur|este|oeste|norte)\b)?`;
 
 /**
+ * Esquina + placa: "Calle 43 con Carrera 17, casa 17-15" = "Calle 43 # 17-15".
+ * Solo si el numero de la casa empieza por el de la via que cruza (17 y 17-15).
+ */
+export function reescribirEsquinaConPlaca(direccion) {
+  return String(direccion ?? "").trim().replace(
+    /^([a-zA-Z.]+(?:\s+[a-zA-Z.]+)?\s+\d{1,3}\s*[a-zA-Z]?(?:\s+(?:bis|sur|este|oeste|norte))?)\s+(?:con|x|y)\s+([a-zA-Z.]+)\s+(\d{1,3}\s*[a-zA-Z]?)\s*[,.]?\s*(?:(?:(?:el\s+)?n[uú]mero\s+(?:de\s+(?:la\s+)?)?)?casa|cs|placa)?\s*(?:#|n[o°º]\.?)?\s*(\d{1,3}\s*[a-zA-Z]?)\s*[-–]\s*(?=\d)/i,
+    (todo, via, tipoCruce, numCruce, numCasa) =>
+      tipoViaCanonico(tipoCruce) && numCruce.replace(/\s+/g, "").toLowerCase() === numCasa.replace(/\s+/g, "").toLowerCase()
+        ? `${via} # ${numCasa}-`
+        : todo,
+  );
+}
+
+/**
  * "Cra 12 calle 12-12" / "Cra 12 con calle 12 - 12" / "Cra 12 con Cl 12 # 12":
  * la via que cruza escrita con su tipo en vez de "#". Se reescribe como
  * "Cra 12 # 12-12". Los numeros no cambian.
@@ -111,7 +125,7 @@ export function reescribirCruceConVia(direccion) {
  * placa, resto, normalizada} o null si no tiene el formato.
  */
 export function parsearDireccion(direccion) {
-  direccion = reescribirCruceConVia(direccion);
+  direccion = reescribirCruceConVia(reescribirEsquinaConPlaca(direccion));
   // La calle puede no estar al principio ("Etapa Tres, Calle KR 5 No. 19-105"):
   // se busca desde cada tipo de via y lo que va antes pasa al final (barrio,
   // etapa...). Con dos tipos seguidos que no forman uno compuesto ("Calle KR
