@@ -2099,8 +2099,10 @@ export function crearSubidaAutomatica({
       const clave = String(id ?? "").trim();
       if (!clave) throw new ErrorApi(400, "Falta el id del pedido");
       const accion = c.procesados?.[clave]?.accion;
-      // en revision: se vuelve a intentar desde cero (otros N intentos)
-      if (REARMABLES.has(accion)) {
+      // en revision: se vuelve a intentar desde cero (otros N intentos).
+      // Tambien el que espera que el cliente corrija la direccion (p. ej. la
+      // regla ya la acepta): solo uno a uno, «Reintentar todos» no lo toca.
+      if (REARMABLES.has(accion) || accion === "esperando-direccion") {
         delete c.procesados[clave];
         if (!guardar(c)) throw new ErrorApi(500, "No se pudo guardar el reintento");
         return { ok: true, id: clave };

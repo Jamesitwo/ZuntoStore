@@ -1777,6 +1777,31 @@ test("dirección inválida: se le pide al cliente corregirla, se espera y con su
   fs.rmSync(ruta, { force: true });
 });
 
+test("esperando que el cliente corrija la dirección: Reintentar lo libera (solo uno a uno)", async () => {
+  const pedido = { id: 1, EstadoPedido: 0, completo: { ...COMPLETO, Direccion: "casa verde al lado de la panaderia pedro" } };
+  const lucidBotContactos = {
+    async notificar() { return { ok: true }; },
+    async obtenerConversacion() { return { ok: true, configurado: true, mensajes: [{ de: "cliente", texto: "hola" }] }; },
+    async enviarTexto() { return { ok: true }; },
+  };
+  const { s, ruta } = armar({
+    pedidos: [pedido],
+    lucidBotContactos,
+    extraido: { producto: "Taladro Inalambrico 68V", cantidad: 1, precioAcordado: 105690, direccion: "casa verde al lado de la panaderia pedro", clienteConfirmo: true, entregaFutura: false, incertidumbre: [] },
+  });
+  s.configurar({ automatico: true, dryRun: false, corregirDireccion: { activo: true, esperarMin: 5 } });
+  s.detener();
+  await s.tick({ forzar: true });
+  assert.equal(s.estadoPedido(1).accion, "esperando-direccion");
+  // «Reintentar todos» no lo toca (no se le vuelve a escribir al cliente)
+  assert.equal(s.rearmarRevision().rearmados, 0);
+  assert.equal(s.estadoPedido(1).accion, "esperando-direccion");
+  // Reintentar ese pedido si
+  assert.deepEqual(s.rearmar(1), { ok: true, id: "1" });
+  assert.equal(s.estadoPedido(1), null);
+  fs.rmSync(ruta, { force: true });
+});
+
 test("dirección inválida sin respuesta del cliente: al vencer el plazo queda inválida", async () => {
   const pedido = { id: 1, EstadoPedido: 0, completo: { ...COMPLETO, Direccion: "casa verde al lado de la panaderia pedro" } };
   const lucidBotContactos = {

@@ -149,7 +149,7 @@ function VeredictoAutomatico({ id, recarga }: { id: number | string; recarga: nu
           Es una compra nueva: subirlo
         </button>
       ) : null}
-      {reg.accion === "requiere-revision" || reg.accion === "direccion-invalida" ? (
+      {reg.accion === "requiere-revision" || reg.accion === "direccion-invalida" || reg.accion === "esperando-direccion" ? (
         <button className="btn sm" style={{ marginTop: 8 }} onClick={() => void reintentar()}>
           Reintentar en la subida automática
         </button>
