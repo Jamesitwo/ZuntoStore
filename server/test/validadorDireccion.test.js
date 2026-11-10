@@ -414,3 +414,10 @@ test("número pegado con 'No.' / 'n' en lugar de '#': Calle 10 No. 1957 → el m
   // con guion no esta pegado
   assert.deepEqual(candidatosNumeroPegado("Calle 10 No. 19-57"), []);
 });
+
+test("puntos sueltos: Calle 4. Sur #.1193 → número pegado, el mapa decide entre 11-93 y 1-193", async () => {
+  const { candidatosNumeroPegado } = await import("../validadorDireccion.js");
+  const { validarDireccion } = await import("../direccionColombia.js");
+  assert.deepEqual(candidatosNumeroPegado("Calle 4. Sur #.1193"), ["Calle 4 Sur # 11-93", "Calle 4 Sur # 1-193"]);
+  assert.equal(validarDireccion("Calle 4. Sur #.11-93").normalizada, "Calle 4 Sur # 11-93");
+});
