@@ -406,3 +406,11 @@ test("con calle y placa en otra ciudad (no un punto aproximado) sí se invalida"
   assert.equal(r.veredicto, "invalida");
   fs.rmSync(ruta, { force: true });
 });
+
+test("número pegado con 'No.' / 'n' en lugar de '#': Calle 10 No. 1957 → el mapa decide entre 19-57 y 1-957", async () => {
+  const { candidatosNumeroPegado } = await import("../validadorDireccion.js");
+  assert.deepEqual(candidatosNumeroPegado("Calle 10 No. 1957"), ["Calle 10 # 19-57", "Calle 10 # 1-957"]);
+  assert.deepEqual(candidatosNumeroPegado("Calle 10 n 1957"), ["Calle 10 # 19-57", "Calle 10 # 1-957"]);
+  // con guion no esta pegado
+  assert.deepEqual(candidatosNumeroPegado("Calle 10 No. 19-57"), []);
+});

@@ -69,7 +69,10 @@ function enmascarar(k) {
  * entienden tal cual.
  */
 export function candidatosNumeroPegado(direccion) {
-  const t = String(direccion ?? "").trim();
+  const t = String(direccion ?? "")
+    .trim()
+    // "No. 1957" / "n 1957" / "Nro 1957" = "# 1957"
+    .replace(/\s(?:n[o°º]\.?|nro\.?|n[uú]mero|num\.?|n)\s*(?=\d{3,4}\b)/i, " # ");
   // con "#" ("Cra 21 #1212") o sin el ("Calle 7A 1375": via y luego 3-4 digitos)
   let m = /^(.*?#\s*)(\d{3,4})([a-z]?)\b(.*)$/i.exec(t);
   if (!m) {
