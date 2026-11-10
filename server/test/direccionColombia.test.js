@@ -244,6 +244,20 @@ test("tipos de vía como los escriben los clientes: Krra, Karrera, Cale...", asy
   assert.match(r.normalizada, /^Cra 63 # 18-49 Sur/);
 });
 
+test("manzana abreviada M45 L30 (= Mz 45 Lt 30)", async () => {
+  const { validarDireccion } = await import("../direccionColombia.js");
+  let r = validarDireccion("M45 L30 barrio Plan Parejo, al lado de la ferretería la 45");
+  assert.equal(r.ok, true, r.detalle);
+  assert.match(r.normalizada, /^Mz 45 Lt 30, /);
+  // igual que "Mz 45 Lt 30, Turbaco...": lo demas se toma como barrio/referencia
+  r = validarDireccion("Turbaco, M45 L30 al lado de la ferretería la 45");
+  assert.equal(r.normalizada, "Mz 45 Lt 30, Turbaco, al lado de la ferretería la 45");
+  // una manzana sola, sin nada mas, sigue sin servir
+  assert.equal(validarDireccion("M45 L30").ok, false);
+  // una "M" sin lote ni casa no es manzana
+  assert.equal(validarDireccion("M45 barrio Centro").ok, false);
+});
+
 test("letra de la vía separada con punto: Calle 9.a No. 14-47 = Calle 9A # 14-47", async () => {
   const { validarDireccion } = await import("../direccionColombia.js");
   const r = validarDireccion("Calle 9.a No. 14-47, Piso 2");

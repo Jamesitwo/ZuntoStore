@@ -327,7 +327,11 @@ function limpiarBarrio(t) {
  * {partes, barrio, normalizada} o null si no lo es (necesita manzana y casa o lote).
  */
 export function parsearManzana(direccion) {
-  const original = String(direccion ?? "").replace(/\s+/g, " ").trim();
+  const original = String(direccion ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    // "M45 L30" / "M 45 C 12" = Mz 45 Lt 30 / Mz 45 Cs 12 (solo juntas: una "M" sola no es manzana)
+    .replace(/\bm\s?(\d{1,4}[a-z]?)\s*[,-]?\s*([lc])\s?(\d{1,4}[a-z]?)\b/i, (_t, mz, lc, n) => `Mz ${mz} ${/l/i.test(lc) ? "Lt" : "Cs"} ${n}`);
   const t = normalizarTextoDir(original);
   const partes = {};
   const orden = {};
