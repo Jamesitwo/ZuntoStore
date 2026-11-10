@@ -244,6 +244,13 @@ test("tipos de vía como los escriben los clientes: Krra, Karrera, Cale...", asy
   assert.match(r.normalizada, /^Cra 63 # 18-49 Sur/);
 });
 
+test("letra de la vía separada con punto: Calle 9.a No. 14-47 = Calle 9A # 14-47", async () => {
+  const { validarDireccion } = await import("../direccionColombia.js");
+  const r = validarDireccion("Calle 9.a No. 14-47, Piso 2");
+  assert.equal(r.ok, true, r.detalle);
+  assert.equal(r.normalizada, "Calle 9A # 14-47, Piso 2");
+});
+
 test("vía con doble letra y cruce con su tipo: Calle 100 BB Carrera 30 C 25", async () => {
   const { validarDireccion } = await import("../direccionColombia.js");
   let r = validarDireccion("Calle 100 BB Carrera 30 C 25 Interior 201");

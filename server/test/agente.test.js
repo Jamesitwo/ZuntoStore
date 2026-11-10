@@ -461,3 +461,14 @@ test("la IA sabe cuál es ESTE pedido (el chat puede tener varias compras)", asy
   await ejecutarAgente({ resumen: RESUMEN, mensajes: [], extraer: async (_m, ctx) => ((contexto = ctx), EXTRAIDO_BIEN) });
   assert.equal(contexto.pedidoActual, "1 x Taladro Inalambrico 68V · total 105690");
 });
+
+test("precio: si el chat solo dio el total (con envío), se compara el total", async () => {
+  const { coincidePrecio } = await import("../agente.js");
+  let r = coincidePrecio(null, { total: "73900", subtotal: "73900" }, 0.01, { envio: 14000, total: 73900 });
+  assert.equal(r.ok, true, r.razon);
+  assert.match(r.razon, /no dio el precio del producto solo/);
+  r = coincidePrecio(null, { total: "80000" }, 0.01, { envio: 14000, total: 73900 });
+  assert.equal(r.ok, false);
+  // sin precio ni total sigue sin entenderse
+  assert.equal(coincidePrecio(null, { total: "73900" }).razon, "no se entendio el precio del chat");
+});

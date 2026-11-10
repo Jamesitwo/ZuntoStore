@@ -212,8 +212,15 @@ function varianteDistinta(chat, variante) {
  * ("99.900 y el envio 20.000" = 119.900) o el total que dijo el chat.
  */
 export function coincidePrecio(precioChat, resumen, tolerancia = 0.01, { envio = null, total = null } = {}) {
-  const p = parsearPrecio(precioChat);
-  if (p === null) return { ok: false, razon: "no se entendio el precio del chat", valor: null };
+  let p = parsearPrecio(precioChat);
+  // el chat solo dio el total (con envio): se compara ese total
+  let soloTotal = false;
+  if (p === null) {
+    const t = parsearPrecio(total);
+    if (t === null || t <= 0) return { ok: false, razon: "no se entendio el precio del chat", valor: null };
+    p = t;
+    soloTotal = true;
+  }
 
   const candidatos = [
     ["Total", parsearPrecio(resumen?.total)],
@@ -221,9 +228,9 @@ export function coincidePrecio(precioChat, resumen, tolerancia = 0.01, { envio =
   ];
   const envioChat = parsearPrecio(envio);
   const totalChat = parsearPrecio(total);
-  const lecturas = [[p, ""]];
-  if (envioChat !== null && envioChat > 0) lecturas.push([p + envioChat, ` (${p} + envío ${envioChat} del chat)`]);
-  if (totalChat !== null && totalChat > 0 && totalChat !== p) lecturas.push([totalChat, ` (total del chat ${totalChat})`]);
+  const lecturas = [[p, soloTotal ? ` (total del chat ${p}; el chat no dio el precio del producto solo)` : ""]];
+  if (!soloTotal && envioChat !== null && envioChat > 0) lecturas.push([p + envioChat, ` (${p} + envío ${envioChat} del chat)`]);
+  if (!soloTotal && totalChat !== null && totalChat > 0 && totalChat !== p) lecturas.push([totalChat, ` (total del chat ${totalChat})`]);
   for (const [valor, como] of lecturas) {
     for (const [campo, v] of candidatos) {
       if (v === null || v === 0) continue;
@@ -235,7 +242,7 @@ export function coincidePrecio(precioChat, resumen, tolerancia = 0.01, { envio =
     .filter(([, v]) => v !== null)
     .map(([c, v]) => `${c}=${v}`)
     .join(" / ");
-  const extra = envioChat ? ` (con envío ${envioChat}: ${p + envioChat})` : "";
+  const extra = soloTotal ? " (total del chat)" : envioChat ? ` (con envío ${envioChat}: ${p + envioChat})` : "";
   return { ok: false, razon: `el chat dice ${p}${extra} y el pedido ${detalle || "sin totales"}`, valor: p };
 }
 
