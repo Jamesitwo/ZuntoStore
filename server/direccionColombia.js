@@ -89,8 +89,8 @@ function capitalizarResto(r) {
 
 // Palabras de tipo de via (las mismas de TIPOS) para reconocer dos vias seguidas
 const TIPO_PALABRA = String.raw`(?:avenida\s+carrera|avenida\s+calle|carrera|cra|kra|kr|cr|carr|crr|car|krra|krr|crra|karrera|karera|carera|carreara|carrrera|krera|kerera|kerrera|crera|carrea|carrra|karrea|calle|cll|cl|call|clle|cale|kalle|kll|diagonal|diag|dg|dgl|diagnal|transversal|transv|trans|tv|tr|tranv|tranversal|trv|circular|circ|cq|cir|avenida|av|ak|ac)`;
-// numero de via simple: 12, 12A, 12 A, 12 Bis, 12A Bis B, 12 Sur
-const NUM_SIMPLE = String.raw`\d{1,3}(?:\s?[a-z](?![a-z]))?(?:\s?bis)?(?:\s?[a-z](?![a-z]))?(?:\s+(?:sur|este|oeste|norte)\b)?`;
+// numero de via simple: 12, 12A, 12 A, 12 BB, 12 Bis, 12A Bis B, 12 Sur
+const NUM_SIMPLE = String.raw`\d{1,3}(?:\s?(?!(?:con|de|del|el|la|no|esq|x|y)\b)[a-z]{1,2}(?![a-z]))?(?:\s?bis)?(?:\s?(?![xy]\b)[a-z](?![a-z]))?(?:\s+(?:sur|este|oeste|norte)\b)?`;
 
 /**
  * Esquina + placa: "Calle 43 con Carrera 17, casa 17-15" = "Calle 43 # 17-15".
