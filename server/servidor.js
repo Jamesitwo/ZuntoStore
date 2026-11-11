@@ -1872,7 +1872,12 @@ export function crearManejador({
         return;
       }
       if (req.method === "POST" && (ruta === "/api/bots-tienda/leer" || ruta === "/api/bots-tienda/sincronizar")) {
-        const r = await botsTienda.sincronizar({ motivo: `manual (${usuarioDe(req) ?? "?"})`, soloLeer: ruta.endsWith("/leer") });
+        const soloTienda = new URL(req.url ?? "", "http://x").searchParams.get("solo") === "tienda";
+        const r = await botsTienda.sincronizar({
+          motivo: soloTienda ? `campos de la tienda (${usuarioDe(req) ?? "?"})` : `manual (${usuarioDe(req) ?? "?"})`,
+          soloLeer: ruta.endsWith("/leer"),
+          soloTienda,
+        });
         json(res, 200, { ok: true, resultado: r, ...botsTienda.estado() });
         return;
       }

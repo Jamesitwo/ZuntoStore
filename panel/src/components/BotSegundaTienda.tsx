@@ -149,6 +149,28 @@ export function BotSegundaTienda() {
     }
   };
 
+  // guarda los campos y los escribe ya en el bot nuevo (no espera la sincronizacion)
+  const guardarYEscribir = async () => {
+    setOcupado(true);
+    try {
+      aplicar(await backend<any>("/api/bots-tienda", { method: "PUT", body: { camposTienda: campos } }));
+      if (!e?.tokenConfigurado) {
+        toast.success("Guardado. Falta el X-ACCESS-TOKEN del bot nuevo para escribirlo allá.");
+        return;
+      }
+      const x = await backend<any>("/api/bots-tienda/sincronizar?solo=tienda", { method: "POST" });
+      aplicar(x);
+      const r = x?.resultado;
+      if (r?.ok === false && r?.detalle) toast.error(`Guardado en Zunto, pero no se escribió en el bot: ${r.detalle}`);
+      else if (r?.errores?.length) toast.error(`Se escribieron ${r.escritosNueva?.length ?? 0} campo(s); ${r.errores.length} con error: ${r.errores[0]}`);
+      else toast.success(`Listo: ${r?.escritosNueva?.length ?? 0} campo(s) escritos en el bot de ${e?.nombre || "la nueva tienda"}`);
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setOcupado(false);
+    }
+  };
+
   const deNueva = useMemo(() => new Set((e?.productosNueva ?? []).map(clave)), [e?.productosNueva]);
   // campos de la tienda: los del bot nuevo que no son por producto
   const camposTienda = useMemo(() => {
@@ -266,7 +288,7 @@ export function BotSegundaTienda() {
         ocupado={ocupado}
         nombreTienda={e.nombre}
         onCopiar={copiarZunto}
-        onGuardar={() => void guardar({ camposTienda: campos }, "Campos de la tienda guardados")}
+        onGuardar={() => void guardarYEscribir()}
       />
 
       <div className="row" style={{ marginTop: 16, gap: 8, flexWrap: "wrap" }}>

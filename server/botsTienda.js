@@ -206,13 +206,17 @@ export function crearBotsTienda({ ruta, rutaCache, tokenZunto, fetcher = fetch, 
   }
 
   /** Una sincronizacion completa. */
-  /** soloLeer: solo trae los productos del bot de Zunto (para elegirlos), sin escribir nada. */
-  async function sincronizar({ motivo = "manual", soloLeer = false } = {}) {
+  /**
+   * soloLeer: solo trae los productos del bot de Zunto (para elegirlos), sin escribir nada.
+   * soloTienda: solo escribe ya los campos de la tienda en el bot nuevo (al guardarlos), aunque no hayan cambiado.
+   */
+  async function sincronizar({ motivo = "manual", soloLeer = false, soloTienda = false } = {}) {
     if (corriendo) return { ok: false, ocupado: true, detalle: "Ya se está sincronizando" };
     const c = leer();
     const tz = tokenZunto?.();
     if (!tz) return { ok: false, detalle: "Falta el X-ACCESS-TOKEN del bot de Zunto (Ajustes → Lucid Bot)" };
-    if (!Object.keys(c.idsZunto).length) return { ok: false, detalle: "Pega primero la exportación de campos del bot de Zunto" };
+    if (!soloTienda && !Object.keys(c.idsZunto).length) return { ok: false, detalle: "Pega primero la exportación de campos del bot de Zunto" };
+    if (soloTienda && !Object.keys(c.idsNueva).length) return { ok: false, detalle: "Carga primero la exportación de campos del bot nuevo" };
     if (!soloLeer && !c.token) return { ok: false, detalle: "Falta el X-ACCESS-TOKEN del bot de la nueva tienda" };
     corriendo = true;
     const inicio = reloj();
@@ -226,7 +230,7 @@ export function crearBotsTienda({ ruta, rutaCache, tokenZunto, fetcher = fetch, 
     const esNueva = (n) => deNueva.has(clave(n));
     try {
       // 1) campos por producto: leer del bot de Zunto
-      for (const [nombre, idZ] of Object.entries(c.idsZunto)) {
+      for (const [nombre, idZ] of soloTienda ? [] : Object.entries(c.idsZunto)) {
         actividad(`bots-tienda: ${nombre}`);
         let valor;
         try {
@@ -296,7 +300,7 @@ export function crearBotsTienda({ ruta, rutaCache, tokenZunto, fetcher = fetch, 
           continue;
         }
         const marca = `nueva:${idN}`;
-        if (cache.escrito[marca] === huella(valor)) {
+        if (!soloTienda && cache.escrito[marca] === huella(valor)) {
           res.sinCambios++;
           continue;
         }

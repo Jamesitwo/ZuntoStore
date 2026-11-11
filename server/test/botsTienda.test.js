@@ -155,3 +155,18 @@ test("copiar del bot de Zunto: valores de los campos de la tienda (sin los de pr
   const r = await bt.valoresZunto();
   assert.deepEqual(r.valores, { Nombre_empresa_LucidSales: "Zunto" });
 });
+
+test("guardar los campos de la tienda los escribe ya en el bot nuevo (aunque no hayan cambiado), sin tocar productos", async () => {
+  const campos = { tz: { 1: catalogo("Taladro", "Arbol") }, tn: {} };
+  const { bt, lb } = armar(campos);
+  bt.configurar({ exportZunto: EXPORT_ZUNTO, exportNueva: EXPORT_NUEVA, token: "tn", productosNueva: ["Arbol"], camposTienda: { Nombre_empresa_LucidSales: "Pizdo" } });
+  let r = await bt.sincronizar({ soloTienda: true });
+  assert.equal(r.ok, true, r.errores.join());
+  assert.equal(campos.tn[13], "Pizdo");
+  assert.equal(campos.tn[11], undefined, "los productos no se tocan");
+  assert.equal(lb.llamadas.some((x) => x.token === "tz"), false, "no lee ni filtra el bot de Zunto");
+  // alguien lo cambio en Lucid Bot: al guardar de nuevo se vuelve a escribir
+  campos.tn[13] = "otro";
+  r = await bt.sincronizar({ soloTienda: true });
+  assert.equal(campos.tn[13], "Pizdo");
+});

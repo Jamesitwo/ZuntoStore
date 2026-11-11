@@ -304,7 +304,7 @@ export function CamposTienda({ disponibles, campos, setCampos, ocupado, nombreTi
         <button type="button" className="btn primary" disabled={ocupado} onClick={onGuardar}>
           💾 Guardar configuración de {nombreTienda || "la nueva tienda"}
         </button>
-        <span className="muted small">Se escribe en el bot nuevo en la siguiente sincronización.</span>
+        <span className="muted small">Se guarda y se escribe de una vez en el bot nuevo.</span>
       </div>
     </div>
   );
