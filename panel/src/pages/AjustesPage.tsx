@@ -1804,8 +1804,6 @@ function BotTab({ idEmpresa }: { idEmpresa: number }) {
         <span className="muted small">{sucio ? "Cambios sin guardar" : "Todo al día"}</span>
       </div>
 
-      {/* segunda tienda en otro Lucid Bot (campos del bot desde LucidSales) */}
-      <BotSegundaTienda />
     </>
   );
 }
@@ -2183,7 +2181,7 @@ function UsuariosTab() {
 
 /* ------------------------------------------------------------------ */
 
-type Tab = "negocio" | "bot" | "usuarios";
+type Tab = "negocio" | "bot" | "usuarios" | "segunda";
 
 /**
  * Pestañas y el permiso de LucidSales que pide cada una:
@@ -2194,6 +2192,7 @@ const TABS: Array<{ id: Tab; label: string; permiso: Seccion }> = [
   { id: "negocio", label: "Negocio", permiso: "ajustesGeneral" },
   { id: "bot", label: "Bot", permiso: "ajustesGeneral" },
   { id: "usuarios", label: "Usuarios", permiso: "ajustesUsuarios" },
+  { id: "segunda", label: "Segunda tienda", permiso: "ajustesGeneral" },
 ];
 
 export function AjustesPage() {
@@ -2247,6 +2246,7 @@ export function AjustesPage() {
       {activa === "negocio" && <NegocioTab idEmpresa={idEmpresa} />}
       {activa === "bot" && <BotTab idEmpresa={idEmpresa} />}
       {activa === "usuarios" && <UsuariosTab />}
+      {activa === "segunda" && <BotSegundaTienda />}
     </div>
   );
 }
