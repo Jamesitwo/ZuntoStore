@@ -1803,6 +1803,9 @@ function BotTab({ idEmpresa }: { idEmpresa: number }) {
         </button>
         <span className="muted small">{sucio ? "Cambios sin guardar" : "Todo al día"}</span>
       </div>
+
+      {/* segunda tienda en otro Lucid Bot (campos del bot desde LucidSales) */}
+      <BotSegundaTienda />
     </>
   );
 }
@@ -1984,8 +1987,6 @@ function UsuariosTab() {
       {/* foto diaria del catalogo de Dropi (productos ganadores) */}
       <CatalogoDropi />
 
-      {/* segunda tienda en otro Lucid Bot (campos del bot desde LucidSales) */}
-      <BotSegundaTienda />
 
       {/* validador de direcciones propio: API key de Google Maps */}
       <MapasConfig />
