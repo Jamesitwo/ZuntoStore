@@ -85,6 +85,7 @@ export function crearServidorCuentas({ config, registro, crearServicios, comunes
       programados: servicios.programados,
       etiquetas: servicios.etiquetas,
       catalogo: servicios.catalogo,
+      botsTienda: servicios.botsTienda,
       auditoria: servicios.auditoria,
       verificarSesion: sesiones,
       // con una sola cuenta todo funciona como antes; con varias, cada una

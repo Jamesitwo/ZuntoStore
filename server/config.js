@@ -98,6 +98,9 @@ export function cargarConfig(env = process.env) {
     SUBIDA_AUTO: String(g("SUBIDA_AUTO", path.join(dir, "subidaAutomatica.json"))),
     /** Token y acciones para notificar resultados de Dropi a Lucid Bot. */
     LUCIDBOT_CONTACTOS_CONFIG: String(g("LUCIDBOT_CONTACTOS_CONFIG", path.join(dir, "config", "lucidbot-contactos.json"))),
+    /** segunda tienda en otro Lucid Bot (campos del bot sincronizados desde LucidSales) */
+    BOTS_TIENDA_CONFIG: String(g("BOTS_TIENDA_CONFIG", path.join(String(g("DATA_DIR", dir)), "config", "bots-tienda.json"))),
+    BOTS_TIENDA_CACHE: String(g("BOTS_TIENDA_CACHE", path.join(String(g("DATA_DIR", dir)), "bots-tienda-cache.json"))),
     /**
      * LLM para leer el chat del pedido (SOLO extraccion de datos; la decision
      * la toma el codigo en agente.js). Habla con la API compatible con OpenAI.

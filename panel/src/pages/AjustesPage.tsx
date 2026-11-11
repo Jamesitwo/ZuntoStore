@@ -8,6 +8,7 @@ import { ListaUsuarios } from "../components/ListaUsuarios";
 import { SubidaDropi } from "../components/SubidaDropi";
 import { MapasConfig } from "../components/MapasConfig";
 import { CatalogoDropi } from "../components/CatalogoDropi";
+import { BotSegundaTienda } from "../components/BotSegundaTienda";
 import { ApiKeyConfig } from "../components/ApiKeyConfig";
 import { CuentasAdmin } from "../components/CuentasAdmin";
 import { ChecklistCuenta } from "../components/ChecklistCuenta";
@@ -1982,6 +1983,9 @@ function UsuariosTab() {
 
       {/* foto diaria del catalogo de Dropi (productos ganadores) */}
       <CatalogoDropi />
+
+      {/* segunda tienda en otro Lucid Bot (campos del bot desde LucidSales) */}
+      <BotSegundaTienda />
 
       {/* validador de direcciones propio: API key de Google Maps */}
       <MapasConfig />

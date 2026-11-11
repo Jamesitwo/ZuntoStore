@@ -463,5 +463,7 @@ export function crearLucidBotContactos({ ruta, fetcher = fetch, timeoutMs = 1200
     }
   }
 
-  return { estado, configurar, notificar, obtenerConversacion, enviarTexto, pedidoActivo, guardarIdPedido };
+  // token de la cuenta (solo para otros modulos del servidor; no sale por la API)
+  const tokenCuenta = () => leer().token;
+  return { estado, configurar, notificar, obtenerConversacion, enviarTexto, pedidoActivo, guardarIdPedido, tokenCuenta };
 }

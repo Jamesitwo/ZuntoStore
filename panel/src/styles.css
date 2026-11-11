@@ -5632,3 +5632,11 @@ tr.fila-marcada > td { background: color-mix(in srgb, var(--primary, #7c3aed) 9%
 /* revision del catalogo de Dropi */
 .catalogo-corridas { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 4px; }
 .catalogo-corridas li { padding: 4px 0; border-top: 1px solid var(--border, #eee); }
+
+/* segunda tienda en otro Lucid Bot */
+.bt-productos { list-style: none; padding: 0; margin: 8px 0 12px; display: grid; gap: 2px; }
+.bt-productos li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border, #eee); }
+.bt-productos li > span { min-width: 0; overflow-wrap: anywhere; }
+.bt-tienda { display: flex; gap: 4px; flex-shrink: 0; }
+.card-subtitle { font-weight: 600; font-size: 0.95rem; margin: 0 0 6px; }
+summary.card-subtitle { cursor: pointer; }

@@ -140,6 +140,8 @@ export function crearManejador({
   etiquetas = null,
   // foto diaria del catalogo de Dropi (crearCatalogoDropi)
   catalogo = null,
+  // segunda tienda en otro Lucid Bot (crearBotsTienda)
+  botsTienda = null,
   // creador de campanas IA (crearCreadorCampanas), comun a todas las cuentas
   creador = null,
 }) {
@@ -1843,6 +1845,33 @@ export function crearManejador({
       const r = subida.parar?.() ?? { ok: false, msg: "No disponible" };
       json(res, 200, { ...r, config: subida.config() });
       return;
+    }
+
+    // ---- Segunda tienda en otro Lucid Bot ----
+    //   GET  /api/bots-tienda               -> config (sin token), productos, historial
+    //   PUT  /api/bots-tienda               { activo, nombre, token, cadaMin, filtrarZunto,
+    //                                          productosNueva, exportZunto, exportNueva, camposTienda }
+    //   POST /api/bots-tienda/leer          trae los productos del bot de Zunto (no escribe)
+    //   POST /api/bots-tienda/sincronizar   sincroniza ya
+    if (ruta === "/api/bots-tienda" || ruta.startsWith("/api/bots-tienda/")) {
+      autorizar(req);
+      if (!botsTienda) throw new ErrorApi(503, "La segunda tienda no está disponible");
+      if (req.method === "GET" && ruta === "/api/bots-tienda") {
+        json(res, 200, { ok: true, ...botsTienda.estado() });
+        return;
+      }
+      if (req.method === "PUT" && ruta === "/api/bots-tienda") {
+        const e = botsTienda.configurar((await leerCuerpo(req)) ?? {});
+        console.log(`[bots-tienda] config -> activo=${e.activo} productos=${e.productosNueva.length} campos Zunto=${e.camposZunto} nueva=${e.camposNueva}`);
+        json(res, 200, { ok: true, ...e });
+        return;
+      }
+      if (req.method === "POST" && (ruta === "/api/bots-tienda/leer" || ruta === "/api/bots-tienda/sincronizar")) {
+        const r = await botsTienda.sincronizar({ motivo: `manual (${usuarioDe(req) ?? "?"})`, soloLeer: ruta.endsWith("/leer") });
+        json(res, 200, { ok: true, resultado: r, ...botsTienda.estado() });
+        return;
+      }
+      throw new ErrorApi(404, "Ruta no encontrada");
     }
 
     // ---- Catalogo de Dropi (foto diaria para productos ganadores) ----

@@ -25,6 +25,7 @@ import { crearAuditoria } from "./auditoria.js";
 import { crearProgramados } from "./programados.js";
 import { crearEtiquetas } from "./etiquetas.js";
 import { crearCatalogoDropi } from "./catalogoDropi.js";
+import { crearBotsTienda } from "./botsTienda.js";
 
 /**
  * Turno del navegador de Dropi, compartido por TODAS las cuentas: un solo
@@ -91,6 +92,12 @@ export function crearServiciosCuenta({ cuenta, config, inter, turnoDropi = null 
   // mapa producto -> link de Dropi, mantenido en un Google Sheets (CSV)
   const productosDropi = crearProductosDropi({ url: config.DROPI_PRODUCTOS_CSV, ruta: config.DROPI_PRODUCTOS_CONFIG });
   const lucidBotContactos = crearLucidBotContactos({ ruta: config.LUCIDBOT_CONTACTOS_CONFIG });
+  // segunda tienda en otro Lucid Bot: campos del bot copiados desde el de Zunto
+  const botsTienda = crearBotsTienda({
+    ruta: config.BOTS_TIENDA_CONFIG,
+    rutaCache: config.BOTS_TIENDA_CACHE,
+    tokenZunto: () => lucidBotContactos.tokenCuenta(),
+  });
   // id de producto de LucidSales -> idProductoDropi -> dropiLink (del sheet).
   // Si falla, el error dice en QUE eslabon (para que el aviso sea accionable).
   const resolverProductoDropi = async (idProducto) => {
@@ -183,18 +190,21 @@ export function crearServiciosCuenta({ cuenta, config, inter, turnoDropi = null 
     estadosEnvio,
     auditoria,
     catalogo,
+    botsTienda,
     /** Arranca los trabajos automaticos (cada uno mira si esta encendido). */
     arrancar() {
       reparto.arrancar();
       subidaAuto.arrancar();
       pedidosLucidBot.iniciar();
       catalogo.arrancar();
+      botsTienda.arrancar();
     },
     detener() {
       reparto.detener();
       subidaAuto.detener();
       pedidosLucidBot.detener();
       catalogo.detener();
+      botsTienda.detener();
     },
   };
 }

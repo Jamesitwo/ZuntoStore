@@ -25,6 +25,8 @@ const RUTAS = {
   AUDITORIA: "auditoria.jsonl",
   LUCIDBOT_PEDIDOS: "lucidbot-pedidos.json",
   LUCIDBOT_CONTACTOS_CONFIG: "config/lucidbot-contactos.json",
+  BOTS_TIENDA_CONFIG: "config/bots-tienda.json",
+  BOTS_TIENDA_CACHE: "bots-tienda-cache.json",
   LLM_CONFIG: "config/llm.json",
   MAPAS_CONFIG: "config/mapas.json",
   DROPI_PRODUCTOS_CONFIG: "config/productosDropi.json",
