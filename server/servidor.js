@@ -1866,6 +1866,11 @@ export function crearManejador({
         json(res, 200, { ok: true, ...e });
         return;
       }
+      // valores del bot de Zunto para llenar el formulario (no guarda nada)
+      if (req.method === "POST" && ruta === "/api/bots-tienda/copiar-zunto") {
+        json(res, 200, { ok: true, ...(await botsTienda.valoresZunto()) });
+        return;
+      }
       if (req.method === "POST" && (ruta === "/api/bots-tienda/leer" || ruta === "/api/bots-tienda/sincronizar")) {
         const r = await botsTienda.sincronizar({ motivo: `manual (${usuarioDe(req) ?? "?"})`, soloLeer: ruta.endsWith("/leer") });
         json(res, 200, { ok: true, resultado: r, ...botsTienda.estado() });

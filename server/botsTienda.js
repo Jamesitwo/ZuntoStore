@@ -38,6 +38,16 @@ const DEFECTO = {
   camposTienda: {}, // nombre de campo -> valor para el bot nuevo ("" = no se toca)
 };
 const MAX_HISTORIAL = 20;
+// campos que LucidSales llena con un objeto por producto (tambien se detectan
+// por su contenido; esta lista cubre los que esten vacios)
+export const CAMPOS_POR_PRODUCTO = [
+  "ad_id_lucidsales",
+  "Catalogo_productos_LucidSales",
+  "Integracion_LucidSales",
+  "mensajes_iniciales_lucidsales",
+  "Multimedia_productos_LucidSales",
+  "Preguntas_Postventa_Productos_LucidSales",
+];
 
 const clave = (t) => String(t ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 const huella = (t) => crypto.createHash("sha1").update(String(t ?? "")).digest("hex");
@@ -159,7 +169,7 @@ export function crearBotsTienda({ ruta, rutaCache, tokenZunto, fetcher = fetch, 
       camposNueva: Object.keys(c.idsNueva).length,
       // productos vistos en LucidSales (para elegir cuales son de la nueva tienda)
       productos: Object.values(cache.productos?.__nombres ?? {}).sort((a, b) => a.localeCompare(b, "es")),
-      camposPorProducto: Object.keys(cache.productos ?? {}).filter((k) => k !== "__nombres"),
+      camposPorProducto: [...new Set([...CAMPOS_POR_PRODUCTO, ...Object.keys(cache.productos ?? {}).filter((k) => k !== "__nombres")])],
       historial: (cache.historial ?? []).slice(0, 10),
       sincronizando: corriendo,
     };
@@ -319,6 +329,38 @@ export function crearBotsTienda({ ruta, rutaCache, tokenZunto, fetcher = fetch, 
     }
   }
 
+  /**
+   * Valores actuales del bot de Zunto para los campos de la tienda (los que
+   * estan en las dos exportaciones y no son por producto), para llenar el
+   * formulario. No guarda nada. Los campos con "token" en el nombre no se leen.
+   */
+  async function valoresZunto() {
+    const c = leer();
+    const tz = tokenZunto?.();
+    if (!tz) throw new ErrorApi(400, "Falta el X-ACCESS-TOKEN del bot de Zunto (Ajustes → Lucid Bot)");
+    if (!Object.keys(c.idsZunto).length || !Object.keys(c.idsNueva).length) {
+      throw new ErrorApi(400, "Carga primero las exportaciones de campos de los dos bots");
+    }
+    const porProducto = new Set([...CAMPOS_POR_PRODUCTO, ...Object.keys(leerCache().productos ?? {})]);
+    const nombres = Object.keys(c.idsNueva).filter((n) => c.idsZunto[n] && !porProducto.has(n) && !/token/i.test(n));
+    const valores = {};
+    const errores = [];
+    for (let i = 0; i < nombres.length; i += 5) {
+      await Promise.all(
+        nombres.slice(i, i + 5).map(async (n) => {
+          try {
+            const v = await leerCampo(tz, c.idsZunto[n]);
+            if (listaDeProductos(v)) return; // por producto: lo maneja la sincronizacion
+            valores[n] = v;
+          } catch (e) {
+            errores.push(`${n}: ${e.message}`);
+          }
+        }),
+      );
+    }
+    return { valores, errores };
+  }
+
   function tick() {
     const c = leer();
     if (!c.activo || corriendo) return false;
@@ -331,6 +373,7 @@ export function crearBotsTienda({ ruta, rutaCache, tokenZunto, fetcher = fetch, 
     estado: publico,
     configurar,
     sincronizar,
+    valoresZunto,
     tick,
     arrancar() {
       if (timer) return;

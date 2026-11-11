@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { backend, backendSuave } from "../api/backend";
 import { errMsg } from "../api/client";
 import { useToast } from "./Toast";
+import { CamposTienda } from "./CamposTiendaBot";
 
 interface Vuelta {
   desde: string;
@@ -82,7 +83,6 @@ export function BotSegundaTienda() {
   const [token, setToken] = useState("");
   const [nombre, setNombre] = useState("");
   const [campos, setCampos] = useState<Record<string, string>>({});
-  const [filtro, setFiltro] = useState("");
 
   const aplicar = (x: any) => {
     if (!x?.ok) return;
@@ -123,6 +123,32 @@ export function BotSegundaTienda() {
     }
   };
 
+  const copiarZunto = async () => {
+    setOcupado(true);
+    try {
+      const r = await backend<any>("/api/bots-tienda/copiar-zunto", { method: "POST" });
+      const valores: Record<string, string> = r?.valores ?? {};
+      let n = 0;
+      setCampos((c) => {
+        const sig = { ...c };
+        for (const [k, v] of Object.entries(valores)) {
+          if (!String(sig[k] ?? "").trim() && String(v ?? "").trim()) {
+            sig[k] = String(v);
+            n++;
+          }
+        }
+        return sig;
+      });
+      setTimeout(() => toast.success(`Se llenaron los campos vacíos con lo del bot de Zunto (${Object.keys(valores).length} leídos). Cambia lo que sea distinto y guarda.`), 0);
+      if (r?.errores?.length) toast.error(`${r.errores.length} campo(s) no se pudieron leer: ${r.errores[0]}`);
+      void n;
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setOcupado(false);
+    }
+  };
+
   const deNueva = useMemo(() => new Set((e?.productosNueva ?? []).map(clave)), [e?.productosNueva]);
   // campos de la tienda: los del bot nuevo que no son por producto
   const camposTienda = useMemo(() => {
@@ -138,7 +164,6 @@ export function BotSegundaTienda() {
     const lista = deNueva.has(k) ? e.productosNueva.filter((x) => clave(x) !== k) : [...e.productosNueva, p];
     void guardar({ productosNueva: lista }, deNueva.has(k) ? `«${p}» vuelve a Zunto` : `«${p}» pasa a ${e.nombre || "la nueva tienda"}`);
   };
-  const visibles = camposTienda.filter((n) => !filtro || clave(n).includes(clave(filtro)));
   const nNueva = e.productos.filter((p) => deNueva.has(clave(p))).length;
 
   return (
@@ -157,7 +182,7 @@ export function BotSegundaTienda() {
         <span className="switch-texto">{e.activo ? `Activa: se sincroniza cada ${e.cadaMin} min` : "Apagada"}</span>
       </label>
 
-      <div className="grid-2" style={{ marginTop: 12 }}>
+      <div className="grid-2 bt-grid" style={{ marginTop: 12 }}>
         <div className="field">
           <label htmlFor="bt-nombre">Nombre de la nueva tienda</label>
           <input id="bt-nombre" value={nombre} placeholder="Ej.: Pizdo" onChange={(x) => setNombre(x.target.value)} onBlur={() => nombre !== e.nombre && void guardar({ nombre })} />
@@ -198,7 +223,7 @@ export function BotSegundaTienda() {
         </div>
       </div>
 
-      <div className="grid-2">
+      <div className="grid-2 bt-grid">
         <Exportacion titulo="Campos del bot de Zunto" n={e.camposZunto} onListo={(v) => void guardar({ exportZunto: v }, "Campos del bot de Zunto cargados")} />
         <Exportacion titulo="Campos del bot nuevo" n={e.camposNueva} onListo={(v) => void guardar({ exportNueva: v }, "Campos del bot nuevo cargados")} />
       </div>
@@ -234,24 +259,15 @@ export function BotSegundaTienda() {
         </button>
       </div>
 
-      {camposTienda.length ? (
-        <details style={{ marginTop: 16 }}>
-          <summary className="card-subtitle">
-            Campos de la tienda en el bot nuevo ({Object.keys(e.camposTienda).length} con valor)
-          </summary>
-          <p className="muted small">Los que dejes vacíos no se tocan en el bot nuevo. Se escriben en cada sincronización si cambiaron.</p>
-          <input type="search" placeholder="Buscar campo…" value={filtro} onChange={(x) => setFiltro(x.target.value)} style={{ marginBottom: 8 }} />
-          {visibles.map((n) => (
-            <div className="field" key={n}>
-              <label htmlFor={`bt-c-${n}`}>{n}</label>
-              <textarea id={`bt-c-${n}`} rows={(campos[n] ?? "").length > 120 ? 5 : 2} value={campos[n] ?? ""} onChange={(x) => setCampos((c) => ({ ...c, [n]: x.target.value }))} />
-            </div>
-          ))}
-          <button type="button" className="btn primary sm" disabled={ocupado} onClick={() => void guardar({ camposTienda: campos }, "Campos de la tienda guardados")}>
-            Guardar campos de la tienda
-          </button>
-        </details>
-      ) : null}
+      <CamposTienda
+        disponibles={camposTienda}
+        campos={campos}
+        setCampos={setCampos}
+        ocupado={ocupado}
+        nombreTienda={e.nombre}
+        onCopiar={copiarZunto}
+        onGuardar={() => void guardar({ camposTienda: campos }, "Campos de la tienda guardados")}
+      />
 
       <div className="row" style={{ marginTop: 16, gap: 8, flexWrap: "wrap" }}>
         <button type="button" className="btn primary sm" disabled={ocupado || !e.tokenConfigurado || !e.camposZunto || !e.camposNueva} onClick={() => void accion("sincronizar")}>

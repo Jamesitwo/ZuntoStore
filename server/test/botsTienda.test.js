@@ -144,3 +144,14 @@ test("errores de Lucid Bot quedan en el historial", async () => {
   assert.match(r.errores[0], /401/);
   assert.equal(bt.estado().historial[0].ok, false);
 });
+
+test("copiar del bot de Zunto: valores de los campos de la tienda (sin los de producto ni tokens)", async () => {
+  const campos = { tz: { 1: catalogo("Taladro"), 3: "Zunto", 9: "secreto" }, tn: {} };
+  const { bt } = armar(campos);
+  bt.configurar({
+    exportZunto: { campos: [...EXPORT_ZUNTO.campos, { id: "9", name: "LucidVoice_Token" }] },
+    exportNueva: { campos: [...EXPORT_NUEVA.campos, { id: "19", name: "LucidVoice_Token" }] },
+  });
+  const r = await bt.valoresZunto();
+  assert.deepEqual(r.valores, { Nombre_empresa_LucidSales: "Zunto" });
+});
