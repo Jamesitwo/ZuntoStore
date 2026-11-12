@@ -589,6 +589,12 @@ test("Tierra Alta en Dropi es Tierralta (letra repetida en la union)", () => {
   assert.equal(coincideUbicacion("Tierra Blanca", v, "Córdoba"), false);
 });
 
+test("Toluviejo en Dropi es Tolu Viejo (se busca separado)", () => {
+  const v = variantesUbicacion("Toluviejo");
+  assert.ok(v.includes("tolu viejo"), "se escribe separado en el buscador de Dropi");
+  assert.equal(coincideUbicacion("TOLU VIEJO", v, "Sucre"), true);
+});
+
 test("Chibolo en Dropi es Chivolo", () => {
   const v = variantesUbicacion("Chibolo");
   assert.ok(v.includes("chivolo"));

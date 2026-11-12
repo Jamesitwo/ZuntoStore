@@ -198,6 +198,8 @@ const EQUIVALENTES_UBICACION = [
   ["chivolo", "chibolo"],
   // Dosquebradas (Risaralda): en Dropi va junto
   ["dosquebradas", "dos quebradas"],
+  // Toluviejo (Sucre): en Dropi va separado ("Tolu Viejo")
+  ["tolu viejo", "toluviejo"],
   // Mesitas del Colegio (Cundinamarca): en Dropi es "El Colegio (mesitas)"
   ["el colegio mesitas", "el colegio", "mesitas del colegio", "mesitas", "colegio mesitas", "mesitas el colegio"],
 ];
