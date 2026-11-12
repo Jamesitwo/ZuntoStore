@@ -5660,3 +5660,9 @@ textarea.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; fon
 .ct-seccion .grid-2 { min-width: 0; }
 @media (max-width: 560px) { .ct-seccion { padding: 10px; } .ct-opcion { flex-wrap: wrap; } }
 .ct-seccion .grid-2, .bt-grid { grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); }
+.ct-vacio { font-size: 0.85rem; color: var(--muted, #71717a); border: 1px dashed var(--border, #e5e7eb); border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 8px; }
+.ct-pregunta { display: grid; grid-template-columns: 1fr auto; gap: 6px; padding: 8px; border: 1px solid var(--border, #eee); border-radius: 8px; margin-bottom: 8px; }
+.ct-pregunta textarea { grid-column: 1 / 2; }
+.ct-pregunta button { grid-column: 2; grid-row: 1; }
+.ct-regla { display: grid; grid-template-columns: auto 1fr auto; gap: 6px; align-items: start; margin-bottom: 6px; }
+.ct-regla-num { font-size: 0.75rem; font-weight: 700; color: var(--muted, #71717a); padding-top: 10px; min-width: 16px; text-align: right; }

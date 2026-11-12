@@ -16,7 +16,18 @@ interface Props {
 
 const VOCES = ["Lucid Voice", "Eleven Labs", "Open AI", "Texto"];
 const MODELOS = ["OpenAI GPT Basico", "OpenAI GPT Avanzado", "Deepseek Basico", "Deepseek Avanzado", "X.AI GROK Avanzado", "Gemini Basico", "Gemini Avanzado"];
-const EVENTOS: Record<string, string> = { confirmacion_compra: "Confirmación de compra", errorIa: "Error IA" };
+// eventos de notificacion, con los mismos valores que usa LucidSales
+const EVENTOS: Record<string, string> = {
+  confirmacion_compra: "Confirmación de compra",
+  cancelacion: "Cancelación",
+  cambio_datos: "Cambio de datos",
+  comprobante_pago: "Comprobante de pago",
+  errorIa: "Error IA",
+  novedad_pedido: "Novedad en el pedido",
+  otra_compra: "Otra compra",
+  solicitud_asesor: "Solicitud de asesor",
+  garantia: "Garantía",
+};
 
 // campos que tienen su propio control (el resto va a "Otros campos")
 const CON_CONTROL = new Set([
@@ -128,24 +139,58 @@ export function CamposTienda({ disponibles, campos, setCampos, ocupado, nombreTi
       </select>
     </div>
   );
-  const JsonLibre = ({ n, label }: { n: string; label: string }) => {
-    let error = "";
-    if (v(n).trim()) {
-      try {
-        JSON.parse(v(n));
-      } catch {
-        error = "No es un JSON válido";
-      }
-    }
+  // preguntas frecuentes: [{pregunta, respuesta}] (como LucidSales). Si el bot ya
+  // trae otra forma, se respetan sus claves.
+  const Preguntas = ({ n, label }: { n: string; label: string }) => {
+    const lista = json<any[]>(v(n), []);
+    const items = Array.isArray(lista) ? lista : [];
+    const claves = items[0] && typeof items[0] === "object" ? Object.keys(items[0]) : ["pregunta", "respuesta"];
+    const [kp, kr] = [claves.find((k) => /preg|question/i.test(k)) ?? claves[0] ?? "pregunta", claves.find((k) => /resp|answer/i.test(k)) ?? claves[1] ?? "respuesta"];
+    const ponerLista = (l: any[]) => poner(n, l.length ? JSON.stringify(l) : "[]");
     return (
       <div className="field">
-        <label htmlFor={`ct-${n}`}>
-          {label} {Falta({ n: n })}
+        <label>
+          {label} {Falta({ n })}
         </label>
-        <textarea id={`ct-${n}`} className="mono" rows={3} value={v(n)} placeholder="[]" disabled={!hay.has(n)} onChange={(x) => poner(n, x.target.value)} />
-        <span className="campo-ayuda" style={error ? { color: "#b91c1c" } : undefined}>
-          {error || "Mismo formato que guarda LucidSales (lista JSON). Usa «Copiar del bot de Zunto» para partir de lo de Zunto."}
-        </span>
+        {items.length ? null : <div className="ct-vacio">Aún no hay preguntas.</div>}
+        {items.map((it, i) => (
+          <div className="ct-pregunta" key={i}>
+            <input aria-label="Pregunta" placeholder="Pregunta (ej.: ¿Hacen envíos a todo el país?)" value={String(it?.[kp] ?? "")} disabled={!hay.has(n)} onChange={(x) => ponerLista(items.map((y, j) => (j === i ? { ...y, [kp]: x.target.value } : y)))} />
+            <textarea aria-label="Respuesta" rows={2} placeholder="Respuesta" value={String(it?.[kr] ?? "")} disabled={!hay.has(n)} onChange={(x) => ponerLista(items.map((y, j) => (j === i ? { ...y, [kr]: x.target.value } : y)))} />
+            <button type="button" className="btn sm" aria-label="Quitar pregunta" disabled={!hay.has(n)} onClick={() => ponerLista(items.filter((_, j) => j !== i))}>
+              ✕
+            </button>
+          </div>
+        ))}
+        <button type="button" className="btn sm" disabled={!hay.has(n)} onClick={() => ponerLista([...items, { [kp]: "", [kr]: "" }])}>
+          + Agregar pregunta
+        </button>
+      </div>
+    );
+  };
+  // reglas: lista de textos (como LucidSales)
+  const Reglas = ({ n, label, ejemplo }: { n: string; label: string; ejemplo: string }) => {
+    const lista = json<any[]>(v(n), []);
+    const items = (Array.isArray(lista) ? lista : []).map((x) => (typeof x === "string" ? x : String(x?.regla ?? x?.texto ?? JSON.stringify(x))));
+    const ponerLista = (l: string[]) => poner(n, JSON.stringify(l));
+    return (
+      <div className="field">
+        <label>
+          {label} {Falta({ n })}
+        </label>
+        {items.length ? null : <div className="ct-vacio">No hay reglas.</div>}
+        {items.map((r, i) => (
+          <div className="ct-regla" key={i}>
+            <span className="ct-regla-num">{i + 1}</span>
+            <textarea aria-label={`Regla ${i + 1}`} rows={2} placeholder={ejemplo} value={r} disabled={!hay.has(n)} onChange={(x) => ponerLista(items.map((y, j) => (j === i ? x.target.value : y)))} />
+            <button type="button" className="btn sm" aria-label="Quitar regla" disabled={!hay.has(n)} onClick={() => ponerLista(items.filter((_, j) => j !== i))}>
+              ✕
+            </button>
+          </div>
+        ))}
+        <button type="button" className="btn sm" disabled={!hay.has(n)} onClick={() => ponerLista([...items, ""])}>
+          + Agregar regla
+        </button>
       </div>
     );
   };
@@ -239,13 +284,13 @@ export function CamposTienda({ disponibles, campos, setCampos, ocupado, nombreTi
       </Seccion>
 
       <Seccion n="04" titulo="Conocimiento" desc="Lo que el bot sabe responder.">
-        {JsonLibre({ n: "Preguntas_frecuentes_LucidSales", label: "Preguntas frecuentes" })}
-        {JsonLibre({ n: "Preguntas_frecuentes_posventa_LucidSales", label: "Preguntas frecuentes post-venta" })}
+        {Preguntas({ n: "Preguntas_frecuentes_LucidSales", label: "Preguntas frecuentes" })}
+        {Preguntas({ n: "Preguntas_frecuentes_posventa_LucidSales", label: "Preguntas frecuentes post-venta" })}
       </Seccion>
 
       <Seccion n="05" titulo="Reglas" desc="Condiciones bajo las cuales el bot hace o no hace algo.">
-        {JsonLibre({ n: "Reglas_adicionales2_LucidSales", label: "Reglas de venta" })}
-        {JsonLibre({ n: "Reglas_adicionales_Postventa", label: "Reglas post-venta" })}
+        {Reglas({ n: "Reglas_adicionales2_LucidSales", label: "Reglas de venta", ejemplo: "Ej.: No vender en zonas sin cobertura" })}
+        {Reglas({ n: "Reglas_adicionales_Postventa", label: "Reglas post-venta", ejemplo: "Ej.: Si el cliente pide la guía, compártela con el enlace de seguimiento" })}
       </Seccion>
 
       <Seccion n="06" titulo="Notificaciones" desc="Quién recibe aviso por WhatsApp de cada evento.">
