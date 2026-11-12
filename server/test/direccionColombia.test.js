@@ -345,6 +345,15 @@ test("orientación Oeste y Norte (Cali): Calle 4B Oeste 71A-03", async () => {
   assert.equal(r.normalizada, "Calle 78A Sur # 5-10");
 });
 
+test("'#' pegado al tipo de vía y 'Casa #': Transversal #2 Casa #16-140 = Transversal 2 # 16-140", async () => {
+  const { validarDireccion } = await import("../direccionColombia.js");
+  let r = validarDireccion("Transversal #2 Casa #16-140");
+  assert.equal(r.ok, true, r.detalle);
+  assert.equal(r.normalizada, "Transversal 2 # 16-140");
+  assert.equal(validarDireccion("Calle #5 # 3-20").normalizada, "Calle 5 # 3-20");
+  assert.equal(validarDireccion("Transversal #2 #16-140, barrio x").normalizada, "Transversal 2 # 16-140, Barrio x");
+});
+
 test("'casa' en lugar del numeral: Carrera 1 Casa 8-59 = Cra 1 # 8-59", async () => {
   const { validarDireccion } = await import("../direccionColombia.js");
   let r = validarDireccion("Carrera 1 Casa 8-59");
