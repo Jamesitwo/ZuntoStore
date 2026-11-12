@@ -5,6 +5,7 @@
 //                {"message":{"attachment":{"type":"image","payload":{"url":"..."}}}}, ...]}
 // (un numero solo = segundos de espera). Lo que no se reconoce se conserva.
 import { useEffect, useState } from "react";
+import { subirArchivo } from "../api/backend";
 
 export type Bloque =
   | { tipo: "texto"; texto: string }
@@ -49,6 +50,12 @@ export function escribirBloques(bloques: Bloque[]): string {
   return messages.length ? JSON.stringify({ messages }) : "";
 }
 
+const ACEPTA: Record<string, string> = {
+  image: "image/jpeg,image/png,image/webp",
+  video: "video/mp4,video/3gpp",
+  audio: "audio/mpeg,audio/ogg,audio/mp4,audio/aac,audio/amr",
+  file: "application/pdf",
+};
 const FORMATOS: Record<string, string> = { image: ".jpg, .png, .webp", video: ".mp4", audio: ".mp3, .ogg", file: ".pdf" };
 
 export function BloquesMensaje({
@@ -89,6 +96,24 @@ export function BloquesMensaje({
     setTimeout(() => document.getElementById(`${id}-b${lista.length}`)?.focus(), 0);
   };
   const archivos = lista.filter((b) => "url" in b).length;
+  const [subiendo, setSubiendo] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  const [errorEn, setErrorEn] = useState<number | null>(null);
+  const subir = async (i: number, f: File) => {
+    setSubiendo(i);
+    setError("");
+    try {
+      if (f.size > 16 * 1024 * 1024) throw new Error("El archivo pasa de 16 MB (límite de WhatsApp)");
+      const r = await subirArchivo(f);
+      const b = lista[i];
+      if (b && "url" in b) cambiar(i, { tipo: b.tipo, url: r.url });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setErrorEn(i);
+    } finally {
+      setSubiendo(null);
+    }
+  };
 
   return (
     <div className="bloques">
@@ -135,14 +160,31 @@ export function BloquesMensaje({
             <code className="small">{JSON.stringify(b.crudo).slice(0, 160)}</code>
           ) : (
             <>
-              <input
-                id={`${id}-b${i}`}
-                type="url"
-                placeholder={`Enlace (https://…) — ${FORMATOS[b.tipo]}`}
-                value={b.url}
-                disabled={deshabilitado}
-                onChange={(x) => cambiar(i, { tipo: b.tipo, url: x.target.value })}
-              />
+              <div className="bloque-archivo">
+                <input
+                  id={`${id}-b${i}`}
+                  type="url"
+                  placeholder={`Enlace (https://…) o sube el archivo — ${FORMATOS[b.tipo]}`}
+                  value={b.url}
+                  disabled={deshabilitado || subiendo === i}
+                  onChange={(x) => cambiar(i, { tipo: b.tipo, url: x.target.value })}
+                />
+                <label className={`btn sm${deshabilitado || subiendo !== null ? " disabled" : ""}`}>
+                  {subiendo === i ? "Subiendo…" : "⬆ Subir"}
+                  <input
+                    type="file"
+                    hidden
+                    accept={ACEPTA[b.tipo]}
+                    disabled={deshabilitado || subiendo !== null}
+                    onChange={(x) => {
+                      const f = x.target.files?.[0];
+                      x.target.value = "";
+                      if (f) void subir(i, f);
+                    }}
+                  />
+                </label>
+              </div>
+              {error && errorEn === i ? <span className="campo-ayuda" style={{ color: "#b91c1c" }}>{error}</span> : null}
               {b.tipo === "image" && /^https?:\/\//.test(b.url) ? <img className="bloque-vista" src={b.url} alt="" loading="lazy" /> : null}
               {b.tipo === "video" && /^https?:\/\//.test(b.url) ? <video className="bloque-vista" src={b.url} controls preload="metadata" /> : null}
               {b.tipo === "audio" && /^https?:\/\//.test(b.url) ? <audio src={b.url} controls preload="none" /> : null}

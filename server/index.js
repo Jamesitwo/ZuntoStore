@@ -14,6 +14,7 @@ import { crearCreadorCampanas } from "./creadorCampanas.js";
 import { configDeCuenta, crearRegistroCuentas } from "./cuentas.js";
 import { crearServiciosCuenta, crearTurnoDropi } from "./serviciosCuenta.js";
 import { crearServidorCuentas } from "./servidorCuentas.js";
+import { crearArchivosPublicos } from "./archivosPublicos.js";
 
 const config = cargarConfig();
 config.CUENTA_ID = 1;
@@ -70,6 +71,8 @@ const creador = crearCreadorCampanas({
   credencialMeta: (usuario) => anuncios.credencial(usuario),
 });
 creador.arrancar();
+// archivos publicos subidos desde el panel (imagenes, videos... del bot)
+const archivos = crearArchivosPublicos({ dir: config.ARCHIVOS_DIR });
 // el panel (build de Vite) en el mismo servicio, si PANEL_DIR lo trae
 const panel = crearPanelEstatico({
   dir: config.PANEL_DIR,
@@ -84,7 +87,7 @@ const multi = crearServidorCuentas({
   registro,
   crearServicios: (cuenta) =>
     crearServiciosCuenta({ cuenta, config: configDeCuenta(config, cuenta), inter, turnoDropi }),
-  comunes: { inter, anuncios, panel, creador },
+  comunes: { inter, anuncios, panel, creador, archivos },
 });
 const server = multi.server;
 const principal = multi.de(registro.get(1)).servicios;

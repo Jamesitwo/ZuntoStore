@@ -142,6 +142,8 @@ export function crearManejador({
   catalogo = null,
   // segunda tienda en otro Lucid Bot (crearBotsTienda)
   botsTienda = null,
+  // archivos publicos subidos desde el panel (crearArchivosPublicos)
+  archivos = null,
   // creador de campanas IA (crearCreadorCampanas), comun a todas las cuentas
   creador = null,
 }) {
@@ -1844,6 +1846,16 @@ export function crearManejador({
       autorizar(req);
       const r = subida.parar?.() ?? { ok: false, msg: "No disponible" };
       json(res, 200, { ...r, config: subida.config() });
+      return;
+    }
+
+    // ---- POST /api/archivos: sube un archivo publico (imagen, video, audio, PDF) ----
+    if (req.method === "POST" && ruta === "/api/archivos") {
+      autorizar(req);
+      if (!archivos) throw new ErrorApi(503, "La subida de archivos no está disponible");
+      const r = await archivos.subir(req);
+      console.log(`[archivos] ${usuarioDe(req) ?? "?"} subió ${r.tipo} (${Math.round(r.bytes / 1024)} KB)`);
+      json(res, 200, { ok: true, ...r });
       return;
     }
 

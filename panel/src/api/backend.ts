@@ -125,3 +125,20 @@ export async function descargarBackend(path: string, nombrePorDefecto = "archivo
   setTimeout(() => URL.revokeObjectURL(url), 60000);
   return nombre;
 }
+
+/** Sube un archivo (imagen, video, audio o PDF) y devuelve su enlace publico. */
+export async function subirArchivo(archivo: File): Promise<{ url: string; nombre: string; tipo: string; bytes: number }> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_PROPIA}/api/archivos`, {
+      method: "POST",
+      headers: { "content-type": archivo.type || "application/octet-stream", "x-nombre": encodeURIComponent(archivo.name), ...cabecerasBackend() },
+      body: archivo,
+    });
+  } catch {
+    throw new Error("No se pudo conectar con el backend propio");
+  }
+  const datos = (await res.json().catch(() => null)) as any;
+  if (!res.ok) throw new Error((datos && typeof datos.msg === "string" && datos.msg) || `Error ${res.status} al subir el archivo`);
+  return datos;
+}

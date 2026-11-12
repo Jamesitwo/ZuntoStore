@@ -85,6 +85,7 @@ export function crearServidorCuentas({ config, registro, crearServicios, comunes
       programados: servicios.programados,
       etiquetas: servicios.etiquetas,
       catalogo: servicios.catalogo,
+      archivos: comunes.archivos ?? null,
       botsTienda: servicios.botsTienda,
       auditoria: servicios.auditoria,
       verificarSesion: sesiones,
@@ -263,6 +264,8 @@ export function crearServidorCuentas({ config, registro, crearServicios, comunes
       const url = new URL(req.url ?? "/", "http://localhost");
       const ruta = url.pathname;
       actividad(`${req.method} ${ruta}`);
+      // archivos publicos (los descarga WhatsApp por enlace; sin sesion)
+      if (comunes.archivos?.manejar(req, res, url)) return;
       // el panel (archivos y /b) no es de ninguna cuenta
       if (comunes.panel && (await comunes.panel.manejar(req, res, url))) return;
       if (req.method === "OPTIONS") return de(registro.get(1)).manejador.atender(req, res);
