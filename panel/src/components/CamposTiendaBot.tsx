@@ -2,6 +2,7 @@
 // (Agente IA, Voz y modelo, Metodos de pago, Conocimiento, Reglas,
 // Notificaciones, Mensajes). Cada campo vacio = no se toca en el bot nuevo.
 import { useState } from "react";
+import { BloquesMensaje } from "./BloquesMensaje";
 
 type Campos = Record<string, string>;
 interface Props {
@@ -59,19 +60,6 @@ function json<T>(t: string | undefined, def: T): T {
   } catch {
     return def;
   }
-}
-
-/** {messages:[{message:{text}}]} <-> texto (se conservan los mensajes que no son texto). */
-function textoDeMensajes(v?: string) {
-  const j = json<any>(v, null);
-  if (!j || !Array.isArray(j.messages)) return String(v ?? "");
-  return j.messages.map((m: any) => m?.message?.text).filter((t: any) => typeof t === "string").join("\n\n");
-}
-function mensajesDeTexto(texto: string, anterior?: string) {
-  const j = json<any>(anterior, null);
-  const otros = Array.isArray(j?.messages) ? j.messages.filter((m: any) => typeof m?.message?.text !== "string") : [];
-  if (!texto.trim() && !otros.length) return "";
-  return JSON.stringify({ ...(j ?? {}), messages: [...(texto.trim() ? [{ message: { text: texto } }] : []), ...otros] });
 }
 
 function Seccion({ n, titulo, desc, children }: { n: string; titulo: string; desc: string; children: React.ReactNode }) {
@@ -318,14 +306,21 @@ export function CamposTienda({ disponibles, campos, setCampos, ocupado, nombreTi
       </Seccion>
 
       <Seccion n="07" titulo="Mensajes automáticos" desc="Lo que el bot envía en momentos clave.">
-        {Texto({ n: "Mensaje_Organico_LucidSales", label: "Mensaje inicial orgánico", filas: 4, ph: "Cuando el bot saluda y aún no sabe qué producto le interesa al cliente" })}
-        {(["Con_Recaudo_LucidSales", "Sin_Recaudo_LucidSales"] as const).map((n) => (
+        {(
+          [
+            ["Mensaje_Organico_LucidSales", "Mensaje inicial orgánico", "Se envía cuando el bot saluda y aún no sabe qué producto le interesa al cliente.", false],
+            ["Con_Recaudo_LucidSales", "Agradecimiento con recaudo (contra entrega)", "Se envía al confirmar una orden que se paga al recibir.", true],
+            ["Sin_Recaudo_LucidSales", "Agradecimiento sin recaudo (pago anticipado)", "Se envía al confirmar una orden ya pagada.", true],
+          ] as const
+        ).map(([n, label, ayuda, claves]) => (
           <div className="field" key={n}>
-            <label htmlFor={`ct-${n}`}>
-              {n.startsWith("Con") ? "Agradecimiento con recaudo (contra entrega)" : "Agradecimiento sin recaudo (pago anticipado)"} {Falta({ n: n })}
+            <label>
+              {label} {Falta({ n })}
             </label>
-            <textarea id={`ct-${n}`} rows={5} value={textoDeMensajes(v(n))} disabled={!hay.has(n)} onChange={(x) => poner(n, mensajesDeTexto(x.target.value, v(n)))} />
-            <span className="campo-ayuda">Palabras clave: {"{{first_name}}"}, {"{{last_name}}"}, {"{{full_name}}"}, {"{{Ciudad}}"}, {"{{Total a pagar}}"}, {"{{Producto_Ordenados}}"}</span>
+            <span className="campo-ayuda" style={{ marginTop: 0, marginBottom: 6 }}>
+              {ayuda}
+            </span>
+            <BloquesMensaje id={`ct-${n}`} valor={v(n)} onCambio={(x) => poner(n, x)} deshabilitado={!hay.has(n)} palabrasClave={claves} />
           </div>
         ))}
       </Seccion>
