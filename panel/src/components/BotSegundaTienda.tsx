@@ -181,10 +181,30 @@ export function BotSegundaTienda() {
   }, [e?.idsNueva, e?.camposPorProducto]);
 
   if (!e) return null;
-  const alternar = (p: string) => {
+  // mover un producto: se guarda y se sincronizan los dos bots de una vez
+  const alternar = async (p: string) => {
     const k = clave(p);
-    const lista = deNueva.has(k) ? e.productosNueva.filter((x) => clave(x) !== k) : [...e.productosNueva, p];
-    void guardar({ productosNueva: lista }, deNueva.has(k) ? `«${p}» vuelve a Zunto` : `«${p}» pasa a ${e.nombre || "la nueva tienda"}`);
+    const vuelve = deNueva.has(k);
+    const lista = vuelve ? e.productosNueva.filter((x) => clave(x) !== k) : [...e.productosNueva, p];
+    const destino = vuelve ? "Zunto" : e.nombre || "la nueva tienda";
+    setOcupado(true);
+    try {
+      aplicar(await backend<any>("/api/bots-tienda", { method: "PUT", body: { productosNueva: lista } }));
+      if (!e.tokenConfigurado || !e.camposZunto || !e.camposNueva) {
+        toast.success(`«${p}» quedó en ${destino}. Falta el token o las exportaciones para pasarlo a los bots.`);
+        return;
+      }
+      const x = await backend<any>("/api/bots-tienda/sincronizar", { method: "POST" });
+      aplicar(x);
+      const r = x?.resultado;
+      if (r?.ok === false && r?.detalle) toast.error(`«${p}» quedó en ${destino}, pero no se pudo sincronizar: ${r.detalle}`);
+      else if (r?.errores?.length) toast.error(`«${p}» pasó a ${destino} con ${r.errores.length} error(es): ${r.errores[0]}`);
+      else toast.success(`«${p}» pasó a ${destino}: ${r?.escritosNueva?.length ?? 0} campo(s) en ${e.nombre || "la nueva tienda"}, ${r?.escritosZunto?.length ?? 0} en Zunto`);
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setOcupado(false);
+    }
   };
   const nNueva = e.productos.filter((p) => deNueva.has(clave(p))).length;
 
@@ -261,10 +281,10 @@ export function BotSegundaTienda() {
               <li key={p}>
                 <span>{p}</span>
                 <div className="bt-tienda" role="group" aria-label={`Tienda de ${p}`}>
-                  <button type="button" className={`btn sm${!nueva ? " primary" : ""}`} disabled={ocupado || !nueva} onClick={() => alternar(p)}>
+                  <button type="button" className={`btn sm${!nueva ? " primary" : ""}`} disabled={ocupado || !nueva} onClick={() => void alternar(p)}>
                     Zunto
                   </button>
-                  <button type="button" className={`btn sm${nueva ? " primary" : ""}`} disabled={ocupado || nueva} onClick={() => alternar(p)}>
+                  <button type="button" className={`btn sm${nueva ? " primary" : ""}`} disabled={ocupado || nueva} onClick={() => void alternar(p)}>
                     {e.nombre || "Nueva"}
                   </button>
                 </div>
