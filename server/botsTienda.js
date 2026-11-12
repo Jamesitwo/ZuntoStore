@@ -365,6 +365,19 @@ export function crearBotsTienda({ ruta, rutaCache, tokenZunto, fetcher = fetch, 
     return { valores, errores };
   }
 
+  /** Asigna un producto (nombre como en LucidSales) a "nueva" o a "zunto". */
+  function asignar(producto, tienda) {
+    const n = String(producto ?? "").trim();
+    if (!n) throw new ErrorApi(400, "Falta el nombre del producto");
+    if (tienda !== "nueva" && tienda !== "zunto") throw new ErrorApi(400, "Tienda no válida");
+    const c = leer();
+    const k = clave(n);
+    const sin = c.productosNueva.filter((x) => clave(x) !== k);
+    c.productosNueva = tienda === "nueva" ? [...sin, n] : sin;
+    guardar(c);
+    return publico(c);
+  }
+
   function tick() {
     const c = leer();
     if (!c.activo || corriendo) return false;
@@ -378,6 +391,7 @@ export function crearBotsTienda({ ruta, rutaCache, tokenZunto, fetcher = fetch, 
     configurar,
     sincronizar,
     valoresZunto,
+    asignar,
     tick,
     arrancar() {
       if (timer) return;

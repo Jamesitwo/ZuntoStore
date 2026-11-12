@@ -1878,6 +1878,12 @@ export function crearManejador({
         json(res, 200, { ok: true, ...e });
         return;
       }
+      // asigna un producto (por nombre) a una tienda; p. ej. al crearlo en el Creador IA
+      if (req.method === "POST" && ruta === "/api/bots-tienda/asignar") {
+        const b = (await leerCuerpo(req)) ?? {};
+        json(res, 200, { ok: true, ...botsTienda.asignar(b.producto, b.tienda) });
+        return;
+      }
       // valores del bot de Zunto para llenar el formulario (no guarda nada)
       if (req.method === "POST" && ruta === "/api/bots-tienda/copiar-zunto") {
         json(res, 200, { ok: true, ...(await botsTienda.valoresZunto()) });

@@ -170,3 +170,12 @@ test("guardar los campos de la tienda los escribe ya en el bot nuevo (aunque no 
   r = await bt.sincronizar({ soloTienda: true });
   assert.equal(campos.tn[13], "Pizdo");
 });
+
+test("asignar un producto a una tienda (p. ej. desde el Creador IA)", () => {
+  const { bt } = armar({});
+  assert.deepEqual(bt.asignar("Lampara Solar", "nueva").productosNueva, ["Lampara Solar"]);
+  assert.deepEqual(bt.asignar("lámpara solar", "nueva").productosNueva, ["lámpara solar"], "sin duplicar");
+  assert.deepEqual(bt.asignar("Lampara Solar", "zunto").productosNueva, []);
+  assert.throws(() => bt.asignar("", "nueva"), /nombre/);
+  assert.throws(() => bt.asignar("x", "otra"), /Tienda/);
+});

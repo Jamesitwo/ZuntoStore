@@ -19,6 +19,7 @@ import { SubirMedia } from "../components/SubirMedia";
 import { useToast } from "../components/Toast";
 import { Campo, ErrorBanner, PageHeader, Spinner } from "../components/ui";
 import { crearProductoLucid, guardarFichaLucid, guardarMensajeInicialLucid, agregarAlSheet } from "../lib/crearProducto";
+import { ElegirTiendaBot, asignarTiendaBot, type TiendaBot } from "../components/ElegirTiendaBot";
 import { prodId, prodImg, prodImgs, prodName, prodPrice, useCatalogo } from "../lib/catalogo";
 
 const arreglo = (v: unknown): any[] => {
@@ -276,6 +277,7 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
     url?: string;
   } | null>(null);
   const [creandoLucid, setCreandoLucid] = useState(false);
+  const [tiendaLucid, setTiendaLucid] = useState<TiendaBot>("zunto");
   /** Crea en LucidSales el producto que se trajo de Dropi y lo deja elegido. */
   const crearEnLucid = async () => {
     setCreandoLucid(true);
@@ -295,6 +297,11 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
       setCreadoLucid({ id, nombre: form.nombre.trim() });
       setProductoId(id);
       toast.success("Producto creado en LucidSales");
+      try {
+        await asignarTiendaBot(form.nombre.trim(), tiendaLucid);
+      } catch (e) {
+        toast.error(`El producto quedó creado, pero no se pudo asignar a la segunda tienda: ${e instanceof Error ? e.message : String(e)}`);
+      }
       await alSheet({ nombre: form.nombre.trim(), idDropi: deDropi?.idDropi, nombreDropi: deDropi?.nombre, dropiLink: deDropi?.url });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -451,14 +458,17 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
                 (para la subida automática).
               </span>
             </div>
-            <button
-              type="button"
-              className="btn primary"
-              disabled={creandoLucid || !form.nombre.trim() || !Number(String(form.precio).replace(/\D/g, ""))}
-              onClick={() => void crearEnLucid()}
-            >
-              {creandoLucid ? "Creando…" : "Crear en LucidSales"}
-            </button>
+            <div className="creador-crear-acciones">
+              <ElegirTiendaBot valor={tiendaLucid} onChange={setTiendaLucid} disabled={creandoLucid} />
+              <button
+                type="button"
+                className="btn primary"
+                disabled={creandoLucid || !form.nombre.trim() || !Number(String(form.precio).replace(/\D/g, ""))}
+                onClick={() => void crearEnLucid()}
+              >
+                {creandoLucid ? "Creando…" : "Crear en LucidSales"}
+              </button>
+            </div>
           </div>
         ) : null}
       </div>
@@ -984,6 +994,7 @@ function DetalleProyecto({ id }: { id: string }) {
   const { session } = useAuth();
   const preguntar = useConfirmar();
 
+  const [tiendaIA, setTiendaIA] = useState<TiendaBot>("zunto");
   /** Crea el producto en LucidSales con la ficha y la bienvenida que escribio la IA. */
   const crearEnLucidDesdeIA = async () => {
     if (!p) return;
@@ -1019,6 +1030,11 @@ function DetalleProyecto({ id }: { id: string }) {
           precioSugerido: p.producto.precioSugerido ?? null,
         });
         const r = await creador.editar(id, { productoId: idNuevo });
+        try {
+          await asignarTiendaBot(p.producto.nombre, tiendaIA);
+        } catch (e) {
+          toast.error(`El producto quedó creado, pero no se pudo asignar a la segunda tienda: ${e instanceof Error ? e.message : String(e)}`);
+        }
         if (p.producto.idDropi) {
           await alSheet({
             nombre: p.producto.nombre,
@@ -1355,9 +1371,12 @@ function DetalleProyecto({ id }: { id: string }) {
                     ) : null}
                   </>
                 ) : (
-                  <button type="button" className="btn primary sm" disabled={Boolean(trabajando)} onClick={() => void crearEnLucidDesdeIA()}>
-                    {trabajando === "crear-lucid" ? "Creando…" : "Crear producto en LucidSales"}
-                  </button>
+                  <>
+                    <ElegirTiendaBot valor={tiendaIA} onChange={setTiendaIA} disabled={Boolean(trabajando)} />
+                    <button type="button" className="btn primary sm" disabled={Boolean(trabajando)} onClick={() => void crearEnLucidDesdeIA()}>
+                      {trabajando === "crear-lucid" ? "Creando…" : "Crear producto en LucidSales"}
+                    </button>
+                  </>
                 )}
               </div>
             ) : null}
