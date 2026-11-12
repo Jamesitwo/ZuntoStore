@@ -421,3 +421,13 @@ test("puntos sueltos: Calle 4. Sur #.1193 → número pegado, el mapa decide ent
   assert.deepEqual(candidatosNumeroPegado("Calle 4. Sur #.1193"), ["Calle 4 Sur # 11-93", "Calle 4 Sur # 1-193"]);
   assert.equal(validarDireccion("Calle 4. Sur #.11-93").normalizada, "Calle 4 Sur # 11-93");
 });
+
+test("Google marca 'parcial' pero devuelve la misma placa: cuenta como exacta", async () => {
+  const { evaluarGeocodificacion } = await import("../validadorDireccion.js");
+  const r = (dir) => ({
+    status: "OK",
+    results: [{ formatted_address: `${dir}, Rafael Uribe Uribe, Bogotá, D.C., Colombia`, types: ["street_address"], partial_match: true, geometry: { location_type: "GEOMETRIC_CENTER", location: { lat: 4.57, lng: -74.1 } }, address_components: [{ long_name: "Bogotá", types: ["locality"] }, { long_name: "Bogotá, D.C.", types: ["administrative_area_level_1"] }] }],
+  });
+  assert.equal(evaluarGeocodificacion(r("Cl. 32 B Sur # 19-34"), { ciudad: "Bogota", direccion: "Calle 32B Sur # 19-34" }).veredicto, "exacta");
+  assert.equal(evaluarGeocodificacion(r("Cl. 32 B Sur # 19-40"), { ciudad: "Bogota", direccion: "Calle 32B Sur # 19-34" }).veredicto, "aproximada");
+});

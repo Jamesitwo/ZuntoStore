@@ -130,7 +130,7 @@ export function googleLeyoIgual(formateada, candidato) {
  *   otra-ciudad  la encuentra pero en otro municipio/departamento
  *   no-encontrada
  */
-export function evaluarGeocodificacion(respuesta, { ciudad = "", departamento = "" } = {}) {
+export function evaluarGeocodificacion(respuesta, { ciudad = "", departamento = "", direccion = "" } = {}) {
   const estado = respuesta?.status;
   if (estado === "ZERO_RESULTS") return { veredicto: "no-encontrada", detalle: "Google no encontró esa dirección" };
   if (estado !== "OK") {
@@ -187,6 +187,12 @@ export function evaluarGeocodificacion(respuesta, { ciudad = "", departamento = 
   }
   if (precisa && esPlaca && !base.parcial) {
     return { ...base, veredicto: "exacta", detalle: `existe: ${base.formateada}` };
+  }
+  // Google marca muchas direcciones de Colombia como "coincidencia parcial"
+  // aunque devuelva la misma placa: si es una placa con los mismos numeros
+  // (via, cruce y placa) que la direccion, es la misma
+  if (esPlaca && direccion && googleLeyoIgual(base.formateada, direccion)) {
+    return { ...base, veredicto: "exacta", detalle: `existe: ${base.formateada}${base.parcial ? " (Google la marca parcial, pero es la misma placa)" : ""}` };
   }
   const que = tipos.includes("route")
     ? "solo la calle, no la placa"
@@ -339,7 +345,7 @@ export function crearValidadorDireccion({ ruta, config = {}, fetcher = globalThi
     } catch (e) {
       throw new ErrorApi(504, `Google Maps no respondió: ${e?.message ?? e}`);
     }
-    const ev = evaluarGeocodificacion(datos, { ciudad, departamento });
+    const ev = evaluarGeocodificacion(datos, { ciudad, departamento, direccion: texto });
     if (cache.size >= MAX_CACHE) cache.delete(cache.keys().next().value);
     cache.set(clave, ev);
     return ev;

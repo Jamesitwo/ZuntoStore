@@ -520,6 +520,20 @@ export function sumarSesion(sesiones, { clave, desde, hasta, dryRun, detalle, de
   return [sesion, ...lista].sort((a, b) => String(b.desde).localeCompare(String(a.desde))).slice(0, MAX_SESIONES);
 }
 
+const sinTildesMin = (t) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+/**
+ * Referencias del pedido + "Barrio X" del chat, si ni la direccion ni las
+ * referencias lo traen ya.
+ */
+export function conBarrioDelChat(direccion, referencias, barrio) {
+  const ref = String(referencias ?? "").trim();
+  const b = String(barrio ?? "").trim();
+  if (!b) return ref;
+  const ya = sinTildesMin(`${direccion ?? ""} ${ref}`);
+  if (ya.includes(sinTildesMin(b))) return ref;
+  return [ref, `Barrio ${b}`].filter(Boolean).join(", ");
+}
+
 /** Agrega a cada sesion { telefonos: { idPedido: telefono } } desde lo procesado. */
 export function conTelefonos(sesiones, procesados) {
   if (!Array.isArray(sesiones)) return sesiones;
@@ -1384,6 +1398,8 @@ export function crearSubidaAutomatica({
           // calificacion de la direccion en el mapa: el codigo decide con el
           // minimo configurado (no aplica a oficinas)
           let direccionEnvio = (oficinaAuto ? null : r2.direccionEnvio?.normalizada) || resumen?.direccion;
+          // el barrio que el cliente dio en el chat, si el pedido no lo trae
+          const referenciasEnvio = conBarrioDelChat(direccionEnvio, resumen?.referencias, r2.extraido?.barrio);
           if (!oficinaAuto) {
             let ev = null;
             try {
@@ -1391,7 +1407,7 @@ export function crearSubidaAutomatica({
                 validador: validadorDireccion,
                 minimo: c.minCalificacionDireccion ?? MIN_CALIFICACION_DEFECTO,
                 direccion: direccionEnvio,
-                referencias: resumen?.referencias ?? "",
+                referencias: referenciasEnvio,
                 ciudad,
                 departamento: depto,
               });
@@ -1507,7 +1523,7 @@ export function crearSubidaAutomatica({
                 ? DIRECCION_OFICINA_INTER
                 : aOficina
                   ? direccionEnvio
-                  : direccionConReferencias(direccionEnvio, resumen?.referencias),
+                  : direccionConReferencias(direccionEnvio, referenciasEnvio),
               departamento: depto,
               ciudad,
               // si vive en un corregimiento, en Dropi se busca ese municipio

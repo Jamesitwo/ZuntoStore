@@ -28,6 +28,7 @@ Campos exactos:
 - "fechaEntregaISO": si entregaFutura es true, la fecha concreta pedida como "AAAA-MM-DD", calculada con la fecha de hoy que se te da y los timestamps del chat ("" si no se puede saber el dia exacto).
 - "productos": arreglo con CADA producto que el cliente pidió: [{"producto": "nombre", "cantidad": entero, "precio": precio de ese producto en pesos (numero entero; null si no se dijo)}]. Si pidió uno solo, un arreglo de un elemento. Usa los productos del pedido que te paso aparte como referencia de nombres.
 - "corregimiento": si el cliente dice que vive en un corregimiento, inspección o centro poblado (un pueblo que pertenece a otro municipio, p. ej. "Rozo" de Palmira o "San Antonio de Prado" de Medellín), su nombre solo, sin la palabra "corregimiento" (string). "" si vive en la ciudad o municipio (un barrio NO es un corregimiento).
+- "barrio": el barrio, urbanizacion o conjunto que el cliente dio en el chat para esa direccion de entrega, solo el nombre, sin la palabra "barrio" (p. ej. "Quiroga"). "" si no lo dijo o si la entrega es en oficina.
 - "incertidumbre": arreglo de strings con lo que no quedo claro.
 - "razonamiento": 2 o 3 frases en español que expliquen lo que entendiste del chat (que pidio el cliente, a que precio, si confirmo y por que lo crees). Solo lo que dice el chat.
 - "direccionEnvio": analisis de la DIRECCION DEL PEDIDO (la que te paso aparte, no la del chat). Es un objeto:
@@ -109,6 +110,10 @@ function normalizarSalida(v) {
             precio: Number.isFinite(Number(x.precio)) && x.precio !== null && x.precio !== "" ? Number(x.precio) : null,
           }))
       : [],
+    barrio:
+      typeof o.barrio === "string"
+        ? o.barrio.replace(/^\s*(barrio|br|b\/)\.?\s+/i, "").replace(/\s+/g, " ").trim().slice(0, 80)
+        : "",
     corregimiento: typeof o.corregimiento === "string" ? o.corregimiento.replace(/^\s*(corregimiento|vereda|inspecci[oó]n|centro poblado)\s+(de\s+)?/i, "").trim().slice(0, 80) : "",
     incertidumbre: Array.isArray(o.incertidumbre) ? o.incertidumbre.map(String) : [],
     razonamiento: typeof o.razonamiento === "string" ? o.razonamiento.trim().slice(0, 800) : "",

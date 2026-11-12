@@ -64,3 +64,12 @@ test("las sesiones muestran el telefono del cliente de cada pedido", async () =>
   assert.deepEqual(r[0].telefonos, { 1: "3001112233", 2: "3104258561" });
   assert.equal(conTelefonos(undefined, {}), undefined);
 });
+
+test("barrio del chat: se suma a las referencias si el pedido no lo trae", async () => {
+  const { conBarrioDelChat } = await import("../subidaAutomatica.js");
+  assert.equal(conBarrioDelChat("Calle 32B Sur # 19-34", "", "Quiroga"), "Barrio Quiroga");
+  assert.equal(conBarrioDelChat("Calle 32B Sur # 19-34", "casa azul", "Quiroga"), "casa azul, Barrio Quiroga");
+  assert.equal(conBarrioDelChat("Calle 32B Sur # 19-34, Barrio Quiroga", "", "quiroga"), "", "ya lo trae la direccion");
+  assert.equal(conBarrioDelChat("Calle 1 # 2-3", "Br Quiróga", "Quiroga"), "Br Quiróga", "ya lo traen las referencias");
+  assert.equal(conBarrioDelChat("Calle 1 # 2-3", "ref", ""), "ref");
+});
