@@ -520,19 +520,9 @@ export function sumarSesion(sesiones, { clave, desde, hasta, dryRun, detalle, de
   return [sesion, ...lista].sort((a, b) => String(b.desde).localeCompare(String(a.desde))).slice(0, MAX_SESIONES);
 }
 
-const sinTildesMin = (t) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-/**
- * Referencias del pedido + "Barrio X" del chat, si ni la direccion ni las
- * referencias lo traen ya.
- */
-export function conBarrioDelChat(direccion, referencias, barrio) {
-  const ref = String(referencias ?? "").trim();
-  const b = String(barrio ?? "").trim();
-  if (!b) return ref;
-  const ya = sinTildesMin(`${direccion ?? ""} ${ref}`);
-  if (ya.includes(sinTildesMin(b))) return ref;
-  return [ref, `Barrio ${b}`].filter(Boolean).join(", ");
-}
+// el barrio del chat se suma a las referencias (vive en direccionColombia.js)
+export { conBarrioDelChat } from "./direccionColombia.js";
+import { conBarrioDelChat } from "./direccionColombia.js";
 
 /** Agrega a cada sesion { telefonos: { idPedido: telefono } } desde lo procesado. */
 export function conTelefonos(sesiones, procesados) {

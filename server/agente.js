@@ -11,7 +11,7 @@
 
 import { diasHasta, fechaDeExtraccion } from "./fechaEntrega.js";
 import { candidatosNumeroPegado } from "./validadorDireccion.js";
-import { claveCalle, recogeEnOficina, validarDireccion } from "./direccionColombia.js";
+import { claveCalle, conBarrioDelChat, recogeEnOficina, validarDireccion } from "./direccionColombia.js";
 
 /** Separa los acentos y baja a minusculas: "Medellin" == "medellín". */
 export function normalizarTexto(v) {
@@ -382,7 +382,8 @@ export function validarPedido(resumen, extraido, { oficina = null } = {}) {
   const dirEnvio = oficina
     ? { ok: true, detalle: `recoge en oficina de ${oficina}: no lleva calle, la oficina se elige en Dropi`, normalizada: null }
     : validarDireccion(resumen?.direccion, extraido?.direccionEnvio ?? null, {
-        referencias: resumen?.referencias ?? "",
+        // + el barrio que el cliente dio en el chat si el pedido no lo trae
+        referencias: conBarrioDelChat(resumen?.direccion, resumen?.referencias, extraido?.barrio),
         confirmadaEnChat: extraido?.direccion ?? "",
       });
   // numero pegado ("Cra 110AA #3021"): no se adivina aqui; el mapa decide

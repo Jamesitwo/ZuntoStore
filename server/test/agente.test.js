@@ -472,3 +472,15 @@ test("precio: si el chat solo dio el total (con envío), se compara el total", a
   // sin precio ni total sigue sin entenderse
   assert.equal(coincidePrecio(null, { total: "73900" }).razon, "no se entendio el precio del chat");
 });
+
+test("manzana sin barrio en el pedido: vale el barrio que el cliente dio en el chat", async () => {
+  const resumen = { ...RESUMEN, direccion: "Manzana G, lote uno", referencias: "" };
+  const r = await ejecutarAgente({
+    resumen,
+    mensajes: [],
+    extraer: async () => ({ ...EXTRAIDO_BIEN, direccion: "Manzana G, lote uno, barrio Las Flores", barrio: "Las Flores" }),
+  });
+  const dv = r.validacion.checks.find((c) => c.campo === "direccionValida");
+  assert.equal(dv.ok, true, dv.detalle);
+  assert.match(dv.detalle, /Mz G Lt 1, Barrio Las Flores/);
+});

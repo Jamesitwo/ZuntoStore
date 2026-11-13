@@ -244,6 +244,15 @@ test("tipos de vía como los escriben los clientes: Krra, Karrera, Cale...", asy
   assert.match(r.normalizada, /^Cra 63 # 18-49 Sur/);
 });
 
+test("números en letras: Manzana G, lote uno = Mz G Lt 1 (sigue pidiendo barrio)", async () => {
+  const { validarDireccion } = await import("../direccionColombia.js");
+  assert.equal(validarDireccion("Manzana G, lote uno, barrio Las Flores").normalizada, "Mz G Lt 1, Barrio Las Flores");
+  assert.equal(validarDireccion("manzana dos casa veintidós barrio Centro").normalizada, "Mz 2 Cs 22, Barrio Centro");
+  const r = validarDireccion("Manzana G, lote uno");
+  assert.equal(r.ok, false);
+  assert.match(r.detalle, /falta el barrio/);
+});
+
 test("manzana abreviada M45 L30 (= Mz 45 Lt 30)", async () => {
   const { validarDireccion } = await import("../direccionColombia.js");
   let r = validarDireccion("M45 L30 barrio Plan Parejo, al lado de la ferretería la 45");

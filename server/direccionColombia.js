@@ -333,8 +333,28 @@ function limpiarBarrio(t) {
  * Reconoce el formato manzana con reglas fijas. Devuelve
  * {partes, barrio, normalizada} o null si no lo es (necesita manzana y casa o lote).
  */
+// numeros escritos en letras despues de manzana/lote/casa...: "lote uno" = Lt 1
+const NUMEROS_PALABRA = {
+  uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10,
+  once: 11, doce: 12, trece: 13, catorce: 14, quince: 15, dieciseis: 16, diecisiete: 17, dieciocho: 18, diecinueve: 19,
+  veinte: 20, veintiuno: 21, veintiuna: 21, veintidos: 22, veintitres: 23, veinticuatro: 24, veinticinco: 25,
+  veintiseis: 26, veintisiete: 27, veintiocho: 28, veintinueve: 29, treinta: 30,
+  // con tilde
+  "dieciséis": 16, "veintidós": 22, "veintitrés": 23, "veintiséis": 26, "veintiún": 21, "veintiun": 21,
+};
+const RE_NUM_PALABRA = new RegExp(
+  `\\b(manzana|mz|mza|lote|lt|casa|cs|bloque|bl|torre|apto|apartamento|interior|int)\\.?\\s*(?:n[o°º]\\.?\\s*|#\\s*)?(${Object.keys(NUMEROS_PALABRA).join("|")})\\b`,
+  "gi",
+);
+export function numerosEnLetras(texto) {
+  return String(texto ?? "").replace(RE_NUM_PALABRA, (todo, palabra, num) => {
+    const n = NUMEROS_PALABRA[num.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()];
+    return n ? `${palabra} ${n}` : todo;
+  });
+}
+
 export function parsearManzana(direccion) {
-  const original = String(direccion ?? "")
+  const original = numerosEnLetras(String(direccion ?? ""))
     .replace(/\s+/g, " ")
     .trim()
     // "M45 L30" / "M 45 C 12" = Mz 45 Lt 30 / Mz 45 Cs 12 (solo juntas: una "M" sola no es manzana)
@@ -612,3 +632,18 @@ export function direccionConReferencias(direccion, referencias, max = 250) {
   if (n(dir).includes(n(ref))) return dir;
   return `${dir}, ${ref}`.slice(0, max).trim();
 }
+
+const sinTildesMinB = (t) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+/**
+ * Referencias del pedido + "Barrio X" del chat, si ni la direccion ni las
+ * referencias lo traen ya.
+ */
+export function conBarrioDelChat(direccion, referencias, barrio) {
+  const ref = String(referencias ?? "").trim();
+  const b = String(barrio ?? "").trim();
+  if (!b) return ref;
+  const ya = sinTildesMinB(`${direccion ?? ""} ${ref}`);
+  if (ya.includes(sinTildesMinB(b))) return ref;
+  return [ref, `Barrio ${b}`].filter(Boolean).join(", ");
+}
+
