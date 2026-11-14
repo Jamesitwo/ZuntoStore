@@ -363,6 +363,14 @@ test("'#' pegado al tipo de vía y 'Casa #': Transversal #2 Casa #16-140 = Trans
   assert.equal(validarDireccion("Transversal #2 #16-140, barrio x").normalizada, "Transversal 2 # 16-140, Barrio x");
 });
 
+test("sin '#' y con punto en vez de guion: Carrera 8 B 18.36 = Cra 8B # 18-36", async () => {
+  const { validarDireccion } = await import("../direccionColombia.js");
+  const r = validarDireccion("Carrera 8 B 18.36, por la plaza de toros");
+  assert.equal(r.ok, true, r.detalle);
+  assert.equal(r.normalizada, "Cra 8B # 18-36, Por la plaza de toros");
+  assert.equal(validarDireccion("Calle 5 12.4").normalizada, "Calle 5 # 12-4");
+});
+
 test("'casa' tras coma en lugar del numeral: Calle 54, casa 28-34 = Calle 54 # 28-34", async () => {
   const { validarDireccion } = await import("../direccionColombia.js");
   const r = validarDireccion("Calle 54, casa 28-34, sector Poso 7");
