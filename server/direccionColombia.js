@@ -143,6 +143,8 @@ export function parsearDireccion(direccion) {
     if (!antes) return p;
     // "frente a la cra 5 # 3-2" no es esa direccion: es una referencia
     if (/\b(frente|lado|cerca|junto|detras|diagonal|enseguida|despues|antes|cruzando|vuelta)\b(\s+(a|al|de|del))?(\s+(la|el|los|las))?$/.test(normalizarTextoDir(antes))) continue;
+    // "Calle 43 con Carrera 18, casa 17-15": la carrera es la via que cruza, no la direccion
+    if (/\b(con|y|x|esq|esquina)$/.test(normalizarTextoDir(antes))) continue;
     const resto = [p.resto, antes].filter(Boolean).join(", ");
     return { ...p, resto, normalizada: `${p.tipoVia} ${p.via} # ${p.cruce}-${p.placa}${resto ? `, ${resto}` : ""}` };
   }
@@ -167,8 +169,8 @@ function parsearDesdeElInicio(original) {
     .replace(/^([a-zA-Z.]+(?:\s+[a-zA-Z.]+)?)\s*(?:#|n[o°º]\.)\s*(\d{1,3}\s*[a-zA-Z]?)(?=\s+(?:casa|csa|cs)\b|\s*(?:#|n[o°º]\.?)\s*\d)/i, (todo, tipo, num) =>
       tipoViaCanonico(tipo) ? `${tipo} ${num}` : todo,
     )
-    // "casa" en lugar del numeral: "Carrera 1 Casa 8-59" / "Casa #8-59" = Cra 1 # 8-59
-    .replace(/^([a-zA-Z.]+(?:\s+[a-zA-Z.]+)?\s+\d{1,3}\s*[a-zA-Z]?(?:\s+(?:bis|sur|este|oeste|norte))?)\s+(?:casa|csa|cs)\.?\s*(?:#|n[o°º]\.?)?\s*(?=\d{1,3}\s*[a-zA-Z]?\s*[-–]\s*\d)/i, "$1 # ")
+    // "casa" en lugar del numeral: "Carrera 1 Casa 8-59" / "Calle 54, casa 28-34" = Cra 1 # 8-59
+    .replace(/^([a-zA-Z.]+(?:\s+[a-zA-Z.]+)?\s+\d{1,3}\s*[a-zA-Z]?(?:\s+(?:bis|sur|este|oeste|norte))?)\s*[,;]?\s+(?:casa|csa|cs)\.?\s*(?:#|n[o°º]\.?)?\s*(?=\d{1,3}\s*[a-zA-Z]?\s*[-–]\s*\d)/i, "$1 # ")
     // letra del cruce separada con guion: "# 11-B-13" / "# 11 - b - 13" = # 11B-13
     .replace(/((?:#|\bn[o°º]\.?|\bnro\.?|\bn[uú]mero|\bnum\.?)\s*\d{1,3})\s*[-–]\s*([a-zA-Z])\s*[-–]\s*(\d{1,3})\b/i, "$1$2-$3")
     // punto en vez de guion entre cruce y placa: "# 23.47" = # 23-47

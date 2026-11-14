@@ -363,6 +363,15 @@ test("'#' pegado al tipo de vía y 'Casa #': Transversal #2 Casa #16-140 = Trans
   assert.equal(validarDireccion("Transversal #2 #16-140, barrio x").normalizada, "Transversal 2 # 16-140, Barrio x");
 });
 
+test("'casa' tras coma en lugar del numeral: Calle 54, casa 28-34 = Calle 54 # 28-34", async () => {
+  const { validarDireccion } = await import("../direccionColombia.js");
+  const r = validarDireccion("Calle 54, casa 28-34, sector Poso 7");
+  assert.equal(r.ok, true, r.detalle);
+  assert.equal(r.normalizada, "Calle 54 # 28-34, Sector Poso 7");
+  // la via despues de "con" es la que cruza: no se toma como la direccion
+  assert.equal(validarDireccion("Calle 43 con Carrera 18, casa 17-15").ok, false);
+});
+
 test("'casa' en lugar del numeral: Carrera 1 Casa 8-59 = Cra 1 # 8-59", async () => {
   const { validarDireccion } = await import("../direccionColombia.js");
   let r = validarDireccion("Carrera 1 Casa 8-59");
