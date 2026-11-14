@@ -253,6 +253,16 @@ test("números en letras: Manzana G, lote uno = Mz G Lt 1 (sigue pidiendo barrio
   assert.match(r.detalle, /falta el barrio/);
 });
 
+test("casa/lote abreviados 'C'/'L' tras la manzana: Mz 26 - C 8 = Mz 26 Cs 8", async () => {
+  const { validarDireccion } = await import("../direccionColombia.js");
+  assert.equal(validarDireccion("Mz 26 C 8 barrio X").normalizada, "Mz 26 Cs 8, Barrio X");
+  assert.equal(validarDireccion("Mz 26 - L 8, barrio X").normalizada, "Mz 26 Lt 8, Barrio X");
+  assert.equal(validarDireccion("Mz 26 Cs 8 barrio X").normalizada, "Mz 26 Cs 8, Barrio X");
+  const r = validarDireccion("Edificio San Juan Mz 26 - C 8");
+  assert.equal(r.ok, true, r.detalle);
+  assert.match(r.normalizada, /^Mz 26 Cs 8, Edificio San Juan$/);
+});
+
 test("manzana abreviada M45 L30 (= Mz 45 Lt 30)", async () => {
   const { validarDireccion } = await import("../direccionColombia.js");
   let r = validarDireccion("M45 L30 barrio Plan Parejo, al lado de la ferretería la 45");

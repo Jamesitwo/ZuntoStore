@@ -363,8 +363,12 @@ export function parsearManzana(direccion) {
   const original = numerosEnLetras(String(direccion ?? ""))
     .replace(/\s+/g, " ")
     .trim()
-    // "M45 L30" / "M 45 C 12" = Mz 45 Lt 30 / Mz 45 Cs 12 (solo juntas: una "M" sola no es manzana)
-    .replace(/\bm\s?(\d{1,4}[a-z]?)\s*[,-]?\s*([lc])\s?(\d{1,4}[a-z]?)\b/i, (_t, mz, lc, n) => `Mz ${mz} ${/l/i.test(lc) ? "Lt" : "Cs"} ${n}`);
+    // "M45 L30" / "M 45 C 12" / "Mz 26 - C 8" = Mz 45 Lt 30 / Mz 45 Cs 12 / Mz 26 Cs 8
+    // (solo juntas: una "M" sola no es manzana)
+    .replace(
+      /\b(?:m|mz|mza|manzana)\.?\s?(\d{1,4}[a-z]?|[a-z](?![a-z]))\s*[,-]?\s*([lc])\.?\s?(\d{1,4}[a-z]?)\b/i,
+      (_t, mz, lc, n) => `Mz ${mz.toUpperCase()} ${/l/i.test(lc) ? "Lt" : "Cs"} ${n}`,
+    );
   const t = normalizarTextoDir(original);
   const partes = {};
   const orden = {};
