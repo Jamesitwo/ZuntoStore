@@ -108,9 +108,9 @@ export function crearServiciosCuenta({ cuenta, config, inter, turnoDropi = null 
       throw new Error(`el producto «${nombre}» (id ${idProducto}) no tiene idProductoDropi en LucidSales: vincúlalo a Dropi en el catálogo`);
     }
     if (!productosDropi.listo) throw new Error("no está configurado el Google Sheets de productos (Ajustes → Subida a Dropi → Google Sheets de productos)");
-    const filas = await productosDropi.cargar();
-    if (!filas) throw new Error("no se pudo descargar el Google Sheets de productos (¿sigue compartido como CSV?)");
-    const fila = filas.get(idDropi);
+    // (si no esta en la copia en memoria, buscar() baja el sheet otra vez)
+    const fila = await productosDropi.buscar(idDropi);
+    if (fila === undefined) throw new Error("no se pudo descargar el Google Sheets de productos (¿sigue compartido como CSV?)");
     if (!fila) throw new Error(`el idProductoDropi ${idDropi} de «${nombre}» no está en el Google Sheets (columna idProductoDropi)`);
     if (!fila.dropiLink) throw new Error(`en el Google Sheets la fila de ${idDropi} («${nombre}») no tiene dropiLink`);
     return fila.dropiLink;

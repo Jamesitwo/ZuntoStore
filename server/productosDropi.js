@@ -16,6 +16,16 @@ import { ErrorApi } from "./errores.js";
  * (""), y comas/saltos de linea dentro de un campo. Devuelve arreglo de
  * arreglos (sin la cabecera, que se devuelve como primera fila igual que viene).
  */
+/**
+ * idProductoDropi comparable: Google exporta los numeros con su formato
+ * ("2.265.435", "2,265,435", "2265435.0"); LucidSales lo da como "2265435".
+ */
+export function normalizarIdDropi(id) {
+  const t = String(id ?? "").trim().replace(/[.,]0+$/, "");
+  const d = t.replace(/\D/g, "");
+  return d || t;
+}
+
 export function parsearCsv(texto) {
   const filas = [];
   let fila = [];
@@ -150,10 +160,11 @@ export function crearProductosDropi({
     for (const fila of crudas.slice(1)) {
       const idDropi = String(fila[iDropi] ?? "").trim();
       if (!idDropi) continue;
+      const clave = normalizarIdDropi(idDropi);
       const dropiLink = String(fila[iLink] ?? "").trim();
       if (!dropiLink) sinLink++;
-      filas.set(idDropi, {
-        idProductoDropi: idDropi,
+      filas.set(clave, {
+        idProductoDropi: clave,
         nombre: iNombre >= 0 ? String(fila[iNombre] ?? "").trim() : "",
         dropiLink,
         transportadora: iTransportadora >= 0 ? String(fila[iTransportadora] ?? "").trim() : "",
@@ -162,9 +173,10 @@ export function crearProductosDropi({
     return { filas, sinLink };
   }
 
-  async function cargar() {
+  /** forzar: vuelve a bajar el sheet aunque la copia en memoria siga vigente. */
+  async function cargar({ forzar = false } = {}) {
     if (!url) return null;
-    if (cache && cache.hasta > Date.now()) return cache.filas;
+    if (!forzar && cache && cache.hasta > Date.now()) return cache.filas;
 
     try {
       const { filas } = await leer(url);
@@ -176,10 +188,21 @@ export function crearProductosDropi({
     }
   }
 
+  /**
+   * La fila de un idProductoDropi. Si no esta en la copia en memoria se baja
+   * el sheet otra vez (pudo agregarse hace poco). -> fila | null; undefined si
+   * no se pudo descargar el sheet.
+   */
   async function buscar(idDropi) {
-    const filas = await cargar();
-    if (!filas) return null;
-    return filas.get(String(idDropi)) ?? null;
+    const k = normalizarIdDropi(idDropi);
+    let filas = await cargar();
+    if (!filas) return undefined;
+    let fila = filas.get(k);
+    if (!fila) {
+      filas = await cargar({ forzar: true });
+      fila = filas?.get(k);
+    }
+    return fila ?? null;
   }
 
   function estado() {

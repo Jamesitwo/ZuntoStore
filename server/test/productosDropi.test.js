@@ -75,3 +75,28 @@ test("guardar rechaza links que no son de Google Sheets", async () => {
   await assert.rejects(p.guardar("https://example.com/hoja"), /Google Sheets/);
   assert.equal(fs.existsSync(ruta), false);
 });
+
+test("idProductoDropi con el formato que exporta Google (2.265.435 / 2,265,435 / 2265435.0)", async () => {
+  const { normalizarIdDropi } = await import("../productosDropi.js");
+  assert.equal(normalizarIdDropi("2.265.435"), "2265435");
+  assert.equal(normalizarIdDropi("2,265,435"), "2265435");
+  assert.equal(normalizarIdDropi("2265435.0"), "2265435");
+  assert.equal(normalizarIdDropi(" 2265435 "), "2265435");
+  const csv = "Nombre,idProductoDropi,dropiLink\nSopladora,\"2.265.435\",https://app.dropi.co/x/2265435\n";
+  const { p } = armar({ texto: csv, url: "https://docs.google.com/spreadsheets/d/1I6w0diNVM00Ch08MvH24Gh_QkDv-mRmfCrcpFDz6AZM/export?format=csv" });
+  assert.equal((await p.buscar("2265435")).dropiLink, "https://app.dropi.co/x/2265435");
+});
+
+test("si el id no está en la copia en memoria, vuelve a bajar el sheet (se agregó hace poco)", async () => {
+  let texto = "Nombre,idProductoDropi,dropiLink\nA,111,https://l/111\n";
+  let bajadas = 0;
+  const p = crearProductosDropi({
+    url: "https://docs.google.com/spreadsheets/d/1I6w0diNVM00Ch08MvH24Gh_QkDv-mRmfCrcpFDz6AZM/export?format=csv",
+    fetchImpl: async () => (bajadas++, { status: 200, text: async () => texto }),
+  });
+  assert.equal((await p.buscar("111")).dropiLink, "https://l/111");
+  texto += "B,222,https://l/222\n";
+  assert.equal((await p.buscar("222")).dropiLink, "https://l/222");
+  assert.equal(bajadas, 2);
+  assert.equal(await p.buscar("333"), null);
+});
