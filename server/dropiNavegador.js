@@ -1362,22 +1362,41 @@ export function crearDropiNavegador(config = {}) {
       if (!entradas.length) {
         return { ok: false, detalle: "La sesión pegada está vacía o no tiene el formato esperado." };
       }
+      if (!entradas.some(([k, v]) => k === "DROPI_token" && v.replace(/"/g, "").trim())) {
+        return {
+          ok: false,
+          requiereLogin: true,
+          detalle:
+            "La sesión pegada no trae el token de Dropi (DROPI_token): en ese navegador no había sesión iniciada o el texto se cortó al copiarlo. Entra a app.dropi.co, espera a que cargue el panel y vuelve a copiarla.",
+        };
+      }
+      // primero el token y lo importante, al final las listas grandes: si el
+      // espacio del navegador se llena, que no sea el token lo que se pierda
+      const PRIMERO = ["DROPI_token", "DROPI_LoginResult", "DROPI_configurations", "DROPI_country", "DROPI_countries", "casToken", "casUser", "token_login"];
+      const rango = ([k, v]) => (PRIMERO.includes(k) ? PRIMERO.indexOf(k) - 100 : v.length > 50_000 ? v.length : 0);
+      entradas.sort((a, b) => rango(a) - rango(b));
       subidaEnCurso = true;
       try {
         await this.cerrar();
         const p = await asegurar();
         await p.goto("https://app.dropi.co/dashboard/home", { waitUntil: "domcontentloaded" });
-        await p.evaluate((pares) => {
+        const fallidas = await p.evaluate((pares) => {
           // se reemplaza la sesion anterior completa (tokens viejos fuera)
           localStorage.clear();
+          const malas = [];
           for (const [k, v] of pares) {
             try {
               localStorage.setItem(k, v);
             } catch {
-              /* sin espacio o clave invalida */
+              malas.push(k); // sin espacio o clave invalida
             }
           }
+          return { malas, token: Boolean(localStorage.getItem("DROPI_token")) };
         }, entradas);
+        if (!fallidas.token) {
+          return { ok: false, detalle: "El navegador del servidor no pudo guardar el token de Dropi de la sesión pegada. Vuelve a copiarla." };
+        }
+        if (fallidas.malas.length) console.warn(`[dropi] sesion: no cupieron ${fallidas.malas.length} dato(s): ${fallidas.malas.slice(0, 5).join(", ")}`);
         await p.goto("https://app.dropi.co/dashboard/home", { waitUntil: "domcontentloaded" });
         // que Angular arranque y, si la sesion no sirve, redirija al login
         let renderizo = false;

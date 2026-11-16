@@ -67,9 +67,15 @@ const COMANDO_SESION = "copy(JSON.stringify(localStorage))";
  * codigo. Tocado dentro de app.dropi.co copia la sesion (o la muestra para
  * copiarla si el navegador no deja copiar solo).
  */
+// Copia la sesion de Dropi del navegador (tambien en el celular). Si no hay
+// token avisa. Al portapapeles va completa; si toca mostrarla para copiar a
+// mano, solo lo necesario (las listas grandes cortan el texto en el celular).
 const MARCADOR_SESION =
-  "javascript:(()=>{const t=JSON.stringify(localStorage);const m=()=>prompt('Copia TODO este texto y pégalo en Zunto:',t);" +
-  "if(!/dropi\\.co$/.test(location.hostname)){alert('Abre primero app.dropi.co con tu sesión iniciada');return}" +
+  "javascript:(()=>{if(!/dropi\\.co$/.test(location.hostname)){alert('Abre primero app.dropi.co con tu sesión iniciada');return}" +
+  "if(!localStorage.getItem('DROPI_token')){alert('No hay sesión iniciada en Dropi en este navegador: entra con tu usuario, espera a que cargue el panel y vuelve a tocar el marcador.');return}" +
+  "const L=localStorage,f={},o={};for(const k of ['DROPI_token','DROPI_LoginResult'])f[k]=o[k]=L.getItem(k)||'';const g=[];" +
+  "for(let i=0;i<L.length;i++){const k=L.key(i),v=L.getItem(k)||'';if(k in f)continue;if(v.length<5000){f[k]=o[k]=v}else g.push([k,v])}for(const [k,v] of g)f[k]=v;const t=JSON.stringify(f);" +
+  "const m=()=>prompt('Copia TODO este texto y pégalo en Zunto:',JSON.stringify(o));" +
   "navigator.clipboard?navigator.clipboard.writeText(t).then(()=>alert('Sesión de Dropi copiada. Vuelve a Zunto y pégala.'),m):m()})()";
 
 function textoEstadoSesion(s: any): { texto: string; ok: boolean } {
