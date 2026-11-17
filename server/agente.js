@@ -523,6 +523,20 @@ export function decidir(validacion) {
 const FECHA_FUTURA_EN_CHAT = /\b(?:para\s+(?:(?:el\s+)?(?:dia\s+)?)|el\s+dia\s+|lo\s+(?:quiero|quieres|quiere|necesito|necesita)\s+(?:para\s+)?(?:el\s+)?|entregar(?:lo)?\s+(?:para\s+)?(?:el\s+)?|recibir(?:lo)?\s+(?:para\s+)?(?:el\s+)?)(?:\d{1,2}(?:\s+de\s+(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre))?|manana|pasado manana|lunes|martes|miercoles|jueves|viernes|sabado|domingo|proxima semana|proximo mes)\b/;
 
 /**
+ * Fecha de entrega futura pedida en un mensaje (texto ya normalizado), o null.
+ * Un numero suelto (sin "el"/"dia" delante ni mes) no es fecha: "para 4 personas".
+ */
+export function fechaFuturaEnTexto(t) {
+  const re = new RegExp(FECHA_FUTURA_EN_CHAT.source, "g");
+  for (const m of String(t ?? "").matchAll(re)) {
+    // un numero suelto ("para 4", "lo quiero para 2") es cantidad, no fecha
+    if (/\d{1,2}$/.test(m[0]) && !/\b(?:el|dia)\s+\d{1,2}$/.test(m[0])) continue;
+    return m[0];
+  }
+  return null;
+}
+
+/**
  * Otros pedidos recientes del mismo cliente, en texto para la IA.
  * otros: [{ idPedido, producto, Total, fecha, estado, subido }]
  */
@@ -571,7 +585,7 @@ export async function ejecutarAgente({ resumen, mensajes, extraer, oficina = nul
   const fechaSolicitadaEnChat = (Array.isArray(mensajes) ? mensajes : [])
     .filter((m) => m?.de === "cliente")
     .map((m) => normalizarTexto(m?.texto))
-    .map((t) => t.match(FECHA_FUTURA_EN_CHAT)?.[0])
+    .map((t) => fechaFuturaEnTexto(t))
     .find(Boolean);
   const extraidoSeguro = {
     ...extraido,

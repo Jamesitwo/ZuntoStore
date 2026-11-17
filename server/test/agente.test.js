@@ -484,3 +484,14 @@ test("manzana sin barrio en el pedido: vale el barrio que el cliente dio en el c
   assert.equal(dv.ok, true, dv.detalle);
   assert.match(dv.detalle, /Mz G Lt 1, Barrio Las Flores/);
 });
+
+test("entrega futura: 'para 4 personas' no es una fecha; 'para el 4' sí", async () => {
+  const { fechaFuturaEnTexto } = await import("../agente.js");
+  assert.equal(fechaFuturaEnTexto("en santa marta para 4 personas"), null);
+  assert.equal(fechaFuturaEnTexto("lo quiero para 2 unidades"), null);
+  assert.equal(fechaFuturaEnTexto("lo necesito para el 4"), "lo necesito para el 4");
+  assert.equal(fechaFuturaEnTexto("para el dia 15"), "para el dia 15");
+  assert.equal(fechaFuturaEnTexto("para 20 de diciembre"), "para 20 de diciembre");
+  assert.equal(fechaFuturaEnTexto("me lo mandan para el viernes"), "para el viernes");
+  assert.equal(fechaFuturaEnTexto("para 4 personas, y entregar el lunes"), "entregar el lunes");
+});
