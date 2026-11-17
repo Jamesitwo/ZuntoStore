@@ -112,6 +112,16 @@ test("de producto a campaña pausada en Meta", async () => {
   assert.equal(vidBody.model, "Seedance 2.5");
   assert.equal(vidBody.inputImages[0].name, "Image1");
 
+  // otro modelo de video para este proyecto: resolucion y duracion validas para ese modelo
+  c.editar(p.id, { modeloVideo: "Kling 4.0 Omni" });
+  await c.generar(p.id, { ids: [gen.creativos[1].id] });
+  const kling = JSON.parse(llamadas.filter((l) => l.u.includes("omni_reference/task/submit")).at(-1).cuerpo);
+  assert.equal(kling.model, "Kling 4.0 Omni");
+  assert.equal(kling.resolution, 720, "Kling no tiene 480");
+  assert.equal(kling.duration, 12);
+  assert.equal(c.get(p.id).creativos[1].tarea.modelo, "Kling 4.0 Omni");
+  c.editar(p.id, { modeloVideo: "" });
+
   await creador.revisarTareas();
   const listos = c.get(p.id);
   assert.deepEqual(listos.creativos.map((x) => x.estado), ["listo", "listo"]);
@@ -364,4 +374,13 @@ test("+ Imagen con IA: la IA escribe un creativo nuevo distinto de los que ya ha
   assert.doesNotMatch(pedido, /Genera 1 creativos de imagen/);
   // los demás creativos no se tocan
   assert.equal(c.get(p.id).creativos.length, 3);
+});
+
+test("modelos de video: parámetros válidos para cada modelo", async () => {
+  const { paramsVideo, MODELOS_VIDEO } = await import("../topview.js");
+  assert.ok(MODELOS_VIDEO.some((m) => m.id === "Seedance 2.5"));
+  assert.deepEqual(paramsVideo({ model: "Seedance 2.5", resolution: 480, duration: 12 }), { model: "Seedance 2.5", resolution: 480, duration: 12 });
+  assert.deepEqual(paramsVideo({ model: "Wan 2.7 Reference to Video", resolution: 480, duration: 12 }), { model: "Wan 2.7 Reference to Video", resolution: 720, duration: 10 });
+  assert.deepEqual(paramsVideo({ model: "MiniMax H3 Fast", resolution: 720, duration: 12 }), { model: "MiniMax H3 Fast", resolution: 480, duration: 12 });
+  assert.equal(paramsVideo({ model: "Otro", resolution: 480, duration: 12 }).resolution, 480);
 });

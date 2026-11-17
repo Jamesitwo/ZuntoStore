@@ -63,6 +63,8 @@ export interface Proyecto {
   creatividad?: Creatividad;
   /** textos en pantalla en los videos (por defecto no: la IA de video deforma las letras) */
   textosVideo?: boolean;
+  /** modelo de video de TopView para este proyecto ("" = el de los ajustes) */
+  modeloVideo?: string;
   /** la gran idea de la campaña */
   concepto?: string;
   presupuesto: number;
@@ -119,6 +121,9 @@ export interface AjustesCreador {
   meta: { conectada: boolean; cuentas: Array<{ id: string; nombre: string; moneda: string; activa: boolean }> };
   costos: { imagen: number; video: number };
   modelos: { imagen: string; video: string };
+  /** modelo de video por defecto de Zunto (Seedance) y los que se pueden elegir */
+  modeloVideoDefecto: string;
+  modelosVideo: string[];
   ia: {
     proveedor: "claude" | "zunto";
     claude: { configurada: boolean; key: string; modelo: string };

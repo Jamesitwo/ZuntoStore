@@ -247,6 +247,7 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
   const [conPersonaje, setConPersonaje] = useState(Boolean(ajustes.fotoModelo));
   const [creatividad, setCreatividad] = useState<Creatividad>("equilibrada");
   const [textosVideo, setTextosVideo] = useState(false);
+  const [modeloVideo, setModeloVideo] = useState("");
   const [presupuesto, setPresupuesto] = useState(String(ajustes.presupuesto));
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -406,6 +407,7 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
         conPersonaje,
         creatividad,
         textosVideo,
+        modeloVideo,
         presupuesto: Number(presupuesto),
         notas: form.notas,
       });
@@ -548,6 +550,11 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
         <input type="checkbox" checked={conPersonaje} disabled={!ajustes.fotoModelo} onChange={(e) => setConPersonaje(e.target.checked)} />
         Videos con la modelo {ajustes.fotoModelo ? "" : "(sube su foto en Ajustes)"}
       </label>
+      {videos > 0 ? (
+        <Campo id="np-modelo-video" label="Modelo de IA para los videos">
+          <SelectorModeloVideo id="np-modelo-video" ajustes={ajustes} valor={modeloVideo} onCambio={setModeloVideo} />
+        </Campo>
+      ) : null}
       <label className="check-linea">
         <input type="checkbox" checked={textosVideo} onChange={(e) => setTextosVideo(e.target.checked)} />
         Textos en pantalla en los videos
@@ -621,6 +628,7 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
   const [marca, setMarca] = useState(ajustes.marca);
   const [fotoModelo, setFotoModelo] = useState(ajustes.fotoModelo);
   const [contraEntrega, setContraEntrega] = useState(ajustes.contraEntrega);
+  const [modeloVideoDef, setModeloVideoDef] = useState(ajustes.modelos.video);
   const [guardando, setGuardando] = useState(false);
   const [creditos, setCreditos] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -650,6 +658,7 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
         marca,
         fotoModelo,
         contraEntrega,
+        modeloVideo: modeloVideoDef,
       });
       onCambio(a);
       setKey("");
@@ -804,6 +813,17 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
           Imágenes con {ajustes.modelos.imagen} (~{ajustes.costos.imagen} créditos) y videos con {ajustes.modelos.video} (~
           {ajustes.costos.video} créditos cada uno).
         </p>
+        <Campo id="aj-modelo-video" label="Modelo de video por defecto">
+          <select id="aj-modelo-video" value={modeloVideoDef} onChange={(e) => setModeloVideoDef(e.target.value)}>
+            {ajustes.modelosVideo.map((m) => (
+              <option key={m} value={m}>
+                {m}
+                {m === ajustes.modeloVideoDefecto ? " (recomendado)" : ""}
+              </option>
+            ))}
+          </select>
+        </Campo>
+        <p className="muted small">Cada proyecto puede usar otro. El costo en créditos cambia según el modelo.</p>
         {ajustes.topview.cuenta ? (
           <div className="creador-conexion ok">
             <div>
@@ -1226,6 +1246,17 @@ function DetalleProyecto({ id }: { id: string }) {
               {p.creatividad ? ` · libertad ${CREATIVIDADES.find((n) => n.id === p.creatividad)?.nombre.toLowerCase() ?? ""}` : ""}
               {p.textosVideo ? " · videos con texto" : " · videos sin texto"}
             </span>
+            {ajustes && p.creativos.some((c) => c.tipo === "video") ? (
+              <label className="row gap creador-modelo-video">
+                <span className="muted small">Videos con</span>
+                <SelectorModeloVideo
+                  id="pr-modelo-video"
+                  ajustes={ajustes}
+                  valor={p.modeloVideo ?? ""}
+                  onCambio={(m) => void accion("modelo", () => creador.editar(id, { modeloVideo: m }), "Modelo de video cambiado")}
+                />
+              </label>
+            ) : null}
             {!campanaHecha && !generando && !p.planeando ? (
               <button type="button" className="btn ghost sm" onClick={() => setConfirmar("replanear")}>
                 ↻ Otras ideas
@@ -1895,5 +1926,19 @@ function TextoCopiable({
       </summary>
       <textarea rows={8} value={valor} onChange={(e) => onCambio(e.target.value)} onBlur={(e) => onGuardar(e.target.value)} />
     </details>
+  );
+}
+
+/** Elige el modelo de video de TopView; "" = el de los ajustes. */
+function SelectorModeloVideo({ id, ajustes, valor, onCambio }: { id: string; ajustes: AjustesCreador; valor: string; onCambio: (m: string) => void }) {
+  return (
+    <select id={id} value={valor} onChange={(e) => onCambio(e.target.value)}>
+      <option value="">Por defecto ({ajustes.modelos.video})</option>
+      {(ajustes.modelosVideo ?? []).map((m) => (
+        <option key={m} value={m}>
+          {m}
+        </option>
+      ))}
+    </select>
   );
 }

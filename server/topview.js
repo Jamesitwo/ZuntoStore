@@ -16,6 +16,41 @@ export const DEFECTOS_TOPVIEW = {
   video: { model: "Seedance 2.5", resolution: 480, duration: 12, aspectRatio: "9:16" },
 };
 
+/**
+ * Modelos de video que generan desde fotos de referencia (omni_reference) con
+ * vertical 9:16; los de "editar"/"extender" un video no sirven aqui. Cada uno
+ * acepta resoluciones y duraciones distintas (config de TopView 2026-11).
+ */
+export const MODELOS_VIDEO = [
+  { id: "Seedance 2.5", resoluciones: [480, 720, 1080], duracion: [4, 30] },
+  { id: "Seedance 2.5 Flash", resoluciones: [480, 720], duracion: [4, 30] },
+  { id: "Seedance 2.0", resoluciones: [480, 720, 1080], duracion: [4, 15] },
+  { id: "Seedance 2.0 Mini", resoluciones: [480, 720], duracion: [4, 15] },
+  { id: "Seedance 2.0 Fast", resoluciones: [480, 720], duracion: [4, 15] },
+  { id: "Kling 4.0 Omni", resoluciones: [720, 1080], duracion: [3, 30] },
+  { id: "Wan 3.0", resoluciones: [480, 720, 1080], duracion: [2, 30] },
+  { id: "Wan 3.0 Prime", resoluciones: [480, 720, 1080], duracion: [2, 30] },
+  { id: "Wan 2.7 Reference to Video", resoluciones: [720, 1080], duracion: [2, 10] },
+  { id: "MiniMax H3", resoluciones: [480, 768], duracion: [5, 15] },
+  { id: "MiniMax H3 Max", resoluciones: [480, 768], duracion: [5, 15] },
+  { id: "MiniMax H3 Fast", resoluciones: [480], duracion: [4, 15] },
+  { id: "Vidu Q4 Preview", resoluciones: [540, 720, 1080], duracion: [3, 16] },
+  { id: "Topview T1", resoluciones: [720, 1080], duracion: [4, 30] },
+];
+
+/**
+ * Parametros de video validos para el modelo: la resolucion pedida o la mas
+ * cercana por arriba que acepte (si no, la mayor) y la duracion dentro de su
+ * rango. Un modelo que no esta en la lista va tal cual.
+ */
+export function paramsVideo(p) {
+  const m = MODELOS_VIDEO.find((x) => x.id === p.model);
+  if (!m) return p;
+  const res = m.resoluciones.find((r) => r >= Number(p.resolution)) ?? m.resoluciones.at(-1);
+  const dur = Math.min(m.duracion[1], Math.max(m.duracion[0], Math.round(Number(p.duration) || 0)));
+  return { ...p, resolution: res, duration: dur };
+}
+
 /** Tipos de tarea -> rutas de submit y query. */
 const RUTAS = {
   image_edit: "/v1/common_task/image_edit/task",
@@ -141,7 +176,7 @@ export function crearClienteTopView({ apiKey, uid, fetcher = globalThis.fetch, t
      * nombran <<<Image1>>>, <<<Image2>>>...
      */
     async video({ prompt, fileIds = [], ...opciones }) {
-      const p = { ...DEFECTOS_TOPVIEW.video, ...opciones };
+      const p = paramsVideo({ ...DEFECTOS_TOPVIEW.video, ...Object.fromEntries(Object.entries(opciones).filter(([, v]) => v != null && v !== "")) });
       const refs = prepararReferencias(prompt, fileIds);
       const r = await llamar(`${RUTAS.omni_reference}/submit`, {
         method: "POST",

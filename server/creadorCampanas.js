@@ -17,7 +17,7 @@ import path from "node:path";
 import { slugDe } from "./anunciosTenant.js";
 import { EXCLUSIONES_ZUNTO, crearMetaCampanas, mensajeBienvenida } from "./metaCampanas.js";
 import { escribirJsonSeguro, leerJsonSeguro } from "./secretos.js";
-import { crearClienteTopView, DEFECTOS_TOPVIEW } from "./topview.js";
+import { crearClienteTopView, DEFECTOS_TOPVIEW, MODELOS_VIDEO } from "./topview.js";
 import { actividad } from "./vigia.js";
 import { crearClienteTopViewMcp, descubrirOAuth, MCP_TOPVIEW, pedirToken, registrarCliente, urlAutorizacion } from "./topviewMcp.js";
 
@@ -26,6 +26,11 @@ const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 /** Costo aproximado en creditos de TopView (para avisar antes de generar). */
 export const COSTO_CREDITOS = { imagen: 0.2, video: 6.7 };
 export const PRESUPUESTO_DEFECTO = 25000;
+
+/** Modelo de video valido (uno de la lista); si no, el de por defecto (Seedance). */
+export function modeloVideoDe(m) {
+  return MODELOS_VIDEO.some((x) => x.id === m) ? m : DEFECTOS_TOPVIEW.video.model;
+}
 const MAX_FOTOS = 6;
 const MAX_IMAGENES = 6;
 const MAX_VIDEOS = 4;
@@ -823,7 +828,9 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
           contraEntrega: Boolean(a.contraEntrega),
           meta: { conectada: Boolean(c?.token), cuentas: c?.cuentas ?? [] },
           costos: COSTO_CREDITOS,
-          modelos: { imagen: DEFECTOS_TOPVIEW.imagen.model, video: DEFECTOS_TOPVIEW.video.model },
+          modelos: { imagen: DEFECTOS_TOPVIEW.imagen.model, video: modeloVideoDe(a.modeloVideo) },
+          modeloVideoDefecto: DEFECTOS_TOPVIEW.video.model,
+          modelosVideo: MODELOS_VIDEO.map((m) => m.id),
           ia: {
             proveedor: iaDe(a),
             claude: { configurada: Boolean(a.claudeKey), key: enmascarar(a.claudeKey ?? ""), modelo: a.claudeModelo || MODELOS_CLAUDE[0].id },
@@ -855,6 +862,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
           a.presupuesto = Math.round(n);
         }
         if (cambios.contraEntrega !== undefined) a.contraEntrega = Boolean(cambios.contraEntrega);
+        if (cambios.modeloVideo !== undefined) a.modeloVideo = modeloVideoDe(cambios.modeloVideo);
         if (typeof cambios.claudeKey === "string" && cambios.claudeKey.trim()) a.claudeKey = cambios.claudeKey.trim();
         if (cambios.borrarClaude) delete a.claudeKey;
         if (typeof cambios.claudeModelo === "string" && MODELOS_CLAUDE.some((m) => m.id === cambios.claudeModelo)) a.claudeModelo = cambios.claudeModelo;
@@ -974,6 +982,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
           notas: txt(datos.notas, 1000),
           creatividad: CREATIVIDAD[datos.creatividad] ? datos.creatividad : "equilibrada",
           textosVideo: datos.textosVideo === true,
+          modeloVideo: datos.modeloVideo ? modeloVideoDe(datos.modeloVideo) : "",
           presupuesto: Number(datos.presupuesto) > 0 ? Math.round(Number(datos.presupuesto)) : Number(a.presupuesto) || PRESUPUESTO_DEFECTO,
           meta: { cuentaId: datos.cuentaId || a.cuentaId || "", paginaId: datos.paginaId || a.paginaId || "" },
           creativos: [],
@@ -1164,6 +1173,8 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
         }
         if (CREATIVIDAD[cambios.creatividad]) p.creatividad = cambios.creatividad;
         if (typeof cambios.textosVideo === "boolean") p.textosVideo = cambios.textosVideo;
+        // modelo de video de este proyecto ("" = el de los ajustes)
+        if (cambios.modeloVideo !== undefined) p.modeloVideo = cambios.modeloVideo ? modeloVideoDe(cambios.modeloVideo) : "";
         if (typeof cambios.notas === "string") p.notas = txt(cambios.notas, 1000);
         if (typeof cambios.bienvenida === "string") p.bienvenida = txt(cambios.bienvenida, 1500);
         if (typeof cambios.mensajePredefinido === "string") p.mensajePredefinido = txt(cambios.mensajePredefinido, 300);
@@ -1216,14 +1227,15 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
           if (sinPrompt) throw new Error(`"${sinPrompt.angulo}" no tiene prompt`);
           const tv = topviewDe(slug);
           const refs = await referencias(slug, p, tv, p.conPersonaje);
+          const modeloVid = p.modeloVideo || modeloVideoDe(leerAjustes(slug).modeloVideo);
           for (const c of objetivo) {
             try {
               const t =
                 c.tipo === "video"
-                  ? await tv.video({ prompt: c.prompt, fileIds: refs.todas })
+                  ? await tv.video({ prompt: c.prompt, fileIds: refs.todas, model: modeloVid })
                   : await tv.imagen({ prompt: c.prompt, fileIds: refs.producto });
               if (c.estado === "listo" && c.resultado) c.anteriores = [...(c.anteriores ?? []), c.resultado].slice(-5);
-              c.tarea = { ...t, desde: ahora() };
+              c.tarea = { ...t, desde: ahora(), ...(c.tipo === "video" ? { modelo: modeloVid } : {}) };
               c.estado = "generando";
               delete c.error;
             } catch (e) {

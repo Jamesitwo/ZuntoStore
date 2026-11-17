@@ -5679,3 +5679,6 @@ textarea.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; fon
 .bloque-archivo label.btn.disabled { opacity: 0.5; pointer-events: none; }
 .elegir-tienda { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .creador-crear-acciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+.creador-modelo-video { align-items: center; margin-left: auto; }
+.creador-modelo-video select { width: auto; max-width: 220px; padding: 4px 8px; font-size: 13px; }
