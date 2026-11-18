@@ -481,6 +481,90 @@ test("ciudad repetida: «Armenia (Q)» es la del Quindio, no la de Antioquia", a
   }
 });
 
+/**
+ * Formulario nuevo de Dropi (nov 2026): <dropi-select-lib> con shadow DOM
+ * abierto, boton "<cy>-field" y lista de <button class="option"> que se
+ * llena tarde. `selectores` = { cy: [opciones] }.
+ */
+function paginaSelectLib(selectores) {
+  const hosts = Object.keys(selectores).map((cy) => `<dropi-select-lib data-cy="${cy}"></dropi-select-lib>`).join("");
+  return `<!doctype html><html><body>${hosts}
+  <script>
+    const datos = ${JSON.stringify(selectores)};
+    customElements.define("dropi-select-lib", class extends HTMLElement {
+      connectedCallback() {
+        const cy = this.getAttribute("data-cy");
+        const raiz = this.attachShadow({ mode: "open" });
+        raiz.innerHTML = '<div class="custom-select"><div class="dropdown-container"><button type="button" class="select-button" data-cy="' + cy + '-field"><div class="button-content"><div class="elipsis">Elegir</div></div></button></div></div>';
+        const boton = raiz.querySelector("button");
+        boton.addEventListener("click", () => {
+          const ul0 = raiz.querySelector("ul");
+          if (ul0) return ul0.remove();
+          const ul = document.createElement("ul");
+          ul.className = "select-dropdown-overlay";
+          ul.innerHTML = '<li class="sticky-search"><input class="search-input" placeholder="Buscar"></li>';
+          raiz.appendChild(ul);
+          datos[cy].forEach((t, i) => setTimeout(() => {
+            const li = document.createElement("li");
+            const b = document.createElement("button");
+            b.className = "option";
+            b.setAttribute("data-cy", cy + "-option-" + i);
+            b.innerHTML = '<span class="elipsis">' + t + "</span>";
+            b.addEventListener("click", () => { boton.querySelector(".elipsis").textContent = t; ul.remove(); });
+            li.appendChild(b);
+            ul.appendChild(li);
+          }, 60 * i));
+        });
+      }
+    });
+  </script></body></html>`;
+}
+
+test("formulario nuevo: departamento y ciudad en el selector con shadow DOM", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  const p = await pagina(paginaSelectLib({ "client-state": ["Amazonas", "Antioquia", "Valle"], "client-city": ["Abejorral", "Armenia", "La Cruzada (remedios)", "Remedios"] }));
+  try {
+    const d = await nav.autocompletar(p, "client-state", "Valle del Cauca");
+    assert.equal(d.ok, true, JSON.stringify(d));
+    assert.equal(d.elegido, "Valle");
+    const c = await nav.autocompletar(p, "client-city", "La Cruzada", { departamento: "Antioquia" });
+    assert.equal(c.ok, true, JSON.stringify(c));
+    assert.equal(c.elegido, "La Cruzada (remedios)");
+    const no = await nav.autocompletar(p, "client-city", "Medellín", { departamento: "Antioquia" });
+    assert.equal(no.ok, false);
+    assert.equal(no.paso, "sin coincidencia exacta");
+  } finally {
+    await p.close();
+  }
+});
+
+test("formulario nuevo: tienda en el selector con shadow DOM", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  const p = await pagina(paginaSelectLib({ "order-create-client-store": ["Zunto Store", "Dia Uno"] }));
+  try {
+    const r = await nav.seleccionarTienda(p, "Día Uno");
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.equal(await r.verificar(), true);
+    const r2 = await nav.seleccionarTienda(p, "Otra");
+    assert.equal(r2.ok, false);
+  } finally {
+    await p.close();
+  }
+});
+
+test("formulario nuevo: variación en el selector con shadow DOM", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  const p = await pagina(paginaSelectLib({ "order-create-products-row-variation-5": ["ARBOL COPO: Árbol 90 Cm", "ARBOL COPO: Verde"] }));
+  try {
+    const sel = p.locator('dropi-select-lib[data-cy^="order-create-products-row-variation-"]').first();
+    const r = await nav.elegirVariacion(p, sel, { hayVariacion: true, varianteDropi: "77", valores: ["Verde"] });
+    assert.equal(r.ok, true, r.detalle);
+    assert.equal(r.elegida, "ARBOL COPO: Verde");
+  } finally {
+    await p.close();
+  }
+});
+
 test("resumen de Dropi: ganancia y precio del envio del formulario", async (t) => {
   if (motivoSalto) return t.skip(motivoSalto);
   const p = await pagina(`<!doctype html><body>

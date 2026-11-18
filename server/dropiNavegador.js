@@ -340,7 +340,11 @@ async function diagnosticoTransportadoras(p) {
           radioClases: el.querySelector(".radio")?.className ?? null,
         };
       });
-      const ciudad = document.querySelector('[data-cy="client-city"] input')?.value ?? "";
+      const hostCiudad = document.querySelector('[data-cy="client-city"]');
+      const ciudad =
+        hostCiudad?.shadowRoot?.querySelector(".select-button .elipsis")?.textContent?.trim() ??
+        document.querySelector('[data-cy="client-city"] input')?.value ??
+        "";
       const pideCiudad = Boolean(document.querySelector('[data-cy="order-create-carrier-city-required"]'));
       const otros = [...document.querySelectorAll("[data-cy]")]
         .map((e) => e.getAttribute("data-cy"))
@@ -566,13 +570,64 @@ export function crearDropiNavegador(config = {}) {
     let ultimo = null;
     for (const escrito of [String(texto ?? ""), ...aceptadas.slice(1)]) {
       const r = await autocompletarUna(p, cy, escrito, aceptadas, departamento);
-      if (r.ok || r.paso === "sin campo") return { ...r, solicitado: String(texto ?? "") };
+      if (r.ok || r.paso === "sin campo" || r.completo) return { ...r, solicitado: String(texto ?? "") };
       ultimo = r;
     }
     return { ...ultimo, solicitado: String(texto ?? "") };
   }
 
+  /**
+   * Selector nuevo de Dropi (<dropi-select-lib>, nov 2026): un boton
+   * "<cy>-field" que abre una lista (con buscador) de
+   * <button class="option" data-cy="<cy>-option-N"><span>TEXTO</span>. Todo
+   * va en shadow DOM abierto (los locators de Playwright lo atraviesan; el
+   * clic tiene que ser real). `elegir(textos)` devuelve el indice o -1.
+   */
+  async function elegirEnSelectLib(p, host, elegir, { espera = 6000 } = {}) {
+    const boton = host.locator("button.select-button").first();
+    const etiqueta = async () => (await boton.locator(".elipsis").first().innerText({ timeout: 2000 }).catch(() => "")).trim();
+    const opciones = host.locator("button.option");
+    const abierta = async () => (await opciones.count().catch(() => 0)) > 0 && (await opciones.first().isVisible().catch(() => false));
+    if (!(await abierta())) {
+      for (let i = 0; i < 20 && (await boton.isDisabled().catch(() => false)); i++) await p.waitForTimeout(500);
+      await boton.click({ timeout: 5000 }).catch(() => {});
+    }
+    // la lista entra con animacion y se llena async: se espera a que deje de crecer
+    let anterior = -1;
+    for (let i = 0; i < Math.round(espera / 400); i++) {
+      const n = await opciones.count().catch(() => 0);
+      if (n > 0 && n === anterior) break;
+      anterior = n;
+      await p.waitForTimeout(400);
+    }
+    const textos = (await opciones.allInnerTexts().catch(() => [])).map((t) => t.replace(/\s+/g, " ").trim());
+    if (!textos.length) {
+      await p.keyboard.press("Escape").catch(() => {});
+      return { ok: false, paso: "sin opcion", opciones: [] };
+    }
+    const i = elegir(textos);
+    if (i < 0) {
+      await p.keyboard.press("Escape").catch(() => {});
+      return { ok: false, paso: "sin coincidencia exacta", opciones: textos.slice(0, 8) };
+    }
+    await opciones.nth(i).scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+    await opciones.nth(i).click({ timeout: 5000 }).catch(() => {});
+    await p.waitForTimeout(500);
+    const quedo = await etiqueta();
+    if (normalizarTexto(quedo) !== normalizarTexto(textos[i])) {
+      return { ok: false, paso: `no quedó seleccionada (el campo muestra "${quedo}")`, opciones: textos.slice(0, 8) };
+    }
+    return { ok: true, elegido: quedo, etiqueta };
+  }
+
   async function autocompletarUna(p, cy, texto, aceptadas, departamento = "") {
+    // formulario nuevo: lista completa del departamento; se compara contra
+    // TODAS las formas aceptadas de una vez (sin buscador)
+    const lib = p.locator(`dropi-select-lib[data-cy="${cy}"]`).first();
+    if (await lib.count().catch(() => 0)) {
+      const r = await elegirEnSelectLib(p, lib, (textos) => textos.findIndex((t) => coincideUbicacion(t, aceptadas, departamento)));
+      return { ...r, campo: cy, solicitado: String(texto ?? ""), completo: true };
+    }
     const caja = p.locator(`[data-cy="${cy}"] input`).first();
     if (!(await caja.count().catch(() => 0))) {
       return { ok: false, paso: "sin campo", campo: cy };
@@ -632,6 +687,17 @@ export function crearDropiNavegador(config = {}) {
     const objetivo = normalizarTexto(nombre);
     const dlg = p.locator('[data-cy="create-order"]').first();
     const raiz = (await dlg.count().catch(() => 0)) ? dlg : p;
+
+    // 0a) formulario nuevo (nov 2026): <dropi-select-lib> en shadow DOM
+    const libTienda = p.locator('dropi-select-lib[data-cy="order-create-client-store"]').first();
+    if (await libTienda.count().catch(() => 0)) {
+      const etiquetaTienda = async () =>
+        (await libTienda.locator("button.select-button .elipsis").first().innerText({ timeout: 2000 }).catch(() => "")).trim();
+      const verificar = async () => normalizarTexto(await etiquetaTienda()) === objetivo;
+      if (await verificar()) return { ok: true, elegido: await etiquetaTienda(), verificar };
+      const r = await elegirEnSelectLib(p, libTienda, (textos) => textos.findIndex((t) => normalizarTexto(t) === objetivo));
+      return r.ok ? { ok: true, elegido: r.elegido, verificar } : { ok: false, paso: r.paso, opciones: r.opciones };
+    }
 
     // 0) el selector real de Dropi: <dropi-select data-cy="order-create-client-store">
     //    con un boton (…-store-field) que muestra el valor en `.elipsis`.
@@ -1005,6 +1071,23 @@ export function crearDropiNavegador(config = {}) {
     if (!varianteDropi) return { ok: false, detalle: "el producto en Dropi tiene variaciones y el pedido no dice cuál" };
     if (!hayVariacion) return { ok: false, detalle: `el pedido es de la variante ${varianteDropi} pero Dropi no mostró el selector de variación` };
     if (!valores?.length) return { ok: false, detalle: `no se pudo saber cuál es la variación ${varianteDropi} en Dropi` };
+    // formulario nuevo (nov 2026): <dropi-select-lib> con <button class="option">
+    const esLib = await sel.evaluate((el) => el.tagName.toLowerCase() === "dropi-select-lib").catch(() => false);
+    if (esLib) {
+      let error = "";
+      const r = await elegirEnSelectLib(p, sel, (textos) => {
+        const o = opcionDeVariante(textos, valores);
+        if (o.error) error = `${o.error} (opciones: ${textos.join(" | ")})`;
+        return o.error ? -1 : o.indice;
+      });
+      if (r.ok) return { ok: true, elegida: r.elegido };
+      return {
+        ok: false,
+        detalle: error
+          ? `no se encontró la variación «${valores.join(" / ")}» en Dropi: ${error}`
+          : `no se pudo elegir la variación «${valores.join(" / ")}» en Dropi (${r.paso})`,
+      };
+    }
     await sel.click().catch(() => {});
     const opciones = p.locator(".p-dropdown-panel li[role='option'], .p-dropdown-items li");
     for (let i = 0; i < 8 && !(await opciones.count().catch(() => 0)); i++) await p.waitForTimeout(400);
@@ -1098,7 +1181,9 @@ export function crearDropiNavegador(config = {}) {
       // que habia en el formulario: para saber por que Dropi no lo mostro
       const visto = await p
         .evaluate(() => {
-          const dir = document.querySelector('[data-cy="client-address"]');
+          const dir =
+            document.querySelector('[data-cy="order-create-client-address"]')?.shadowRoot?.querySelector("input") ??
+            document.querySelector('[data-cy="client-address"]');
           const marcada = [...document.querySelectorAll('[data-cy^="order-create-carrier-option-"]')]
             .filter((el) => /selected|active|checked/.test(el.className || "") || el.querySelector("input:checked"))
             .map((el) => el.getAttribute("data-cy").replace("order-create-carrier-option-", ""));
@@ -1142,8 +1227,17 @@ export function crearDropiNavegador(config = {}) {
       p
         .evaluate(() => {
           const texto = (el) => (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
-          document.querySelectorAll("[data-zs-oficina]").forEach((e) => e.removeAttribute("data-zs-oficina"));
-          let nodos = [...document.querySelectorAll('[data-cy^="centro-servicio-interrapidisimo-option-"]')];
+          const profundo = (sel) => {
+            const out = [];
+            const walk = (r) => {
+              out.push(...r.querySelectorAll(sel));
+              for (const e of r.querySelectorAll("*")) if (e.shadowRoot) walk(e.shadowRoot);
+            };
+            walk(document);
+            return out;
+          };
+          profundo("[data-zs-oficina]").forEach((e) => e.removeAttribute("data-zs-oficina"));
+          let nodos = profundo('[data-cy^="centro-servicio-interrapidisimo-option-"]');
           let metodo = "data-cy";
           if (!nodos.length) {
             metodo = "generico";
@@ -1211,9 +1305,18 @@ export function crearDropiNavegador(config = {}) {
     await p
       .evaluate((texto) => {
         const t = (el) => (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
-        document.querySelectorAll("[data-zs-oficina]").forEach((e) => e.removeAttribute("data-zs-oficina"));
+        const profundo = (sel) => {
+          const out = [];
+          const walk = (r) => {
+            out.push(...r.querySelectorAll(sel));
+            for (const e of r.querySelectorAll("*")) if (e.shadowRoot) walk(e.shadowRoot);
+          };
+          walk(document);
+          return out;
+        };
+        profundo("[data-zs-oficina]").forEach((e) => e.removeAttribute("data-zs-oficina"));
         const nodos = [
-          ...document.querySelectorAll('[data-cy^="centro-servicio-interrapidisimo-option-"]'),
+          ...profundo('[data-cy^="centro-servicio-interrapidisimo-option-"]'),
           ...document.querySelectorAll('dropi-select[data-cy="centro-servicio-interrapidisimo"] li, dropi-select[data-cy="centro-servicio-interrapidisimo"] [role="option"]'),
         ];
         const el = nodos.find((n) => t(n) === texto);
@@ -1222,7 +1325,7 @@ export function crearDropiNavegador(config = {}) {
       .catch(() => {});
     const opcion = p.locator('[data-zs-oficina="1"]').first();
     await opcion.click({ timeout: 5000 }).catch(() => {});
-    await p.evaluate(() => document.querySelectorAll("[data-zs-oficina]").forEach((e) => e.removeAttribute("data-zs-oficina"))).catch(() => {});
+    await opcion.evaluate((e) => e.removeAttribute("data-zs-oficina")).catch(() => {});
     await p.waitForTimeout(700);
     const elegido = await textoBoton();
     const norm = (t) => String(t).replace(/\s+/g, " ").trim().toLowerCase();
@@ -1855,7 +1958,9 @@ export function crearDropiNavegador(config = {}) {
       }
       // 4.4) variacion (color, talla...): se elige ANTES de cantidad y precio
       //      porque al cambiarla Dropi vuelve a poner su precio sugerido
-      const selVariacion = p.locator('p-dropdown[data-cy^="order-create-products-row-variation-"]').first();
+      const selVariacion = p
+        .locator('p-dropdown[data-cy^="order-create-products-row-variation-"], dropi-select-lib[data-cy^="order-create-products-row-variation-"]')
+        .first();
       const hayVariacion = Boolean(await selVariacion.count().catch(() => 0));
       if (varianteDropi) await Promise.allSettled(lecturas);
       p.off("response", verVariaciones);
