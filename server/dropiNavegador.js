@@ -202,6 +202,8 @@ const EQUIVALENTES_UBICACION = [
   ["tolu viejo", "toluviejo"],
   // Mesitas del Colegio (Cundinamarca): en Dropi es "El Colegio (mesitas)"
   ["el colegio mesitas", "el colegio", "mesitas del colegio", "mesitas", "colegio mesitas", "mesitas el colegio"],
+  // La Cruzada (corregimiento de Remedios, Antioquia): en Dropi es "La Cruzada (remedios)"
+  ["la cruzada remedios", "la cruzada", "cruzada", "cruzada remedios", "la cruzada de remedios"],
 ];
 
 /** Todas las formas aceptadas para un nombre (normalizadas), la propia primero. */

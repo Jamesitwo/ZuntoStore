@@ -619,6 +619,14 @@ test("Mesitas del Colegio en Dropi es El Colegio (mesitas)", () => {
   assert.equal(coincideUbicacion("Colegio", v, "Cundinamarca"), false);
 });
 
+test("La Cruzada en Dropi es La Cruzada (remedios)", () => {
+  const v = variantesUbicacion("La Cruzada");
+  assert.equal(v[0], "la cruzada");
+  assert.equal(coincideUbicacion("La Cruzada (remedios)", v, "Antioquia"), true);
+  assert.equal(coincideUbicacion("Remedios", v, "Antioquia"), false, "Remedios (el pueblo) es otro destino");
+  assert.equal(coincideUbicacion("La Cruzada (remedios)", variantesUbicacion("Remedios"), "Antioquia"), false);
+});
+
 test("el chat de Intercom no tapa los botones de Dropi", async () => {
   const { SELECTOR_ESTORBOS } = await import("../dropiNavegador.js");
   assert.match(SELECTOR_ESTORBOS, /#intercom-container/);
