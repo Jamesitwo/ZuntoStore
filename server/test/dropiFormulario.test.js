@@ -565,6 +565,26 @@ test("formulario nuevo: variación en el selector con shadow DOM", async (t) => 
   }
 });
 
+test("formulario nuevo: la variación se elige por su id (data-cy ...-option-<id>)", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  // como Dropi: data-cy="order-create-products-row-variation-<producto>-option-<variacion>"
+  const html = paginaSelectLib({ "order-create-products-row-variation-2232418": ["Color: azul", "Color: rosa", "Color: rojo"] }).replace(
+    'b.setAttribute("data-cy", cy + "-option-" + i);',
+    'b.setAttribute("data-cy", cy + "-option-" + [2493017, 2493018, 2493019][i]);',
+  );
+  const p = await pagina(html);
+  try {
+    const sel = p.locator('dropi-select-lib[data-cy^="order-create-products-row-variation-"]').first();
+    const r = await nav.elegirVariacion(p, sel, { hayVariacion: true, varianteDropi: "2493019", valores: [] });
+    assert.equal(r.ok, true, r.detalle);
+    assert.equal(r.elegida, "Color: rojo");
+    const r2 = await nav.elegirVariacion(p, sel, { hayVariacion: true, varianteDropi: "999", valores: [] });
+    assert.equal(r2.ok, false);
+  } finally {
+    await p.close();
+  }
+});
+
 test("resumen de Dropi: ganancia y precio del envio del formulario", async (t) => {
   if (motivoSalto) return t.skip(motivoSalto);
   const p = await pagina(`<!doctype html><body>

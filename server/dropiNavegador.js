@@ -601,11 +601,12 @@ export function crearDropiNavegador(config = {}) {
       await p.waitForTimeout(400);
     }
     const textos = (await opciones.allInnerTexts().catch(() => [])).map((t) => t.replace(/\s+/g, " ").trim());
+    const cys = await opciones.evaluateAll((els) => els.map((e) => e.getAttribute("data-cy") || "")).catch(() => []);
     if (!textos.length) {
       await p.keyboard.press("Escape").catch(() => {});
       return { ok: false, paso: "sin opcion", opciones: [] };
     }
-    const i = elegir(textos);
+    const i = elegir(textos, cys);
     if (i < 0) {
       await p.keyboard.press("Escape").catch(() => {});
       return { ok: false, paso: "sin coincidencia exacta", opciones: textos.slice(0, 8) };
@@ -1070,12 +1071,19 @@ export function crearDropiNavegador(config = {}) {
   async function elegirVariacion(p, sel, { hayVariacion, varianteDropi, valores }) {
     if (!varianteDropi) return { ok: false, detalle: "el producto en Dropi tiene variaciones y el pedido no dice cuál" };
     if (!hayVariacion) return { ok: false, detalle: `el pedido es de la variante ${varianteDropi} pero Dropi no mostró el selector de variación` };
-    if (!valores?.length) return { ok: false, detalle: `no se pudo saber cuál es la variación ${varianteDropi} en Dropi` };
-    // formulario nuevo (nov 2026): <dropi-select-lib> con <button class="option">
+    // formulario nuevo (nov 2026): <dropi-select-lib> con <button class="option"
+    // data-cy="...-option-<id de la variacion>">: se elige por el id exacto
     const esLib = await sel.evaluate((el) => el.tagName.toLowerCase() === "dropi-select-lib").catch(() => false);
     if (esLib) {
       let error = "";
-      const r = await elegirEnSelectLib(p, sel, (textos) => {
+      valores = valores?.length ? valores : [];
+      const r = await elegirEnSelectLib(p, sel, (textos, cys) => {
+        const porId = cys.findIndex((c) => c.endsWith(`-option-${varianteDropi}`));
+        if (porId >= 0) return porId;
+        if (!valores.length) {
+          error = `no aparece la variación ${varianteDropi} (opciones: ${textos.join(" | ")})`;
+          return -1;
+        }
         const o = opcionDeVariante(textos, valores);
         if (o.error) error = `${o.error} (opciones: ${textos.join(" | ")})`;
         return o.error ? -1 : o.indice;
@@ -1084,10 +1092,11 @@ export function crearDropiNavegador(config = {}) {
       return {
         ok: false,
         detalle: error
-          ? `no se encontró la variación «${valores.join(" / ")}» en Dropi: ${error}`
-          : `no se pudo elegir la variación «${valores.join(" / ")}» en Dropi (${r.paso})`,
+          ? `no se encontró la variación «${valores.join(" / ") || varianteDropi}» en Dropi: ${error}`
+          : `no se pudo elegir la variación «${valores.join(" / ") || varianteDropi}» en Dropi (${r.paso})`,
       };
     }
+    if (!valores?.length) return { ok: false, detalle: `no se pudo saber cuál es la variación ${varianteDropi} en Dropi` };
     await sel.click().catch(() => {});
     const opciones = p.locator(".p-dropdown-panel li[role='option'], .p-dropdown-items li");
     for (let i = 0; i < 8 && !(await opciones.count().catch(() => 0)); i++) await p.waitForTimeout(400);
