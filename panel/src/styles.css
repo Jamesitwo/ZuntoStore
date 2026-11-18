@@ -5682,3 +5682,23 @@ textarea.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; fon
 
 .creador-modelo-video { align-items: center; margin-left: auto; }
 .creador-modelo-video select { width: auto; max-width: 220px; padding: 4px 8px; font-size: 13px; }
+
+/* Productos ganadores */
+.ganadores-filtros { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin: 12px 0; }
+.ganadores-filtros label { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
+.ganadores-filtros .ganadores-buscar { flex: 1; min-width: 200px; }
+.ganadores-lista { display: flex; flex-direction: column; gap: 8px; }
+.ganador { display: grid; grid-template-columns: 32px 72px 1fr auto; gap: 12px; align-items: center; padding: 10px 12px; }
+.ganador-puesto { font-weight: 700; font-size: 18px; text-align: center; color: var(--muted, #888); }
+.ganador-img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; background: var(--bg-soft, #f1f1f1); }
+.ganador-info { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ganador-nombre { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ganador-numeros { display: flex; flex-direction: column; align-items: flex-end; text-align: right; gap: 2px; }
+.ganador-numeros strong { font-size: 22px; line-height: 1; }
+.ganador-barras { display: flex; align-items: flex-end; gap: 3px; height: 26px; margin-top: 4px; }
+.ganador-barras span { width: 8px; background: var(--accent, #f08a24); border-radius: 2px 2px 0 0; opacity: 0.85; }
+@media (max-width: 640px) {
+  .ganador { grid-template-columns: 24px 56px 1fr; }
+  .ganador-img { width: 56px; height: 56px; }
+  .ganador-numeros { grid-column: 2 / -1; flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 8px; justify-content: flex-start; }
+}

@@ -1907,6 +1907,7 @@ export function crearManejador({
     //   PUT  /api/catalogo/config     { activo, hora, todo, diasGuardar }
     //   POST /api/catalogo/ejecutar   revisa ya (en segundo plano)
     //   POST /api/catalogo/parar
+    //   GET  /api/catalogo/ganadores  ranking de ventas estimadas (caidas de stock)
     if (ruta === "/api/catalogo" || ruta.startsWith("/api/catalogo/")) {
       autorizar(req);
       if (!catalogo) throw new ErrorApi(503, "La revisión del catálogo no está disponible");
@@ -1927,6 +1928,12 @@ export function crearManejador({
         }
         catalogo.ejecutar({ motivo: `manual (${usuarioDe(req) ?? "?"})` }).catch(() => {});
         json(res, 202, { ok: true, ...catalogo.resumen() });
+        return;
+      }
+      // GET /api/catalogo/ganadores?dias=7&orden=unidades|constancia|ingreso&q=&categoria=&minDias=1&limite=100
+      if (req.method === "GET" && ruta === "/api/catalogo/ganadores") {
+        const q = Object.fromEntries(url.searchParams.entries());
+        json(res, 200, await catalogo.ganadores(q));
         return;
       }
       if (req.method === "POST" && ruta === "/api/catalogo/parar") {

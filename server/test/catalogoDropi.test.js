@@ -234,3 +234,49 @@ test("parar detiene la revision en curso", async () => {
   assert.match(r.detalle, /Detenido/);
   assert.deepEqual(cat.dias(), []);
 });
+
+test("ganadores: ventas = caídas de stock; reposición, retiros y ajustes no cuentan", async () => {
+  const { calcularGanadores } = await import("../catalogoDropi.js");
+  const m = (o) => new Map(Object.entries(o).map(([id, st]) => [Number(id), [st, 20000, 50000]]));
+  const fotos = [
+    { fecha: "2026-11-10", mapa: m({ 1: 100, 2: 50, 3: 5, 4: 2000, 5: 1000 }) },
+    { fecha: "2026-11-11", mapa: m({ 1: 90, 2: 80, 3: 2, 4: 2000, 5: 10 }) }, // 2 repone, 5 ajuste
+    { fecha: "2026-11-12", mapa: m({ 1: 85, 2: 75, 5: 8 }) }, // 3 se agoto (tenia poco), 4 desaparece (tenia mucho)
+  ];
+  const r = calcularGanadores(fotos, { 1: ["Lámpara", "SIMPLE", "Prov", "Hogar", "colombia/products/1/a.png", "2026-11-01"] });
+  const de = (id) => r.find((x) => x.id === id);
+  assert.equal(de(1).unidades, 15);
+  assert.equal(de(1).diasConVenta, 2);
+  assert.equal(de(1).nombre, "Lámpara");
+  assert.equal(de(1).ingreso, 15 * 20000);
+  assert.equal(de(2).unidades, 5, "la reposicion (50 -> 80) no resta ni suma");
+  assert.equal(de(3).unidades, 5);
+  assert.equal(de(3).agotado, true);
+  assert.equal(de(4), undefined, "retirado con mucho stock: no es venta");
+  assert.equal(de(5).unidades, 2, "la caida 1000 -> 10 es ajuste");
+  assert.equal(de(5).ajustes, 1);
+});
+
+test("ganadores: ranking con filtros desde las fotos guardadas", async () => {
+  const dir = tmp();
+  const dias = path.join(dir, "dias");
+  fs.mkdirSync(dias, { recursive: true });
+  const foto = (fecha, filas) => fs.writeFileSync(path.join(dias, `${fecha}.json.gz`), zlib.gzipSync(JSON.stringify({ fecha, filas })));
+  foto("2026-11-10", [[1, 100, 10000, 30000], [2, 40, 5000, 20000]]);
+  foto("2026-11-11", [[1, 98, 10000, 30000], [2, 30, 5000, 20000]]);
+  foto("2026-11-12", [[1, 96, 10000, 30000], [2, 29, 5000, 20000]]);
+  fs.writeFileSync(
+    path.join(dir, "productos.json.gz"),
+    zlib.gzipSync(JSON.stringify({ productos: { 1: ["Taladro", "SIMPLE", "P1", "Herramientas", "colombia/products/1/a.png", "2026-11-10"], 2: ["Difusor", "SIMPLE", "P2", "Hogar", "", "2026-11-10"] } })),
+  );
+  const c = crearCatalogoDropi(opciones(dir, async () => new Response("{}")));
+  const r = await c.ganadores({ dias: 7 });
+  assert.equal(r.fotos, 3);
+  assert.deepEqual(r.productos.map((x) => x.id), [2, 1]);
+  assert.equal(r.productos[0].unidades, 11);
+  assert.equal(r.productos[1].imagen, "https://d39ru7awumhhs2.cloudfront.net/colombia/products/1/a.png");
+  assert.deepEqual((await c.ganadores({ orden: "ingreso" })).productos.map((x) => x.id), [2, 1]);
+  assert.deepEqual((await c.ganadores({ categoria: "herramientas" })).productos.map((x) => x.id), [1]);
+  assert.deepEqual((await c.ganadores({ q: "difu" })).productos.map((x) => x.id), [2]);
+  assert.equal((await c.ganadores({ dias: 1 })).fotos, 2);
+});

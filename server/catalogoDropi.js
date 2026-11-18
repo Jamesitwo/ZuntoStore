@@ -115,6 +115,97 @@ export function ahoraBogota(d = new Date()) {
   return { dia: `${partes.year}-${partes.month}-${partes.day}`, hora: Number(partes.hour) };
 }
 
+/**
+ * Ventas estimadas por producto a partir de las fotos diarias.
+ *   fotos: [{ fecha, mapa: Map id -> [stock, precio, sugerido] }] (viejo -> nuevo)
+ *   fichas: { id: [nombre, tipo, proveedor, categorias, imagen, primeraVez] }
+ * Venta de un dia = lo que BAJO el stock entre una foto y la siguiente. Las
+ * subidas (reposicion) no cuentan. Si el producto desaparece (se agoto: sin
+ * stock no se guarda) cuenta como agotado solo si tenia poco (<= AGOTADO_MAX);
+ * si tenia mucho, es mas probable que lo retiraran o lo hicieran privado.
+ * Una caida enorme de un dia (>= AJUSTE_MIN y >= 90% del stock) se toma
+ * como ajuste de inventario del proveedor, no como venta.
+ */
+export const AGOTADO_MAX = 30;
+export const AJUSTE_MIN = 300;
+export function calcularGanadores(fotos = [], fichas = {}) {
+  const res = new Map();
+  const fila = (id) => {
+    let r = res.get(id);
+    if (!r) {
+      r = { id, unidades: 0, diasConVenta: 0, maxDia: 0, ajustes: 0, agotado: false, serie: [] };
+      res.set(id, r);
+    }
+    return r;
+  };
+  for (let i = 1; i < fotos.length; i++) {
+    const antes = fotos[i - 1].mapa;
+    const ahora = fotos[i].mapa;
+    for (const [id, [stockAntes]] of antes) {
+      const hoy = ahora.get(id);
+      let baja;
+      if (hoy) baja = stockAntes - hoy[0];
+      else if (stockAntes <= AGOTADO_MAX) baja = stockAntes;
+      else continue;
+      if (baja <= 0) continue;
+      const r = fila(id);
+      if (baja >= AJUSTE_MIN && baja >= stockAntes * 0.9) {
+        r.ajustes++;
+        continue;
+      }
+      r.unidades += baja;
+      r.diasConVenta++;
+      r.maxDia = Math.max(r.maxDia, baja);
+      r.serie.push([fotos[i].fecha, baja]);
+      if (!hoy) r.agotado = true;
+    }
+  }
+  const ultimo = fotos.at(-1)?.mapa ?? new Map();
+  const pares = Math.max(1, fotos.length - 1);
+  const salida = [];
+  for (const r of res.values()) {
+    if (r.unidades <= 0) continue;
+    const f = fichas[r.id] ?? [];
+    const precioDe = () => {
+      for (let i = fotos.length - 1; i >= 0; i--) {
+        const x = fotos[i].mapa.get(r.id);
+        if (x) return x;
+      }
+      return [0, 0, 0];
+    };
+    const [, precio, sugerido] = precioDe();
+    salida.push({
+      ...r,
+      porDia: Math.round((r.unidades / pares) * 10) / 10,
+      stock: ultimo.get(r.id)?.[0] ?? 0,
+      precio,
+      sugerido,
+      ingreso: r.unidades * precio,
+      nombre: f[0] ?? `Producto ${r.id}`,
+      tipo: f[1] ?? "",
+      proveedor: f[2] ?? "",
+      categorias: f[3] ?? "",
+      imagen: f[4] ?? "",
+      desde: f[5] ?? "",
+    });
+  }
+  return salida;
+}
+
+const ORDENES = {
+  unidades: (a, b) => b.unidades - a.unidades || b.diasConVenta - a.diasConVenta,
+  constancia: (a, b) => b.diasConVenta - a.diasConVenta || b.unidades - a.unidades,
+  ingreso: (a, b) => b.ingreso - a.ingreso || b.unidades - a.unidades,
+};
+
+/** URL publica de la imagen de Dropi (guardan la ruta de S3). */
+export function urlImagen(img = "") {
+  const s = String(img || "");
+  if (!s) return "";
+  if (/^https?:\/\//.test(s)) return s;
+  return `https://d39ru7awumhhs2.cloudfront.net/${s.replace(/^\/+/, "")}`;
+}
+
 function normalizarConfig(c = {}) {
   const hora = Math.round(num(c.hora));
   const dias = Math.round(num(c.diasGuardar));
@@ -151,6 +242,7 @@ export function crearCatalogoDropi({
   let enCurso = null; // { desde, paginas, productos, conStock, fallidas, motivo }
   let parar = false;
   let timer = null;
+  let cacheGanadores = null; // { clave (dias usados), fotos, filas }
 
   const leerJson = (r, d) => {
     try {
@@ -406,6 +498,55 @@ export function crearCatalogoDropi({
     },
     async fichas() {
       return (await leerGz(rutaProductos))?.productos ?? {};
+    },
+    /**
+     * Ranking de productos que mas se venden (caidas de stock) en los
+     * ultimos `dias` dias guardados.
+     * -> { desde, hasta, fotos, total, productos: [...], categorias: [...] }
+     */
+    async ganadores({ dias: n = 7, limite = 100, orden = "unidades", q = "", categoria = "", minDias = 1 } = {}) {
+      const todos = dias();
+      const usar = todos.slice(-Math.max(2, Math.min(60, Math.round(num(n)) || 7) + 1));
+      if (usar.length < 2) {
+        return { ok: true, fotos: usar.length, desde: usar[0] ?? null, hasta: usar.at(-1) ?? null, total: 0, productos: [], categorias: [], faltan: 2 - usar.length };
+      }
+      const clave = usar.join(",");
+      if (cacheGanadores?.clave !== clave) {
+        const fotos = [];
+        for (const fecha of usar) {
+          const mapa = await this.dia(fecha);
+          if (mapa) fotos.push({ fecha, mapa });
+        }
+        cacheGanadores = { clave, fotos: fotos.map((f) => f.fecha), filas: calcularGanadores(fotos, await this.fichas()) };
+      }
+      const norm = (t) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      const nq = norm(q).trim();
+      const ncat = norm(categoria).trim();
+      let filas = cacheGanadores.filas.filter((r) => r.diasConVenta >= Math.max(1, num(minDias)));
+      if (nq) filas = filas.filter((r) => norm(`${r.nombre} ${r.proveedor} ${r.id}`).includes(nq));
+      // categorias (antes de filtrar por una)
+      const cats = new Map();
+      for (const r of filas) {
+        for (const c of String(r.categorias).split(",").map((x) => x.trim()).filter(Boolean)) {
+          const x = cats.get(c) ?? { nombre: c, unidades: 0, productos: 0 };
+          x.unidades += r.unidades;
+          x.productos++;
+          cats.set(c, x);
+        }
+      }
+      if (ncat) filas = filas.filter((r) => norm(r.categorias).split(",").some((c) => c.trim() === ncat));
+      filas = [...filas].sort(ORDENES[orden] ?? ORDENES.unidades);
+      const tope = Math.max(1, Math.min(500, Math.round(num(limite)) || 100));
+      return {
+        ok: true,
+        fotos: cacheGanadores.fotos.length,
+        desde: cacheGanadores.fotos[0],
+        hasta: cacheGanadores.fotos.at(-1),
+        total: filas.length,
+        unidades: filas.reduce((a, r) => a + r.unidades, 0),
+        productos: filas.slice(0, tope).map((r) => ({ ...r, imagen: urlImagen(r.imagen) })),
+        categorias: [...cats.values()].sort((a, b) => b.unidades - a.unidades).slice(0, 30),
+      };
     },
     ejecutar,
     parar() {
