@@ -1425,8 +1425,16 @@ export function crearDropiNavegador(config = {}) {
     const invalidos = await p
       .evaluate(() => {
         const dlg = document.querySelector('[data-cy="create-order"]') ?? document;
-        const campos = [...dlg.querySelectorAll("input, textarea, select")]
-          .filter((el) => /ng-invalid|form-control-invalid/.test(el.className) && el.offsetParent !== null)
+        // los campos del formulario nuevo van dentro de shadow DOM
+        const todos = [];
+        const walk = (r) => {
+          todos.push(...r.querySelectorAll("input, textarea, select"));
+          for (const e of r.querySelectorAll("*")) if (e.shadowRoot) walk(e.shadowRoot);
+        };
+        walk(dlg.shadowRoot ?? dlg);
+        if (dlg.shadowRoot) walk(dlg);
+        const campos = todos
+          .filter((el) => /ng-invalid|form-control-invalid/.test(el.className) && el.getClientRects().length > 0)
           .map((el) => el.getAttribute("data-cy") || el.getAttribute("placeholder") || el.name || el.type);
         const mensajes = [...dlg.querySelectorAll(".invalid-color, .form-control-helper, .alert-message")]
           .map((el) => (el.innerText || "").trim())
@@ -1991,7 +1999,9 @@ export function crearDropiNavegador(config = {}) {
         await p
           .locator('[data-cy^="order-create-products-row-price-"] input')
           .first()
-          .fill(precioVenta.toLocaleString("es-CO"))
+          // solo digitos: el campo nuevo de Dropi (nov 2026) lee "108.900"
+          // como 108,9 (el resumen mostraba $ 109 y el boton no se activaba)
+          .fill(String(Math.round(precioVenta)))
           .catch(() => {});
       }
 
