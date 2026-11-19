@@ -408,6 +408,7 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
         creatividad,
         textosVideo,
         modeloVideo,
+        tienda: tiendaLucid,
         presupuesto: Number(presupuesto),
         notas: form.notas,
       });
@@ -546,6 +547,13 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
           <input id="cr-pres" inputMode="numeric" value={presupuesto} onChange={(e) => setPresupuesto(e.target.value.replace(/\D/g, ""))} />
         </Campo>
       </div>
+      <ElegirTiendaBot valor={tiendaLucid} onChange={setTiendaLucid} />
+      {tiendaLucid === "nueva" ? (
+        <p className="muted small">
+          Los creativos salen con la marca {ajustes.marcaSegunda || ajustes.marcaSegundaDefecto} y las reglas de bienestar y suplementos (sin
+          promesas de salud, sin antes/después y con la leyenda del INVIMA).
+        </p>
+      ) : null}
       <label className="check-linea">
         <input type="checkbox" checked={conPersonaje} disabled={!ajustes.fotoModelo} onChange={(e) => setConPersonaje(e.target.checked)} />
         Videos con la modelo {ajustes.fotoModelo ? "" : "(sube su foto en Ajustes)"}
@@ -629,6 +637,7 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
   const [fotoModelo, setFotoModelo] = useState(ajustes.fotoModelo);
   const [contraEntrega, setContraEntrega] = useState(ajustes.contraEntrega);
   const [modeloVideoDef, setModeloVideoDef] = useState(ajustes.modelos.video);
+  const [marcaSegunda, setMarcaSegunda] = useState(ajustes.marcaSegunda ?? "");
   const [guardando, setGuardando] = useState(false);
   const [creditos, setCreditos] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -659,6 +668,7 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
         fotoModelo,
         contraEntrega,
         modeloVideo: modeloVideoDef,
+        marcaSegunda,
       });
       onCambio(a);
       setKey("");
@@ -965,6 +975,9 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
           <Campo id="mt-marca" label="Marca en los creativos">
             <input id="mt-marca" value={marca} onChange={(e) => setMarca(e.target.value)} />
           </Campo>
+          <Campo id="mt-marca2" label="Marca de la segunda tienda (bienestar)">
+            <input id="mt-marca2" value={marcaSegunda} placeholder={ajustes.marcaSegundaDefecto} onChange={(e) => setMarcaSegunda(e.target.value)} />
+          </Campo>
         </div>
         <label className="check-linea">
           <input type="checkbox" checked={contraEntrega} onChange={(e) => setContraEntrega(e.target.checked)} />
@@ -1015,6 +1028,9 @@ function DetalleProyecto({ id }: { id: string }) {
   const preguntar = useConfirmar();
 
   const [tiendaIA, setTiendaIA] = useState<TiendaBot>("zunto");
+  // el producto se crea en LucidSales en la tienda del proyecto
+  const tiendaProyecto = p?.tienda === "nueva" ? "nueva" : "zunto";
+  useEffect(() => setTiendaIA(tiendaProyecto), [tiendaProyecto]);
   /** Crea el producto en LucidSales con la ficha y la bienvenida que escribio la IA. */
   const crearEnLucidDesdeIA = async () => {
     if (!p) return;
@@ -1246,6 +1262,12 @@ function DetalleProyecto({ id }: { id: string }) {
               {p.creatividad ? ` · libertad ${CREATIVIDADES.find((n) => n.id === p.creatividad)?.nombre.toLowerCase() ?? ""}` : ""}
               {p.textosVideo ? " · videos con texto" : " · videos sin texto"}
             </span>
+            {!campanaHecha && !generando && !p.planeando ? (
+              <ElegirTiendaBot
+                valor={tiendaProyecto}
+                onChange={(t) => void accion("tienda", () => creador.editar(id, { tienda: t }), "Tienda cambiada: pide otras ideas para rehacer el plan con ella")}
+              />
+            ) : null}
             {ajustes && p.creativos.some((c) => c.tipo === "video") ? (
               <label className="row gap creador-modelo-video">
                 <span className="muted small">Videos con</span>

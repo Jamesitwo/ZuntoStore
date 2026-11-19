@@ -384,3 +384,20 @@ test("modelos de video: parámetros válidos para cada modelo", async () => {
   assert.deepEqual(paramsVideo({ model: "MiniMax H3 Fast", resolution: 720, duration: 12 }), { model: "MiniMax H3 Fast", resolution: 480, duration: 12 });
   assert.equal(paramsVideo({ model: "Otro", resolution: 480, duration: 12 }).resolution, 480);
 });
+
+test("segunda tienda (bienestar y suplementos): marca propia y reglas de Meta e INVIMA", async () => {
+  const { promptSistema, marcaDe, LEYENDA_SUPLEMENTO } = await import("../creadorCampanas.js");
+  assert.deepEqual(marcaDe({ marca: "ZUNTO" }, { tienda: "zunto" }), { marca: "ZUNTO", rubro: "general" });
+  assert.deepEqual(marcaDe({ marca: "ZUNTO" }, { tienda: "nueva" }), { marca: "DÍA UNO", rubro: "bienestar" });
+  assert.equal(marcaDe({ marcaSegunda: "Dia Uno Wellness" }, { tienda: "nueva" }).marca, "Dia Uno Wellness");
+  const b = promptSistema({ marca: "DÍA UNO", rubro: "bienestar" });
+  assert.match(b, /director creativo de DÍA UNO, una tienda online colombiana de bienestar y suplementos/);
+  assert.match(b, /previene, alivia, trata ni cura/);
+  assert.match(b, /¿Sufres de…\?/);
+  assert.ok(b.includes(LEYENDA_SUPLEMENTO));
+  assert.match(b, /ritual de la mañana/);
+  assert.doesNotMatch(b, /polo negra|guarda puesta|amarillo/);
+  const g = promptSistema({ marca: "ZUNTO" });
+  assert.match(g, /polo negra/);
+  assert.doesNotMatch(g, /suplemento dietario/);
+});

@@ -65,6 +65,8 @@ export interface Proyecto {
   textosVideo?: boolean;
   /** modelo de video de TopView para este proyecto ("" = el de los ajustes) */
   modeloVideo?: string;
+  /** tienda del producto: Zunto o la segunda (bienestar y suplementos) */
+  tienda?: "zunto" | "nueva";
   /** la gran idea de la campaña */
   concepto?: string;
   presupuesto: number;
@@ -123,6 +125,9 @@ export interface AjustesCreador {
   modelos: { imagen: string; video: string };
   /** modelo de video por defecto de Zunto (Seedance) y los que se pueden elegir */
   modeloVideoDefecto: string;
+  /** marca de la segunda tienda en los creativos ("" = la de por defecto) */
+  marcaSegunda: string;
+  marcaSegundaDefecto: string;
   modelosVideo: string[];
   ia: {
     proveedor: "claude" | "zunto";

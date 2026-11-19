@@ -27,6 +27,13 @@ const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 export const COSTO_CREDITOS = { imagen: 0.2, video: 6.7 };
 export const PRESUPUESTO_DEFECTO = 25000;
 
+/** Marca y rubro de los creativos segun la tienda del proyecto. */
+export function marcaDe(a = {}, p = {}) {
+  return p.tienda === "nueva"
+    ? { marca: String(a.marcaSegunda || "").trim() || MARCA_SEGUNDA_DEFECTO, rubro: "bienestar" }
+    : { marca: a.marca || "ZUNTO", rubro: "general" };
+}
+
 /** Modelo de video valido (uno de la lista); si no, el de por defecto (Seedance). */
 export function modeloVideoDe(m) {
   return MODELOS_VIDEO.some((x) => x.id === m) ? m : DEFECTOS_TOPVIEW.video.model;
@@ -57,24 +64,65 @@ export const CREATIVIDAD = {
   atrevida: "ATREVIDA: sorpréndeme. Conceptos poco vistos, ganchos audaces, estéticas distintas a lo típico de dropshipping (sin romper las reglas fijas).",
 };
 
+/** Tiendas del Creador: Zunto (general) y la segunda (bienestar y suplementos). */
+export const TIENDAS_CREADOR = ["zunto", "nueva"];
+export const MARCA_SEGUNDA_DEFECTO = "DÍA UNO";
+
+/**
+ * Leyenda obligatoria en Colombia para la publicidad de suplementos dietarios
+ * (Res. 3096 de 2007 / Dec. 3249 de 2006).
+ */
+export const LEYENDA_SUPLEMENTO = "Este producto es un suplemento dietario, no es un medicamento y no suple una alimentación equilibrada.";
+
+/**
+ * Bienestar y suplementos: reglas de Meta (atributos personales, salud y
+ * bienestar) y del INVIMA (nada de prevenir/aliviar/tratar/curar), mas un
+ * repertorio pensado para esta categoria.
+ */
+function bloqueBienestar(marca, sinTextoVideo) {
+  return {
+    meta: `6. Meta y el INVIMA (bienestar y suplementos; si se rompe, rechazan el anuncio o cierran la cuenta):
+   • Nada de promesas de salud ni de resultados: el producto no previene, alivia, trata ni cura nada ("quema grasa", "baja X kilos", "elimina el dolor", "cura la gastritis", "desinflama", "aumenta las defensas al 100%", "sin efectos secundarios", "aprobado por médicos", "milagroso" están prohibidos). Nada de plazos ("en 7 días") ni cifras de resultados.
+   • No supongas nada de la persona que ve el anuncio (atributos personales): nada de "¿Sufres de…?", "¿Tienes sobrepeso?", "Tu ansiedad", "Si tienes colesterol alto". Habla del producto, de la rutina y de los hábitos, en tercera persona o en general ("para tu rutina de la mañana", "quienes entrenan temprano").
+   • Nada de antes/después de cuerpos, básculas, cintas métricas sobre el cuerpo, primeros planos de barriga, celulitis, piel con problemas ni cuerpos "ideales"; nada de gente en camillas, hospitales, batas médicas ni tomándose medicamentos; nada de vergüenza o inseguridad sobre el cuerpo.
+   • Ropa de cuello cerrado (deportiva o casual), nada revelador ni torsos desnudos en el gimnasio.
+   • Nada que imite noticias, médicos reales, famosos, estudios o "científicos"; nada de sellos de certificación que no estén en el empaque.`,
+    seguridad: `7. Uso responsable: la dosis y el modo de uso solo como dice la etiqueta; nunca muestres más cápsulas/gomitas/scoops de los que indica. Nada de niños tomándolo ni embarazadas. En los creativos de IMAGEN (y en el copy) va la leyenda, corta y legible al pie: "${LEYENDA_SUPLEMENTO}"${sinTextoVideo ? " (en los videos va solo en el copy, no en pantalla)" : ""}.`,
+    nadaInventado: ` En suplementos, además: ni ingredientes, ni miligramos, ni número de cápsulas, ni sabores, ni registro sanitario INVIMA que no se vean en las fotos o en la descripción; lo que no sepas va en "faltan".`,
+    repertorio: `Repertorio para inspirarte en bienestar (no es obligatorio usarlo, inventa otros):
+• Ángulos: ritual de la mañana, rutina antes/después de entrenar (de la persona, no de su cuerpo), "lo que llevo en el bolso", cómo se toma en 10 segundos, qué hay en la etiqueta (ingredientes reales, sin prometer), sabor/textura, práctico para el ritmo de Bogotá (oficina, trancón, gimnasio a las 5 a. m.), autocuidado y tiempo para ti, regalo para mamá/papá, "mi kit de bienestar", comparación de formato (cápsula vs. polvo vs. gomita) sin hablar mal de otros, cuántos días trae el frasco, combo/promoción real.
+• Estilos de imagen: bodegón limpio con luz natural de mañana, flat lay de desayuno saludable (frutas, avena, café, batido) con el frasco, macro de cápsulas/polvo/gomitas, mesa de noche ordenada, maleta de gimnasio, escritorio de oficina con agua y el producto, cocina luminosa de apartamento colombiano, póster minimalista con mucho aire y colores suaves (verde salvia, crema, terracota, azul cielo), etiqueta en primer plano, infografía limpia "cómo se toma" (pasos, no beneficios médicos), estilo farmacia premium sin parecer medicamento, captura de chat de WhatsApp preguntando por el producto.
+• Formatos de video: UGC "mi rutina de la mañana", unboxing del frasco, POV preparando el batido o sacando la cápsula, ASMR (abrir el frasco, verter el polvo, mezclar), "3 cosas de este producto" (formato, sabor, cuántos días dura), un día en la vida con el producto en momentos naturales, preparación de receta (batido, agua, café), persona que pregunta por WhatsApp y le responden.
+• Personas: adultos de 25 a 60 años que se vean reales y colombianos, con energía tranquila (no cuerpos de modelo fitness exagerados); escenas naturales, sonrisas sin exagerar.`,
+    personaje: `viste ropa deportiva o casual sobria de cuello cerrado (colores suaves), sin logos ajenos; nada de bata médica`,
+  };
+}
+
 /**
  * Instrucciones de la IA: unas REGLAS FIJAS (marca, precio, WhatsApp,
  * fidelidad del producto, Meta) y LIBERTAD CREATIVA para todo lo demas.
+ * rubro "bienestar" (segunda tienda): reglas de suplementos de Meta e INVIMA.
  */
-export function promptSistema({ marca = "ZUNTO", contraEntrega = false, creatividad = "equilibrada", textosVideo = false } = {}) {
+export function promptSistema({ marca = "ZUNTO", contraEntrega = false, creatividad = "equilibrada", textosVideo = false, rubro = "general" } = {}) {
   // los modelos de video deforman las letras: por defecto, videos sin texto
   const sinTextoVideo = !textosVideo;
-  return `Eres el director creativo de ${marca}, una tienda online colombiana que vende por Meta Ads con destino WhatsApp.
+  const bien = rubro === "bienestar" ? bloqueBienestar(marca, sinTextoVideo) : null;
+  return `Eres el director creativo de ${marca}, una tienda online colombiana${bien ? " de bienestar y suplementos" : ""} que vende por Meta Ads con destino WhatsApp.
 Actúas como un diseñador y estratega creativo de verdad: piensas en quién compra, por qué lo compra y qué lo haría detenerse a mirar en el feed. Escribes en español colombiano. Devuelves SOLO un JSON.
 
 ══════ REGLAS FIJAS (no se negocian) ══════
-1. Marca y precio: en cada creativo publicitario se ve "${marca}" (amarillo o en un color de alto contraste con el fondo) y el precio en formato $199.900 (punto de miles, sin decimales). Tú decides dónde y cómo (badge, sello, etiqueta, texto en pantalla…), pero que se lea.
+1. Marca y precio: en cada creativo publicitario se ve "${marca}" (${bien ? "en un color de alto contraste con el fondo, con estética limpia" : "amarillo o en un color de alto contraste con el fondo"}) y el precio en formato $199.900 (punto de miles, sin decimales). Tú decides dónde y cómo (badge, sello, etiqueta, texto en pantalla…), pero que se lea.
 2. WhatsApp: el llamado a la acción siempre lleva a WhatsApp ("Escríbenos por WhatsApp", "Pídelo por WhatsApp"…). Tú eliges la forma (botón, sticker, franja, burbuja de chat…).
 3. "Envío GRATIS" y "Garantía" cuando apliquen.${contraEntrega ? ' Puedes decir "Pago contra entrega".' : ' NO digas "pago contra entrega".'}
-4. Nada inventado: ni especificaciones (RPM, medidas, tiempos, cifras), ni accesorios que no vienen, ni premios, ni testimonios con nombre real. Si algo aparece en uso pero no viene en el kit, nunca lo muestres como incluido.
+4. Nada inventado: ni especificaciones (RPM, medidas, tiempos, cifras), ni accesorios que no vienen, ni premios, ni testimonios con nombre real. Si algo aparece en uso pero no viene en el kit, nunca lo muestres como incluido.${bien ? bien.nadaInventado : ""}
 5. Fidelidad del producto (lo más importante): en cada prompt describe el producto pieza por pieza tal como se ve en las fotos (formas, colores, textos legibles, tamaño real comparado con algo cotidiano). Escribe siempre: "no deformar el producto ni el logo, no cambiar colores, no agregar piezas, botones ni pantallas, no copiar textos de las imágenes de referencia". Si es eléctrico con cable o inalámbrico, dilo. Si se pliega o se arma, describe el movimiento paso a paso ("no aparece de golpe").
-6. Meta: nada de escotes ni ropa reveladora (cuello cerrado), nada de antes/después de cuerpos, nada de promesas de salud, nada que imite noticias reales, marcas ajenas o famosos.
-7. Seguridad cuando aplique: herramientas con las dos manos, guarda puesta, gafas y guantes.
+${
+    bien
+      ? `${bien.meta}
+${bien.seguridad}`
+      : `6. Meta: nada de escotes ni ropa reveladora (cuello cerrado), nada de antes/después de cuerpos, nada de promesas de salud, nada que imite noticias reales, marcas ajenas o famosos.
+7. Seguridad cuando aplique: herramientas con las dos manos, guarda puesta, gafas y guantes.`
+  }
 8. Referencias de fotos: en prompts de IMAGEN las fotos son Image1, Image2…; en prompts de VIDEO son <<<Image1>>>, <<<Image2>>>…
 9. Voz de los videos: español colombiano con acento de Bogotá, cálido y seguro; nada de acento paisa, costeño, argentino, mexicano o de España; trato de "tú" (nunca voseo); números siempre en palabras ("ciento noventa y nueve mil novecientos"). Las marcas extranjeras se pronuncian como se dicen en Colombia (DeWalt = "DiWolt") pero se escriben bien en pantalla.
 10. Videos de 12 s en 9:16 (gancho en los primeros 2–3 s, cierre con precio + WhatsApp + ${marca}); imágenes en 4:5.${
@@ -89,11 +137,11 @@ Antes de escribir, analiza el producto: categoría, quién lo compra en Colombia
 
 Cada creativo debe ser distinto de los demás en al menos 3 de estas cosas: idea/ángulo, tipo de gancho, estilo visual, escena/locación, paleta de color, composición/encuadre, tono. Nada de 4 imágenes iguales con otro fondo.
 
-Repertorio para inspirarte (no es obligatorio usarlo, inventa otros):
+${bien ? bien.repertorio + "\n" : `Repertorio para inspirarte (no es obligatorio usarlo, inventa otros):
 • Ángulos: problema → solución, antes/después del espacio u objeto, comparación con lo que usan hoy, "lo que nadie te cuenta", regalo perfecto, ahorro de tiempo/dinero, prueba de resistencia, un día con el producto, error común, curiosidad, lista "3 razones", urgencia real de temporada, estatus/orgullo de tenerlo, humor cotidiano colombiano.
 • Estilos de imagen: foto editorial de revista, flat lay cenital ordenado, macro de detalles y texturas, lifestyle en un lugar real colombiano (obra, taller, cocina de apartamento en Bogotá, finca, carro, oficina), split-screen comparativo, collage tipo historia de Instagram, captura de chat de WhatsApp, estilo póster minimalista con mucho aire, fondo de color sólido vibrante, bodegón con luz dramática, infografía limpia con llamadas, kit desplegado "todo esto por…", render 3D tipo producto premium, estilo "meme" respetuoso, nota adhesiva / escrito a mano.
 • Formatos de video: UGC a cámara, POV ("POV: por fin…"), ASMR / satisfactorio, tutorial de 3 pasos, prueba o reto, comparación lado a lado, mini historia con giro, unboxing, reacción, transformación del espacio, cámara lenta de detalles, "3 cosas que hace", cliente que escribe por WhatsApp.
-• Personaje (cuando hay foto de modelo): úsalo solo donde sume; descríbelo como "la misma persona de <<<ImageN>>>: mismo rostro, ojos, sonrisa, tono de piel y cabello" y viste acorde al producto y siempre de cuello cerrado (herramientas: polo negra${sinTextoVideo ? " lisa en los videos (con \"" + marca + "\" bordado en amarillo solo en las imágenes)" : ` con "${marca}" bordado en amarillo`}, gafas y guantes; hogar/temporada: ropa casual o navideña; belleza/moda: sobria). No uses la ropa de la foto de referencia.
+`}• Personaje (cuando hay foto de modelo): úsalo solo donde sume; descríbelo como "la misma persona de <<<ImageN>>>: mismo rostro, ojos, sonrisa, tono de piel y cabello" y ${bien ? bien.personaje : `viste acorde al producto y siempre de cuello cerrado (herramientas: polo negra${sinTextoVideo ? " lisa en los videos (con \"" + marca + "\" bordado en amarillo solo en las imágenes)" : ` con "${marca}" bordado en amarillo`}, gafas y guantes; hogar/temporada: ropa casual o navideña; belleza/moda: sobria)`}. No uses la ropa de la foto de referencia.
 
 Nivel de riesgo creativo pedido: ${CREATIVIDAD[creatividad] ?? CREATIVIDAD.equilibrada}
 
@@ -107,11 +155,15 @@ ${
   }
 
 ══════ COPY (uno por creativo) ══════
-Debe continuar la idea de su creativo (mismo gancho y tono). Varía la estructura entre creativos: pregunta, historia corta, lista, dato curioso, diálogo… Siempre termina con precio, envío gratis y la invitación a escribir por WhatsApp. "titulo" máximo 40 caracteres. "descripcion" corta.
+Debe continuar la idea de su creativo (mismo gancho y tono). Varía la estructura entre creativos: pregunta, historia corta, lista, dato curioso, diálogo… Siempre termina con precio, envío gratis y la invitación a escribir por WhatsApp.${bien ? ` Sin promesas de salud ni preguntas sobre la condición de quien lee (regla 6); al final, en una línea aparte, la leyenda: "${LEYENDA_SUPLEMENTO}"` : ""} "titulo" máximo 40 caracteres. "descripcion" corta.
 
 ══════ ADEMÁS ══════
-FICHA: descripcion (beneficios + para quién + qué incluye + variantes), modoUso (pasos numerados + seguridad), caracteristicas ("• Campo: valor", solo datos confirmados), contenido ("1 X + 2 Y" y "Z no incluido" si aplica).
-BIENVENIDA de WhatsApp para responder al cliente: saludo de ${marca} con emoji del producto, 3 beneficios con ✅, 📦 qué incluye, 💰 precio, 🚚 envío gratis, 🛡️ garantía y una pregunta abierta que invite a seguir la conversación.
+${
+    bien
+      ? `FICHA: descripcion (qué es, formato, para qué rutina y para quién, qué incluye, sin promesas de salud; termina con la leyenda del suplemento), modoUso (dosis y forma de tomarlo SOLO si está en la etiqueta o la descripción; si no, "Según indicaciones de la etiqueta" + advertencias: "No exceder la dosis diaria recomendada. Manténgase fuera del alcance de los niños. Si estás embarazada, lactando o tomas medicamentos, consulta a tu médico antes de consumirlo."), caracteristicas ("• Campo: valor", solo datos confirmados: presentación, contenido neto, número de porciones, sabor, registro INVIMA si se ve), contenido ("1 frasco x 60 cápsulas", etc.).`
+      : `FICHA: descripcion (beneficios + para quién + qué incluye + variantes), modoUso (pasos numerados + seguridad), caracteristicas ("• Campo: valor", solo datos confirmados), contenido ("1 X + 2 Y" y "Z no incluido" si aplica).`
+  }
+BIENVENIDA de WhatsApp para responder al cliente: saludo de ${marca} con emoji del producto, 3 ${bien ? "puntos fuertes (formato, cómo se toma, cuánto dura; sin promesas de salud)" : "beneficios"} con ✅, 📦 qué incluye, 💰 precio, 🚚 envío gratis, 🛡️ garantía${bien ? `, la leyenda "${LEYENDA_SUPLEMENTO}"` : ""} y una pregunta abierta que invite a seguir la conversación.
 
 JSON de salida:
 {"concepto":"la gran idea de la campaña en 1–2 frases",
@@ -705,7 +757,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
       }
 
       // 2. campana
-      const marca = a.marca || "ZUNTO";
+      const marca = marcaDe(a, p).marca;
       if (!ids.campana) {
         ids.campana = await meta.crearCampana(cuentaId, {
           nombre: `${marca} · ${p.producto.nombre} · WhatsApp · ${fechaCorta()}`,
@@ -830,6 +882,8 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
           costos: COSTO_CREDITOS,
           modelos: { imagen: DEFECTOS_TOPVIEW.imagen.model, video: modeloVideoDe(a.modeloVideo) },
           modeloVideoDefecto: DEFECTOS_TOPVIEW.video.model,
+          marcaSegunda: a.marcaSegunda || "",
+          marcaSegundaDefecto: MARCA_SEGUNDA_DEFECTO,
           modelosVideo: MODELOS_VIDEO.map((m) => m.id),
           ia: {
             proveedor: iaDe(a),
@@ -863,6 +917,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
         }
         if (cambios.contraEntrega !== undefined) a.contraEntrega = Boolean(cambios.contraEntrega);
         if (cambios.modeloVideo !== undefined) a.modeloVideo = modeloVideoDe(cambios.modeloVideo);
+        if (cambios.marcaSegunda !== undefined) a.marcaSegunda = txt(cambios.marcaSegunda, 40);
         if (typeof cambios.claudeKey === "string" && cambios.claudeKey.trim()) a.claudeKey = cambios.claudeKey.trim();
         if (cambios.borrarClaude) delete a.claudeKey;
         if (typeof cambios.claudeModelo === "string" && MODELOS_CLAUDE.some((m) => m.id === cambios.claudeModelo)) a.claudeModelo = cambios.claudeModelo;
@@ -983,6 +1038,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
           creatividad: CREATIVIDAD[datos.creatividad] ? datos.creatividad : "equilibrada",
           textosVideo: datos.textosVideo === true,
           modeloVideo: datos.modeloVideo ? modeloVideoDe(datos.modeloVideo) : "",
+          tienda: datos.tienda === "nueva" ? "nueva" : "zunto",
           presupuesto: Number(datos.presupuesto) > 0 ? Math.round(Number(datos.presupuesto)) : Number(a.presupuesto) || PRESUPUESTO_DEFECTO,
           meta: { cuentaId: datos.cuentaId || a.cuentaId || "", paginaId: datos.paginaId || a.paginaId || "" },
           creativos: [],
@@ -1016,7 +1072,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
           try {
             const conPersonaje = p.conPersonaje && Boolean(a.fotoModelo);
             const sistema = promptSistema({
-              marca: a.marca || "ZUNTO",
+              ...marcaDe(a, p),
               contraEntrega: Boolean(a.contraEntrega),
               creatividad: p.creatividad,
               textosVideo: p.textosVideo === true,
@@ -1084,7 +1140,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
           try {
             const conPersonaje = p.conPersonaje && Boolean(a.fotoModelo);
             const sistema = promptSistema({
-              marca: a.marca || "ZUNTO",
+              ...marcaDe(a, p),
               contraEntrega: Boolean(a.contraEntrega),
               creatividad: p.creatividad,
               textosVideo: p.textosVideo === true,
@@ -1175,6 +1231,8 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
         if (typeof cambios.textosVideo === "boolean") p.textosVideo = cambios.textosVideo;
         // modelo de video de este proyecto ("" = el de los ajustes)
         if (cambios.modeloVideo !== undefined) p.modeloVideo = cambios.modeloVideo ? modeloVideoDe(cambios.modeloVideo) : "";
+        // tienda del producto: Zunto o la segunda (bienestar y suplementos)
+        if (cambios.tienda !== undefined) p.tienda = cambios.tienda === "nueva" ? "nueva" : "zunto";
         if (typeof cambios.notas === "string") p.notas = txt(cambios.notas, 1000);
         if (typeof cambios.bienvenida === "string") p.bienvenida = txt(cambios.bienvenida, 1500);
         if (typeof cambios.mensajePredefinido === "string") p.mensajePredefinido = txt(cambios.mensajePredefinido, 300);
