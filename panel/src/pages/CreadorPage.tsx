@@ -248,6 +248,7 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
   const [creatividad, setCreatividad] = useState<Creatividad>("equilibrada");
   const [textosVideo, setTextosVideo] = useState(false);
   const [modeloVideo, setModeloVideo] = useState("");
+  const [declaraciones, setDeclaraciones] = useState("");
   const [presupuesto, setPresupuesto] = useState(String(ajustes.presupuesto));
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -409,6 +410,7 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
         textosVideo,
         modeloVideo,
         tienda: tiendaLucid,
+        declaraciones: tiendaLucid === "nueva" ? declaraciones : "",
         presupuesto: Number(presupuesto),
         notas: form.notas,
       });
@@ -551,8 +553,20 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
       {tiendaLucid === "nueva" ? (
         <p className="muted small">
           Los creativos salen con la marca {ajustes.marcaSegunda || ajustes.marcaSegundaDefecto} y las reglas de bienestar y suplementos (sin
-          promesas de salud, sin antes/después y con la leyenda del INVIMA).
+          promesas de salud, sin antes/después y con la leyenda del INVIMA). Para decir para qué sirve, la IA usa las declaraciones de función
+          aceptadas del nutriente (ej.: "El magnesio contribuye a disminuir el cansancio y la fatiga").
         </p>
+      ) : null}
+      {tiendaLucid === "nueva" ? (
+        <Campo id="cr-declaraciones" label="Declaraciones de la etiqueta (opcional)">
+          <textarea
+            id="cr-declaraciones"
+            rows={2}
+            value={declaraciones}
+            onChange={(e) => setDeclaraciones(e.target.value)}
+            placeholder='Cópialas tal cual del empaque o del registro INVIMA. Ej.: "El magnesio contribuye al funcionamiento normal de los músculos."'
+          />
+        </Campo>
       ) : null}
       <label className="check-linea">
         <input type="checkbox" checked={conPersonaje} disabled={!ajustes.fotoModelo} onChange={(e) => setConPersonaje(e.target.checked)} />
@@ -1682,7 +1696,12 @@ function DetalleProyecto({ id }: { id: string }) {
               onClick={() => {
                 setConfirmar(null);
                 void accion("plan", async () => {
-                  await creador.editar(id, { creatividad: p.creatividad ?? "equilibrada", textosVideo: p.textosVideo === true, notas: p.notas });
+                  await creador.editar(id, {
+                    creatividad: p.creatividad ?? "equilibrada",
+                    textosVideo: p.textosVideo === true,
+                    notas: p.notas,
+                    declaraciones: p.declaraciones ?? "",
+                  });
                   return creador.planear(id);
                 });
               }}
@@ -1715,6 +1734,17 @@ function DetalleProyecto({ id }: { id: string }) {
           <input type="checkbox" checked={p.textosVideo === true} onChange={(e) => setP({ ...p, textosVideo: e.target.checked })} />
           Textos en pantalla en los videos
         </label>
+        {p.tienda === "nueva" ? (
+          <Campo id="rp-declaraciones" label="Declaraciones de la etiqueta (opcional)">
+            <textarea
+              id="rp-declaraciones"
+              rows={2}
+              value={p.declaraciones ?? ""}
+              onChange={(e) => setP({ ...p, declaraciones: e.target.value })}
+              placeholder="Tal cual del empaque o del registro INVIMA"
+            />
+          </Campo>
+        ) : null}
         <Campo id="rp-notas" label="Indicaciones (opcional)">
           <textarea id="rp-notas" rows={2} value={p.notas ?? ""} onChange={(e) => setP({ ...p, notas: e.target.value })} placeholder="Ej.: más humor, algo navideño, sin modelo" />
         </Campo>

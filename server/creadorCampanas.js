@@ -75,24 +75,85 @@ export const MARCA_SEGUNDA_DEFECTO = "DÍA UNO";
 export const LEYENDA_SUPLEMENTO = "Este producto es un suplemento dietario, no es un medicamento y no suple una alimentación equilibrada.";
 
 /**
+ * Declaraciones de funcion de nutrientes autorizadas por la EFSA (Reg. UE
+ * 432/2012), base del listado que acepta Colombia (Dec. 3249/2006 art. 5).
+ * Solo valen para nutrientes que el producto contiene.
+ */
+export const DECLARACIONES_NUTRIENTES = {
+  Magnesio: [
+    "contribuye a disminuir el cansancio y la fatiga",
+    "contribuye al funcionamiento normal de los músculos",
+    "contribuye al funcionamiento normal del sistema nervioso",
+    "contribuye a la función psicológica normal",
+    "contribuye al metabolismo energético normal",
+    "contribuye al equilibrio electrolítico",
+    "contribuye al mantenimiento de los huesos y dientes en condiciones normales",
+    "contribuye a la síntesis proteica normal",
+  ],
+  "Vitamina C": [
+    "contribuye al funcionamiento normal del sistema inmunitario",
+    "contribuye a disminuir el cansancio y la fatiga",
+    "contribuye a la formación normal de colágeno para el funcionamiento normal de la piel",
+    "contribuye a la protección de las células frente al daño oxidativo",
+    "mejora la absorción del hierro",
+  ],
+  "Vitamina D": [
+    "contribuye al funcionamiento normal del sistema inmunitario",
+    "contribuye al mantenimiento de los huesos y dientes en condiciones normales",
+    "contribuye al funcionamiento normal de los músculos",
+    "contribuye a la absorción normal del calcio",
+  ],
+  Zinc: [
+    "contribuye al funcionamiento normal del sistema inmunitario",
+    "contribuye al mantenimiento de la piel, el cabello y las uñas en condiciones normales",
+    "contribuye a la función cognitiva normal",
+    "contribuye a la protección de las células frente al daño oxidativo",
+  ],
+  "Vitamina B12": [
+    "contribuye a disminuir el cansancio y la fatiga",
+    "contribuye al metabolismo energético normal",
+    "contribuye al funcionamiento normal del sistema nervioso",
+    "contribuye a la formación normal de glóbulos rojos",
+  ],
+  Hierro: [
+    "contribuye a disminuir el cansancio y la fatiga",
+    "contribuye a la formación normal de glóbulos rojos y hemoglobina",
+    "contribuye al funcionamiento normal del sistema inmunitario",
+  ],
+  Calcio: ["contribuye al mantenimiento de los huesos y dientes en condiciones normales", "contribuye al funcionamiento normal de los músculos"],
+  Biotina: ["contribuye al mantenimiento del cabello y la piel en condiciones normales", "contribuye al metabolismo energético normal"],
+  Selenio: ["contribuye al funcionamiento normal del sistema inmunitario", "contribuye al mantenimiento del cabello y las uñas en condiciones normales"],
+  "Omega 3 (EPA y DHA)": ["contribuyen al funcionamiento normal del corazón (con una ingesta diaria de 250 mg de EPA y DHA)"],
+  Proteína: ["contribuye a aumentar y conservar la masa muscular"],
+  Creatina: ["aumenta el rendimiento físico en series sucesivas de ejercicios breves de alta intensidad (con 3 g diarios)"],
+};
+
+/**
  * Bienestar y suplementos: reglas de Meta (atributos personales, salud y
  * bienestar) y del INVIMA (nada de prevenir/aliviar/tratar/curar), mas un
  * repertorio pensado para esta categoria.
  */
 function bloqueBienestar(marca, sinTextoVideo) {
+  const lista = Object.entries(DECLARACIONES_NUTRIENTES)
+    .map(([n, ds]) => `   ${n}: ${ds.map((d) => `"${d}"`).join(" · ")}`)
+    .join("\n");
   return {
     meta: `6. Meta y el INVIMA (bienestar y suplementos; si se rompe, rechazan el anuncio o cierran la cuenta):
-   • Nada de promesas de salud ni de resultados: el producto no previene, alivia, trata ni cura nada ("quema grasa", "baja X kilos", "elimina el dolor", "cura la gastritis", "desinflama", "aumenta las defensas al 100%", "sin efectos secundarios", "aprobado por médicos", "milagroso" están prohibidos). Nada de plazos ("en 7 días") ni cifras de resultados.
+   • Nada de promesas de salud ni de resultados: el producto no previene, alivia, trata ni cura nada ("quema grasa", "baja X kilos", "elimina el dolor", "cura la gastritis", "desinflama", "aumenta las defensas al 100%", "sin efectos secundarios", "aprobado por médicos", "milagroso" están prohibidos). Nada de plazos ("en 7 días") ni cifras de resultados. Lo único permitido sobre "para qué sirve" son las DECLARACIONES DE FUNCIÓN de la regla 6b.
    • No supongas nada de la persona que ve el anuncio (atributos personales): nada de "¿Sufres de…?", "¿Tienes sobrepeso?", "Tu ansiedad", "Si tienes colesterol alto". Habla del producto, de la rutina y de los hábitos, en tercera persona o en general ("para tu rutina de la mañana", "quienes entrenan temprano").
    • Nada de antes/después de cuerpos, básculas, cintas métricas sobre el cuerpo, primeros planos de barriga, celulitis, piel con problemas ni cuerpos "ideales"; nada de gente en camillas, hospitales, batas médicas ni tomándose medicamentos; nada de vergüenza o inseguridad sobre el cuerpo.
    • Ropa de cuello cerrado (deportiva o casual), nada revelador ni torsos desnudos en el gimnasio.
-   • Nada que imite noticias, médicos reales, famosos, estudios o "científicos"; nada de sellos de certificación que no estén en el empaque.`,
+   • Nada que imite noticias, médicos reales, famosos, estudios o "científicos"; nada de sellos de certificación que no estén en el empaque.
+6b. PARA QUÉ SIRVE (declaraciones de función aceptadas; úsalas, son lo que más vende): para que se entienda en qué ayuda el producto, usa las declaraciones de función del nutriente que el producto CONTIENE (se ve en las fotos, el nombre o la descripción; si el usuario dio "Declaraciones de la etiqueta", esas van primero). Escríbelas con el nutriente y "contribuye a…" tal cual la lista, por ejemplo: "El magnesio contribuye a disminuir el cansancio y la fatiga". Para el titular puedes acortarla ("Magnesio que contribuye a disminuir el cansancio y la fatiga", "Contribuye al funcionamiento normal de tus músculos") pero sin cambiar la función, sin subirle el tono ("elimina", "acaba con", "adiós", "100%", "al instante") y sin sumarle plazos, cifras ni enfermedades. Usa una declaración por creativo (máximo dos) y varía entre creativos. Nunca la conviertas en pregunta sobre la persona ("¿Cansado?" no; "Contribuye a disminuir el cansancio y la fatiga" sí). Si el nutriente no está en la lista ni en las declaraciones de la etiqueta, no digas para qué sirve: habla del contenido, el formato y la rutina.
+   Lista aceptada:
+${lista}
+   Además de la función, deja claro el producto con datos reales: el contenido ("400 mg de magnesio por porción", "citrato de magnesio", "sin azúcar", solo si se ve en la etiqueta o la descripción), el momento de uso ("parte de tu rutina de la noche") y lo práctico ("1 cápsula al día", "frasco para 2 meses", si la etiqueta lo dice).`,
     seguridad: `7. Uso responsable: la dosis y el modo de uso solo como dice la etiqueta; nunca muestres más cápsulas/gomitas/scoops de los que indica. Nada de niños tomándolo ni embarazadas. En los creativos de IMAGEN (y en el copy) va la leyenda, corta y legible al pie: "${LEYENDA_SUPLEMENTO}"${sinTextoVideo ? " (en los videos va solo en el copy, no en pantalla)" : ""}.`,
     nadaInventado: ` En suplementos, además: ni ingredientes, ni miligramos, ni número de cápsulas, ni sabores, ni registro sanitario INVIMA que no se vean en las fotos o en la descripción; lo que no sepas va en "faltan".`,
     repertorio: `Repertorio para inspirarte en bienestar (no es obligatorio usarlo, inventa otros):
-• Ángulos: ritual de la mañana, rutina antes/después de entrenar (de la persona, no de su cuerpo), "lo que llevo en el bolso", cómo se toma en 10 segundos, qué hay en la etiqueta (ingredientes reales, sin prometer), sabor/textura, práctico para el ritmo de Bogotá (oficina, trancón, gimnasio a las 5 a. m.), autocuidado y tiempo para ti, regalo para mamá/papá, "mi kit de bienestar", comparación de formato (cápsula vs. polvo vs. gomita) sin hablar mal de otros, cuántos días trae el frasco, combo/promoción real.
-• Estilos de imagen: bodegón limpio con luz natural de mañana, flat lay de desayuno saludable (frutas, avena, café, batido) con el frasco, macro de cápsulas/polvo/gomitas, mesa de noche ordenada, maleta de gimnasio, escritorio de oficina con agua y el producto, cocina luminosa de apartamento colombiano, póster minimalista con mucho aire y colores suaves (verde salvia, crema, terracota, azul cielo), etiqueta en primer plano, infografía limpia "cómo se toma" (pasos, no beneficios médicos), estilo farmacia premium sin parecer medicamento, captura de chat de WhatsApp preguntando por el producto.
-• Formatos de video: UGC "mi rutina de la mañana", unboxing del frasco, POV preparando el batido o sacando la cápsula, ASMR (abrir el frasco, verter el polvo, mezclar), "3 cosas de este producto" (formato, sabor, cuántos días dura), un día en la vida con el producto en momentos naturales, preparación de receta (batido, agua, café), persona que pregunta por WhatsApp y le responden.
+• Ángulos: "para qué sirve" con la declaración de función del nutriente (regla 6b) como titular, el nutriente explicado fácil (qué es el magnesio y por qué lo buscan, con la declaración), ritual de la mañana, rutina antes/después de entrenar (de la persona, no de su cuerpo), "lo que llevo en el bolso", cómo se toma en 10 segundos, qué hay en la etiqueta (ingredientes reales, sin prometer), sabor/textura, práctico para el ritmo de Bogotá (oficina, trancón, gimnasio a las 5 a. m.), autocuidado y tiempo para ti, regalo para mamá/papá, "mi kit de bienestar", comparación de formato (cápsula vs. polvo vs. gomita) sin hablar mal de otros, cuántos días trae el frasco, combo/promoción real.
+• Estilos de imagen: bodegón limpio con luz natural de mañana, flat lay de desayuno saludable (frutas, avena, café, batido) con el frasco, macro de cápsulas/polvo/gomitas, mesa de noche ordenada, maleta de gimnasio, escritorio de oficina con agua y el producto, cocina luminosa de apartamento colombiano, póster minimalista con mucho aire y colores suaves (verde salvia, crema, terracota, azul cielo), etiqueta en primer plano, infografía limpia "para qué sirve + cómo se toma" (la declaración de función de la regla 6b con un ícono sencillo, el contenido por porción y los pasos de uso), estilo farmacia premium sin parecer medicamento, captura de chat de WhatsApp preguntando por el producto.
+• Formatos de video: UGC "mi rutina de la mañana", unboxing del frasco, POV preparando el batido o sacando la cápsula, ASMR (abrir el frasco, verter el polvo, mezclar), "3 cosas de este producto" (para qué sirve con la declaración de función, formato, cuántos días dura), un día en la vida con el producto en momentos naturales, preparación de receta (batido, agua, café), persona que pregunta por WhatsApp y le responden.
 • Personas: adultos de 25 a 60 años que se vean reales y colombianos, con energía tranquila (no cuerpos de modelo fitness exagerados); escenas naturales, sonrisas sin exagerar.`,
     personaje: `viste ropa deportiva o casual sobria de cuello cerrado (colores suaves), sin logos ajenos; nada de bata médica`,
   };
@@ -155,15 +216,15 @@ ${
   }
 
 ══════ COPY (uno por creativo) ══════
-Debe continuar la idea de su creativo (mismo gancho y tono). Varía la estructura entre creativos: pregunta, historia corta, lista, dato curioso, diálogo… Siempre termina con precio, envío gratis y la invitación a escribir por WhatsApp.${bien ? ` Sin promesas de salud ni preguntas sobre la condición de quien lee (regla 6); al final, en una línea aparte, la leyenda: "${LEYENDA_SUPLEMENTO}"` : ""} "titulo" máximo 40 caracteres. "descripcion" corta.
+Debe continuar la idea de su creativo (mismo gancho y tono). Varía la estructura entre creativos: pregunta, historia corta, lista, dato curioso, diálogo… Siempre termina con precio, envío gratis y la invitación a escribir por WhatsApp.${bien ? ` Explica para qué sirve con la declaración de función (regla 6b) y los datos reales del producto; sin otras promesas de salud ni preguntas sobre la condición de quien lee (regla 6); al final, en una línea aparte, la leyenda: "${LEYENDA_SUPLEMENTO}"` : ""} "titulo" máximo 40 caracteres. "descripcion" corta.
 
 ══════ ADEMÁS ══════
 ${
     bien
-      ? `FICHA: descripcion (qué es, formato, para qué rutina y para quién, qué incluye, sin promesas de salud; termina con la leyenda del suplemento), modoUso (dosis y forma de tomarlo SOLO si está en la etiqueta o la descripción; si no, "Según indicaciones de la etiqueta" + advertencias: "No exceder la dosis diaria recomendada. Manténgase fuera del alcance de los niños. Si estás embarazada, lactando o tomas medicamentos, consulta a tu médico antes de consumirlo."), caracteristicas ("• Campo: valor", solo datos confirmados: presentación, contenido neto, número de porciones, sabor, registro INVIMA si se ve), contenido ("1 frasco x 60 cápsulas", etc.).`
+      ? `FICHA: descripcion (qué es, para qué sirve con las declaraciones de función de la regla 6b, contenido por porción, formato, para qué rutina, qué incluye; sin otras promesas de salud; termina con la leyenda del suplemento), modoUso (dosis y forma de tomarlo SOLO si está en la etiqueta o la descripción; si no, "Según indicaciones de la etiqueta" + advertencias: "No exceder la dosis diaria recomendada. Manténgase fuera del alcance de los niños. Si estás embarazada, lactando o tomas medicamentos, consulta a tu médico antes de consumirlo."), caracteristicas ("• Campo: valor", solo datos confirmados: presentación, contenido neto, número de porciones, sabor, registro INVIMA si se ve), contenido ("1 frasco x 60 cápsulas", etc.).`
       : `FICHA: descripcion (beneficios + para quién + qué incluye + variantes), modoUso (pasos numerados + seguridad), caracteristicas ("• Campo: valor", solo datos confirmados), contenido ("1 X + 2 Y" y "Z no incluido" si aplica).`
   }
-BIENVENIDA de WhatsApp para responder al cliente: saludo de ${marca} con emoji del producto, 3 ${bien ? "puntos fuertes (formato, cómo se toma, cuánto dura; sin promesas de salud)" : "beneficios"} con ✅, 📦 qué incluye, 💰 precio, 🚚 envío gratis, 🛡️ garantía${bien ? `, la leyenda "${LEYENDA_SUPLEMENTO}"` : ""} y una pregunta abierta que invite a seguir la conversación.
+BIENVENIDA de WhatsApp para responder al cliente: saludo de ${marca} con emoji del producto, 3 ${bien ? "puntos fuertes (para qué sirve con una declaración de función de la regla 6b, contenido o formato, cómo se toma o cuánto dura; sin otras promesas de salud)" : "beneficios"} con ✅, 📦 qué incluye, 💰 precio, 🚚 envío gratis, 🛡️ garantía${bien ? `, la leyenda "${LEYENDA_SUPLEMENTO}"` : ""} y una pregunta abierta que invite a seguir la conversación.
 
 JSON de salida:
 {"concepto":"la gran idea de la campaña en 1–2 frases",
@@ -183,6 +244,9 @@ export function promptUsuario(p, { conPersonaje = false, recientes = [] } = {}) 
     pr.descripcion ? `Descripción: ${pr.descripcion}` : "",
     pr.contenido ? `Contenido del paquete: ${pr.contenido}` : "",
     pr.variantes ? `Variantes: ${pr.variantes}` : "",
+    p.declaraciones
+      ? `Declaraciones de la etiqueta (aprobadas para este producto; úsalas literales, tienen prioridad en la regla 6b): ${p.declaraciones}`
+      : "",
     p.notas ? `Indicaciones del usuario (tienen prioridad sobre tu criterio, salvo las reglas fijas): ${p.notas}` : "",
     `Fotos del producto: ${fotos} (Image1 a Image${fotos}).`,
     conPersonaje
@@ -1039,6 +1103,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
           textosVideo: datos.textosVideo === true,
           modeloVideo: datos.modeloVideo ? modeloVideoDe(datos.modeloVideo) : "",
           tienda: datos.tienda === "nueva" ? "nueva" : "zunto",
+          declaraciones: txt(datos.declaraciones, 1500),
           presupuesto: Number(datos.presupuesto) > 0 ? Math.round(Number(datos.presupuesto)) : Number(a.presupuesto) || PRESUPUESTO_DEFECTO,
           meta: { cuentaId: datos.cuentaId || a.cuentaId || "", paginaId: datos.paginaId || a.paginaId || "" },
           creativos: [],
@@ -1233,6 +1298,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
         if (cambios.modeloVideo !== undefined) p.modeloVideo = cambios.modeloVideo ? modeloVideoDe(cambios.modeloVideo) : "";
         // tienda del producto: Zunto o la segunda (bienestar y suplementos)
         if (cambios.tienda !== undefined) p.tienda = cambios.tienda === "nueva" ? "nueva" : "zunto";
+        if (cambios.declaraciones !== undefined) p.declaraciones = txt(cambios.declaraciones, 1500);
         if (typeof cambios.notas === "string") p.notas = txt(cambios.notas, 1000);
         if (typeof cambios.bienvenida === "string") p.bienvenida = txt(cambios.bienvenida, 1500);
         if (typeof cambios.mensajePredefinido === "string") p.mensajePredefinido = txt(cambios.mensajePredefinido, 300);

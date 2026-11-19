@@ -67,6 +67,8 @@ export interface Proyecto {
   modeloVideo?: string;
   /** tienda del producto: Zunto o la segunda (bienestar y suplementos) */
   tienda?: "zunto" | "nueva";
+  /** declaraciones de funcion que trae la etiqueta (bienestar) */
+  declaraciones?: string;
   /** la gran idea de la campaña */
   concepto?: string;
   presupuesto: number;

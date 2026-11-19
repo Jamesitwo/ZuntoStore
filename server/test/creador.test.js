@@ -396,8 +396,20 @@ test("segunda tienda (bienestar y suplementos): marca propia y reglas de Meta e 
   assert.match(b, /¿Sufres de…\?/);
   assert.ok(b.includes(LEYENDA_SUPLEMENTO));
   assert.match(b, /ritual de la mañana/);
+  // para que sirve: declaraciones de funcion aceptadas (EFSA) y las de la etiqueta
+  assert.match(b, /Magnesio: "contribuye a disminuir el cansancio y la fatiga"/);
+  assert.match(b, /contribuye al funcionamiento normal de los músculos/);
+  assert.match(b, /contribuye al funcionamiento normal del sistema nervioso/);
+  assert.match(b, /"¿Cansado\?" no/);
   assert.doesNotMatch(b, /polo negra|guarda puesta|amarillo/);
   const g = promptSistema({ marca: "ZUNTO" });
   assert.match(g, /polo negra/);
   assert.doesNotMatch(g, /suplemento dietario/);
+});
+
+test("las declaraciones de la etiqueta van en el mensaje a la IA", async () => {
+  const { promptUsuario } = await import("../creadorCampanas.js");
+  const base = { producto: { nombre: "Magnesio", precio: 79900 }, fotos: [], cantidades: { imagenes: 1, videos: 0 } };
+  assert.doesNotMatch(promptUsuario(base), /Declaraciones de la etiqueta/);
+  assert.match(promptUsuario({ ...base, declaraciones: "El magnesio contribuye al funcionamiento normal de los músculos." }), /Declaraciones de la etiqueta \(aprobadas/);
 });
