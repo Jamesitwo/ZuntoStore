@@ -76,6 +76,12 @@ export function candidatosNumeroPegado(direccion) {
     .replace(/(\d)\.\s+(?=(?:sur|este|oeste|norte|bis)\b)/gi, "$1 ")
     // "No. 1957" / "n 1957" / "Nro 1957" = "# 1957"
     .replace(/\s(?:n[o°º]\.?|nro\.?|n[uú]mero|num\.?|n)\s*(?=\d{3,4}\b)/i, " # ");
+  // cruce antes del "#" y placa despues ("Krera 1 Bis 9 # 10" = "Cra 1 Bis # 9-10")
+  const cp = /^(.*?\b\d{1,3}\s*[a-z]?(?:\s+bis)?(?:\s+[a-z]\b)?)\s+(\d{1,3}\s*[a-z]?)\s*#\s*(\d{1,3}[a-z]?)\b(?!\s*-)(.*)$/i.exec(t);
+  if (cp) {
+    const p = parsearDireccion(`${cp[1]} # ${cp[2].replace(/\s+/g, "")}-${cp[3]}${cp[4]}`);
+    if (p) return [p.normalizada];
+  }
   // con "#" ("Cra 21 #1212") o sin el ("Calle 7A 1375": via y luego 3-4 digitos)
   let m = /^(.*?#\s*)(\d{3,4})([a-z]?)\b(.*)$/i.exec(t);
   if (!m) {

@@ -431,3 +431,12 @@ test("Google marca 'parcial' pero devuelve la misma placa: cuenta como exacta", 
   assert.equal(evaluarGeocodificacion(r("Cl. 32 B Sur # 19-34"), { ciudad: "Bogota", direccion: "Calle 32B Sur # 19-34" }).veredicto, "exacta");
   assert.equal(evaluarGeocodificacion(r("Cl. 32 B Sur # 19-40"), { ciudad: "Bogota", direccion: "Calle 32B Sur # 19-34" }).veredicto, "aproximada");
 });
+
+test("cruce antes del # y placa después: «Krera 1 Bis 9 # 10» = Cra 1 Bis # 9-10 (lo confirma el mapa)", () => {
+  assert.deepEqual(candidatosNumeroPegado("Krera 1 Bis 9 # 10, Barrio Bista Almar (x la cancha Brisas del Mar)"), [
+    "Cra 1 Bis # 9-10, Barrio Bista Almar (x la cancha Brisas del Mar)",
+  ]);
+  assert.deepEqual(candidatosNumeroPegado("Calle 5 12 # 30"), ["Calle 5 # 12-30"]);
+  assert.deepEqual(candidatosNumeroPegado("Calle 5 # 12-30"), []);
+  assert.deepEqual(candidatosNumeroPegado("Calle 10 No. 1957"), ["Calle 10 # 19-57", "Calle 10 # 1-957"]);
+});
