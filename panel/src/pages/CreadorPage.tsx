@@ -652,6 +652,7 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
   const [contraEntrega, setContraEntrega] = useState(ajustes.contraEntrega);
   const [modeloVideoDef, setModeloVideoDef] = useState(ajustes.modelos.video);
   const [marcaSegunda, setMarcaSegunda] = useState(ajustes.marcaSegunda ?? "");
+  const [identidadSegunda, setIdentidadSegunda] = useState(ajustes.identidadSegunda || ajustes.identidadSegundaDefecto || "");
   const [guardando, setGuardando] = useState(false);
   const [creditos, setCreditos] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -683,6 +684,8 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
         contraEntrega,
         modeloVideo: modeloVideoDef,
         marcaSegunda,
+        // igual a la de por defecto = no se guarda (asi le llegan las mejoras)
+        identidadSegunda: identidadSegunda.trim() === (ajustes.identidadSegundaDefecto ?? "").trim() ? "" : identidadSegunda,
       });
       onCambio(a);
       setKey("");
@@ -993,6 +996,14 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
             <input id="mt-marca2" value={marcaSegunda} placeholder={ajustes.marcaSegundaDefecto} onChange={(e) => setMarcaSegunda(e.target.value)} />
           </Campo>
         </div>
+        <Campo id="mt-identidad2" label="Identidad visual de la segunda tienda (logo, colores y tipografía en los creativos)">
+          <textarea id="mt-identidad2" rows={7} value={identidadSegunda} onChange={(e) => setIdentidadSegunda(e.target.value)} />
+        </Campo>
+        {identidadSegunda.trim() !== (ajustes.identidadSegundaDefecto ?? "").trim() ? (
+          <button type="button" className="btn ghost sm" onClick={() => setIdentidadSegunda(ajustes.identidadSegundaDefecto ?? "")}>
+            Volver a la de DÍA UNO
+          </button>
+        ) : null}
         <label className="check-linea">
           <input type="checkbox" checked={contraEntrega} onChange={(e) => setContraEntrega(e.target.checked)} />
           Ofrecemos pago contra entrega (la IA lo puede mencionar)

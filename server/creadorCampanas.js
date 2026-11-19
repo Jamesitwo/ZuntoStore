@@ -30,7 +30,11 @@ export const PRESUPUESTO_DEFECTO = 25000;
 /** Marca y rubro de los creativos segun la tienda del proyecto. */
 export function marcaDe(a = {}, p = {}) {
   return p.tienda === "nueva"
-    ? { marca: String(a.marcaSegunda || "").trim() || MARCA_SEGUNDA_DEFECTO, rubro: "bienestar" }
+    ? {
+        marca: String(a.marcaSegunda || "").trim() || MARCA_SEGUNDA_DEFECTO,
+        rubro: "bienestar",
+        identidad: String(a.identidadSegunda || "").trim() || IDENTIDAD_SEGUNDA_DEFECTO,
+      }
     : { marca: a.marca || "ZUNTO", rubro: "general" };
 }
 
@@ -67,6 +71,15 @@ export const CREATIVIDAD = {
 /** Tiendas del Creador: Zunto (general) y la segunda (bienestar y suplementos). */
 export const TIENDAS_CREADOR = ["zunto", "nueva"];
 export const MARCA_SEGUNDA_DEFECTO = "DÍA UNO";
+
+/** Identidad visual de DÍA UNO (logo y banner de la tienda), editable en Ajustes. */
+export const IDENTIDAD_SEGUNDA_DEFECTO = `Paleta: crema (#F6F1EA) como fondo principal, negro carbón (#1C1A17), arena (#CBB596), beige claro (#EDE4D6) y café suave (#8A6E4B) para etiquetas pequeñas. Nada de colores chillones ni neón.
+Tipografía: titulares en una serif elegante de alto contraste (estilo Cormorant Garamond), con una palabra clave en cursiva (como "Tu bienestar empieza hoy." con "hoy" en cursiva); textos de apoyo en una sans geométrica delgada (estilo Jost); etiquetas pequeñas en MAYÚSCULAS con mucho espaciado entre letras (como "SUPLEMENTOS & BIENESTAR").
+Logo: un círculo de línea fina; adentro, un semicírculo color arena (un sol que sale) apoyado sobre una línea horizontal; debajo, "DÍA UNO" en serif mayúsculas con letras espaciadas. Sobre fondo oscuro va en crema; sobre fondo claro, en negro carbón con el sol en arena. Siempre completo, pequeño y limpio, en una esquina o al pie; nunca deformado ni con otros elementos encima.
+Estilo gráfico: minimalista y premium, mucho aire, bloques de color planos y rectos (arena y beige claro) detrás del producto, líneas finas como separadores, fotos con luz natural suave.
+Llamado a la acción: botón rectangular negro carbón con texto crema en mayúsculas espaciadas, como "PIDE POR WHATSAPP". El precio en un sello o franja sobria (negro carbón con texto crema, o arena con texto carbón), nunca en estrellas de oferta.
+Sellos de confianza (íconos de línea fina): "Envío a toda Colombia", "Pago contra entrega", "Productos originales".
+Frase de marca (opcional, no en todos): "Tu bienestar empieza hoy."`;
 
 /**
  * Leyenda obligatoria en Colombia para la publicidad de suplementos dietarios
@@ -133,7 +146,7 @@ export const DECLARACIONES_NUTRIENTES = {
  * bienestar) y del INVIMA (nada de prevenir/aliviar/tratar/curar), mas un
  * repertorio pensado para esta categoria.
  */
-function bloqueBienestar(marca, sinTextoVideo) {
+function bloqueBienestar(marca, sinTextoVideo, identidad = IDENTIDAD_SEGUNDA_DEFECTO) {
   const lista = Object.entries(DECLARACIONES_NUTRIENTES)
     .map(([n, ds]) => `   ${n}: ${ds.map((d) => `"${d}"`).join(" · ")}`)
     .join("\n");
@@ -150,9 +163,12 @@ ${lista}
    Además de la función, deja claro el producto con datos reales: el contenido ("400 mg de magnesio por porción", "citrato de magnesio", "sin azúcar", solo si se ve en la etiqueta o la descripción), el momento de uso ("parte de tu rutina de la noche") y lo práctico ("1 cápsula al día", "frasco para 2 meses", si la etiqueta lo dice).`,
     seguridad: `7. Uso responsable: la dosis y el modo de uso solo como dice la etiqueta; nunca muestres más cápsulas/gomitas/scoops de los que indica. Nada de niños tomándolo ni embarazadas. En los creativos de IMAGEN (y en el copy) va la leyenda, corta y legible al pie: "${LEYENDA_SUPLEMENTO}"${sinTextoVideo ? " (en los videos va solo en el copy, no en pantalla)" : ""}.`,
     nadaInventado: ` En suplementos, además: ni ingredientes, ni miligramos, ni número de cápsulas, ni sabores, ni registro sanitario INVIMA que no se vean en las fotos o en la descripción; lo que no sepas va en "faltan".`,
+    identidad: `══════ IDENTIDAD DE ${marca} (respétala en todas las IMÁGENES; en los videos, solo la paleta y el ambiente) ══════
+${identidad}
+`,
     repertorio: `Repertorio para inspirarte en bienestar (no es obligatorio usarlo, inventa otros):
 • Ángulos: "para qué sirve" con la declaración de función del nutriente (regla 6b) como titular, el nutriente explicado fácil (qué es el magnesio y por qué lo buscan, con la declaración), ritual de la mañana, rutina antes/después de entrenar (de la persona, no de su cuerpo), "lo que llevo en el bolso", cómo se toma en 10 segundos, qué hay en la etiqueta (ingredientes reales, sin prometer), sabor/textura, práctico para el ritmo de Bogotá (oficina, trancón, gimnasio a las 5 a. m.), autocuidado y tiempo para ti, regalo para mamá/papá, "mi kit de bienestar", comparación de formato (cápsula vs. polvo vs. gomita) sin hablar mal de otros, cuántos días trae el frasco, combo/promoción real.
-• Estilos de imagen: bodegón limpio con luz natural de mañana, flat lay de desayuno saludable (frutas, avena, café, batido) con el frasco, macro de cápsulas/polvo/gomitas, mesa de noche ordenada, maleta de gimnasio, escritorio de oficina con agua y el producto, cocina luminosa de apartamento colombiano, póster minimalista con mucho aire y colores suaves (verde salvia, crema, terracota, azul cielo), etiqueta en primer plano, infografía limpia "para qué sirve + cómo se toma" (la declaración de función de la regla 6b con un ícono sencillo, el contenido por porción y los pasos de uso), estilo farmacia premium sin parecer medicamento, captura de chat de WhatsApp preguntando por el producto.
+• Estilos de imagen: bodegón limpio con luz natural de mañana, flat lay de desayuno saludable (frutas, avena, café, batido) con el frasco, macro de cápsulas/polvo/gomitas, mesa de noche ordenada, maleta de gimnasio, escritorio de oficina con agua y el producto, cocina luminosa de apartamento colombiano, póster minimalista con mucho aire en la paleta de la marca (como el banner: titular serif grande a la izquierda, bloques arena y el producto a la derecha), etiqueta en primer plano, infografía limpia "para qué sirve + cómo se toma" (la declaración de función de la regla 6b con un ícono sencillo, el contenido por porción y los pasos de uso), estilo farmacia premium sin parecer medicamento, captura de chat de WhatsApp preguntando por el producto.
 • Formatos de video: UGC "mi rutina de la mañana", unboxing del frasco, POV preparando el batido o sacando la cápsula, ASMR (abrir el frasco, verter el polvo, mezclar), "3 cosas de este producto" (para qué sirve con la declaración de función, formato, cuántos días dura), un día en la vida con el producto en momentos naturales, preparación de receta (batido, agua, café), persona que pregunta por WhatsApp y le responden.
 • Personas: adultos de 25 a 60 años que se vean reales y colombianos, con energía tranquila (no cuerpos de modelo fitness exagerados); escenas naturales, sonrisas sin exagerar.`,
     personaje: `viste ropa deportiva o casual sobria de cuello cerrado (colores suaves), sin logos ajenos; nada de bata médica`,
@@ -164,15 +180,15 @@ ${lista}
  * fidelidad del producto, Meta) y LIBERTAD CREATIVA para todo lo demas.
  * rubro "bienestar" (segunda tienda): reglas de suplementos de Meta e INVIMA.
  */
-export function promptSistema({ marca = "ZUNTO", contraEntrega = false, creatividad = "equilibrada", textosVideo = false, rubro = "general" } = {}) {
+export function promptSistema({ marca = "ZUNTO", contraEntrega = false, creatividad = "equilibrada", textosVideo = false, rubro = "general", identidad = "" } = {}) {
   // los modelos de video deforman las letras: por defecto, videos sin texto
   const sinTextoVideo = !textosVideo;
-  const bien = rubro === "bienestar" ? bloqueBienestar(marca, sinTextoVideo) : null;
+  const bien = rubro === "bienestar" ? bloqueBienestar(marca, sinTextoVideo, identidad || IDENTIDAD_SEGUNDA_DEFECTO) : null;
   return `Eres el director creativo de ${marca}, una tienda online colombiana${bien ? " de bienestar y suplementos" : ""} que vende por Meta Ads con destino WhatsApp.
 Actúas como un diseñador y estratega creativo de verdad: piensas en quién compra, por qué lo compra y qué lo haría detenerse a mirar en el feed. Escribes en español colombiano. Devuelves SOLO un JSON.
 
 ══════ REGLAS FIJAS (no se negocian) ══════
-1. Marca y precio: en cada creativo publicitario se ve "${marca}" (${bien ? "en un color de alto contraste con el fondo, con estética limpia" : "amarillo o en un color de alto contraste con el fondo"}) y el precio en formato $199.900 (punto de miles, sin decimales). Tú decides dónde y cómo (badge, sello, etiqueta, texto en pantalla…), pero que se lea.
+1. Marca y precio: en cada creativo publicitario se ve "${marca}" (${bien ? "con el logo y los colores de la IDENTIDAD de la marca" : "amarillo o en un color de alto contraste con el fondo"}) y el precio en formato $199.900 (punto de miles, sin decimales). Tú decides dónde y cómo (badge, sello, etiqueta, texto en pantalla…), pero que se lea.
 2. WhatsApp: el llamado a la acción siempre lleva a WhatsApp ("Escríbenos por WhatsApp", "Pídelo por WhatsApp"…). Tú eliges la forma (botón, sticker, franja, burbuja de chat…).
 3. "Envío GRATIS" y "Garantía" cuando apliquen.${contraEntrega ? ' Puedes decir "Pago contra entrega".' : ' NO digas "pago contra entrega".'}
 4. Nada inventado: ni especificaciones (RPM, medidas, tiempos, cifras), ni accesorios que no vienen, ni premios, ni testimonios con nombre real. Si algo aparece en uso pero no viene en el kit, nunca lo muestres como incluido.${bien ? bien.nadaInventado : ""}
@@ -192,11 +208,11 @@ ${bien.seguridad}`
 11. VIDEOS SIN TEXTO EN PANTALLA (las IA de video deforman las letras): en los prompts de VIDEO no pidas ningún texto escrito: ni titulares, subtítulos, precios, letreros, stickers con letras, logos escritos, burbujas de chat con texto ni la marca bordada. ${marca}, el precio y el llamado a WhatsApp se DICEN en la voz; lo escrito va en el copy del anuncio. Escribe siempre en el prompt de video: "sin texto en pantalla, sin subtítulos, sin letreros ni letras de ningún tipo". En este caso la regla 1 aplica solo a las imágenes.`
       : ""
   }
-
+${bien ? "\n" + bien.identidad : ""}
 ══════ LIBERTAD CREATIVA ══════
 Antes de escribir, analiza el producto: categoría, quién lo compra en Colombia (y quién lo regala), qué problema resuelve, qué deseo despierta, dónde se usa, si es de temporada, qué objeciones tiene el comprador (¿funciona?, ¿es frágil?, ¿llega bien?). Con eso define un CONCEPTO de campaña y elige, para ESTE producto, los formatos y estilos que mejor lo venden. No hay plantilla fija.
 
-Cada creativo debe ser distinto de los demás en al menos 3 de estas cosas: idea/ángulo, tipo de gancho, estilo visual, escena/locación, paleta de color, composición/encuadre, tono. Nada de 4 imágenes iguales con otro fondo.
+Cada creativo debe ser distinto de los demás en al menos 3 de estas cosas: idea/ángulo, tipo de gancho, estilo visual, escena/locación, paleta de color${bien ? " (dentro de la paleta de la marca: fondo crema, carbón o arena)" : ""}, composición/encuadre, tono. Nada de 4 imágenes iguales con otro fondo.
 
 ${bien ? bien.repertorio + "\n" : `Repertorio para inspirarte (no es obligatorio usarlo, inventa otros):
 • Ángulos: problema → solución, antes/después del espacio u objeto, comparación con lo que usan hoy, "lo que nadie te cuenta", regalo perfecto, ahorro de tiempo/dinero, prueba de resistencia, un día con el producto, error común, curiosidad, lista "3 razones", urgencia real de temporada, estatus/orgullo de tenerlo, humor cotidiano colombiano.
@@ -207,7 +223,7 @@ ${bien ? bien.repertorio + "\n" : `Repertorio para inspirarte (no es obligatorio
 Nivel de riesgo creativo pedido: ${CREATIVIDAD[creatividad] ?? CREATIVIDAD.equilibrada}
 
 ══════ CÓMO ESCRIBIR CADA PROMPT ══════
-Imagen: Estilo → Escena/locación → Producto (bloque de fidelidad, regla 5) → Composición (dónde va el producto, jerarquía, espacio para textos) → Textos sobre la imagen (exactos, entre comillas, cortos y legibles: titular, apoyo, precio, ${marca}, WhatsApp) → Look (luz, paleta, tipografía, acabado fotográfico realista).
+Imagen: Estilo → Escena/locación → Producto (bloque de fidelidad, regla 5) → Composición (dónde va el producto, jerarquía, espacio para textos) → Textos sobre la imagen (exactos, entre comillas, cortos y legibles: titular, apoyo, precio, ${marca}, WhatsApp) → Look (luz, paleta, tipografía, acabado fotográfico realista${bien ? "; escribe en cada prompt de imagen los colores con su código, las tipografías y cómo es el logo, según la IDENTIDAD" : ""}).
 Largo: cada prompt entre 120 y 250 palabras (detallado en el producto, sin relleno); cada copy de máximo 110 palabras.
 ${
     sinTextoVideo
@@ -948,6 +964,8 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
           modeloVideoDefecto: DEFECTOS_TOPVIEW.video.model,
           marcaSegunda: a.marcaSegunda || "",
           marcaSegundaDefecto: MARCA_SEGUNDA_DEFECTO,
+          identidadSegunda: a.identidadSegunda || "",
+          identidadSegundaDefecto: IDENTIDAD_SEGUNDA_DEFECTO,
           modelosVideo: MODELOS_VIDEO.map((m) => m.id),
           ia: {
             proveedor: iaDe(a),
@@ -982,6 +1000,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
         if (cambios.contraEntrega !== undefined) a.contraEntrega = Boolean(cambios.contraEntrega);
         if (cambios.modeloVideo !== undefined) a.modeloVideo = modeloVideoDe(cambios.modeloVideo);
         if (cambios.marcaSegunda !== undefined) a.marcaSegunda = txt(cambios.marcaSegunda, 40);
+        if (cambios.identidadSegunda !== undefined) a.identidadSegunda = txt(cambios.identidadSegunda, 3000);
         if (typeof cambios.claudeKey === "string" && cambios.claudeKey.trim()) a.claudeKey = cambios.claudeKey.trim();
         if (cambios.borrarClaude) delete a.claudeKey;
         if (typeof cambios.claudeModelo === "string" && MODELOS_CLAUDE.some((m) => m.id === cambios.claudeModelo)) a.claudeModelo = cambios.claudeModelo;

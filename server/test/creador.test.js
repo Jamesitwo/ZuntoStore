@@ -388,7 +388,12 @@ test("modelos de video: parámetros válidos para cada modelo", async () => {
 test("segunda tienda (bienestar y suplementos): marca propia y reglas de Meta e INVIMA", async () => {
   const { promptSistema, marcaDe, LEYENDA_SUPLEMENTO } = await import("../creadorCampanas.js");
   assert.deepEqual(marcaDe({ marca: "ZUNTO" }, { tienda: "zunto" }), { marca: "ZUNTO", rubro: "general" });
-  assert.deepEqual(marcaDe({ marca: "ZUNTO" }, { tienda: "nueva" }), { marca: "DÍA UNO", rubro: "bienestar" });
+  const nueva = marcaDe({ marca: "ZUNTO" }, { tienda: "nueva" });
+  assert.equal(nueva.marca, "DÍA UNO");
+  assert.equal(nueva.rubro, "bienestar");
+  assert.match(nueva.identidad, /#CBB596/);
+  assert.match(promptSistema({ ...nueva }), /IDENTIDAD DE DÍA UNO[\s\S]*semicírculo color arena[\s\S]*PIDE POR WHATSAPP/);
+  assert.match(promptSistema({ ...marcaDe({ identidadSegunda: "Paleta: verde" }, { tienda: "nueva" }) }), /Paleta: verde/);
   assert.equal(marcaDe({ marcaSegunda: "Dia Uno Wellness" }, { tienda: "nueva" }).marca, "Dia Uno Wellness");
   const b = promptSistema({ marca: "DÍA UNO", rubro: "bienestar" });
   assert.match(b, /director creativo de DÍA UNO, una tienda online colombiana de bienestar y suplementos/);

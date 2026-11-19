@@ -130,6 +130,9 @@ export interface AjustesCreador {
   /** marca de la segunda tienda en los creativos ("" = la de por defecto) */
   marcaSegunda: string;
   marcaSegundaDefecto: string;
+  /** identidad visual de la segunda tienda ("" = la de por defecto: DÍA UNO) */
+  identidadSegunda: string;
+  identidadSegundaDefecto: string;
   modelosVideo: string[];
   ia: {
     proveedor: "claude" | "zunto";
