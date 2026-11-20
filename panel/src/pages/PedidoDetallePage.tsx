@@ -4,7 +4,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { errMsg } from "../api/client";
 import { cambiarEstadoPedido, ESTADOS_PEDIDO, pedidos, TIPOS_PAGO } from "../api/endpoints";
-import { ErrorBanner, EstadoBadge, JsonView, PageHeader, Spinner, money } from "../components/ui";
+import { ErrorBanner, EstadoBadge, JsonView, Spinner, money } from "../components/ui";
+import { BuscadorPedidos } from "../components/BuscadorPedidos";
 import { LocationPicker, type Ubicacion } from "../components/LocationPicker";
 import { Combo, type OpcionCombo } from "../components/Combo";
 import { StockDropi } from "../components/StockDropi";
@@ -139,6 +140,24 @@ function datosEnvio(p: any): FilaEnvio[] {
   agregar("Valor de devolución", dinero(p?.valorFleteDevolucionDropi));
   agregar("Fecha de devolución", fecha(p?.fechaDevolucionDropi));
   return filas;
+}
+
+/** Un dato de la guia (con su fuente cuando lo guardo Zunto). */
+function FilaDato({ d }: { d: FilaEnvio }) {
+  return (
+    <>
+      <dt title={d.fuente ? `Dato de ${d.fuente}` : undefined}>{d.label}</dt>
+      <dd>
+        {d.valor}
+        {d.fuente ? (
+          <span className="fuente-zunto" title={`LucidSales no tiene este dato; lo guardó Zunto (${d.fuente})`}>
+            {" "}
+            · {d.fuente.startsWith("Lucid Bot") ? "Lucid Bot" : "Dropi"}
+          </span>
+        ) : null}
+      </dd>
+    </>
+  );
 }
 
 /** Variantes de las lineas anteriores (para emparejar los nombres de las observaciones). */
@@ -632,418 +651,125 @@ export function PedidoDetallePage() {
     );
   }
 
+  const idActual = String(original?.id ?? original?.idPedido ?? "");
+  const botEnvio = enviosBot[idActual];
+  const tel = telefono(form.Movil);
+  const urlChat = inbox(form.Movil);
+  const nItems = items.reduce(
+    (a, it) => a + (tieneVariantes(it) ? it.variations.reduce((b: number, v: any) => b + num(v.quantity, 1), 0) : num(it.quantity, 1)),
+    0,
+  );
+  // datos del envio sin repetir lo que ya va arriba (estado y transportadora)
+  const envioExtra = envio.filter((d) => d.label !== "Estado de envío" && d.label !== "Transportadora");
+
   return (
-    <div className="pedido-detalle-page">
-      <PageHeader
-        title={`Pedido #${form.idPedido ?? id}`}
-        subtitle={[
-          [form.Nombre, form.Apellido].filter(Boolean).join(" ") || "Sin nombre",
-          etiqueta(form.idEmpresa ?? session?.tiendaActiva),
-        ]
-          .filter(Boolean)
-          .join(" · ")}
-        actions={
-          <>
+    <div className="pedido-detalle-page pd">
+      {/* ===== Barra superior: navegar, buscar y acciones ===== */}
+      <div className="pd-barra">
+        <div className="pd-nav">
+          <button className="btn sm" onClick={volver} title="Volver a la lista de pedidos">
+            ← Pedidos
+          </button>
+          <button className="btn sm" onClick={() => irA(vecinos.anterior)} disabled={vecinos.anterior === null} title="Pedido anterior de la lista">
+            ‹
+          </button>
+          <button className="btn sm" onClick={() => irA(vecinos.siguiente)} disabled={vecinos.siguiente === null} title="Pedido siguiente de la lista">
+            ›
+          </button>
+        </div>
+        <BuscadorPedidos actual={id} onIr={(pid) => irA(Number(pid))} />
+        <div className="pd-acciones">
+          <button className="btn sm danger" onClick={cancelarPedido} disabled={saving || num(form.EstadoPedido) === 1}>
+            Cancelar pedido
+          </button>
+          <button className="btn sm" onClick={confirmarPedido} disabled={saving || num(form.EstadoPedido) === 2}>
+            ✓ Confirmar
+          </button>
+          <button className="btn sm primary" onClick={() => guardar()} disabled={saving || !sucio} title={sucio ? "" : "No hay cambios"}>
+            {saving ? "Guardando..." : "Guardar"}
+          </button>
+        </div>
+      </div>
+
+      {/* ===== Resumen: lo importante de un vistazo ===== */}
+      <section className="pd-resumen">
+        <div className="pd-resumen-main">
+          <div className="pd-titulo">
+            <h1>Pedido #{form.idPedido ?? id}</h1>
             <EstadoBadge value={num(form.EstadoPedido)} />
-            <span className="nav-pedidos" title="Moverte por la lista de pedidos">
-              <button
-                className="btn sm"
-                onClick={() => irA(vecinos.anterior)}
-                disabled={vecinos.anterior === null}
-              >
-                ‹ Anterior
-              </button>
-              <button
-                className="btn sm"
-                onClick={() => irA(vecinos.siguiente)}
-                disabled={vecinos.siguiente === null}
-              >
-                Siguiente ›
-              </button>
-            </span>
-            <button className="btn" onClick={volver}>
-              ← Volver
-            </button>
-            <button
-              className="btn danger"
-              onClick={cancelarPedido}
-              disabled={saving || num(form.EstadoPedido) === 1}
-            >
-              Cancelar pedido
-            </button>
-            <button
-              className="btn"
-              onClick={confirmarPedido}
-              disabled={saving || num(form.EstadoPedido) === 2}
-            >
-              Confirmar
-            </button>
-            <button className="btn primary" onClick={() => guardar()} disabled={saving}>
-              {saving ? "Guardando..." : "Guardar cambios"}
-            </button>
-          </>
-        }
-      />
+            <EnvioConBot valor={original?.EstadoFullfilment} bot={botEnvio} />
+          </div>
+          <div className="pd-cliente-linea">
+            <strong>{[form.Nombre, form.Apellido].filter(Boolean).join(" ") || "Sin nombre"}</strong>
+            {tel ? <span>{tel.visible}</span> : null}
+            {etiqueta(form.idEmpresa ?? session?.tiendaActiva) ? <span className="muted">{etiqueta(form.idEmpresa ?? session?.tiendaActiva)}</span> : null}
+            {original?.Fecha || original?.CreatedAt ? (
+              <span className="muted" title={fmtFecha(original?.Fecha ?? original?.CreatedAt)}>
+                {haceCuanto(original?.Fecha ?? original?.CreatedAt)}
+              </span>
+            ) : null}
+          </div>
+          <div className="pd-contacto">
+            {tel ? (
+              <a className="btn sm pd-wa" href={`https://wa.me/${tel.wa}`} target="_blank" rel="noreferrer">
+                WhatsApp
+              </a>
+            ) : null}
+            {urlChat ? (
+              <a className="btn sm" href={urlChat} target="_blank" rel="noreferrer" title="Abrir la conversación en el inbox de Lucid Bot">
+                💬 Chat del bot
+              </a>
+            ) : null}
+            {tel ? (
+              <a className="btn sm" href={`tel:${tel.tel}`}>
+                📞 Llamar
+              </a>
+            ) : null}
+          </div>
+        </div>
+        <div className="pd-resumen-cifras">
+          <div>
+            <span className="muted small">Total</span>
+            <strong className="pd-total">{money(totales.total)}</strong>
+          </div>
+          <div>
+            <span className="muted small">Productos</span>
+            <strong>{nItems}</strong>
+          </div>
+          <div>
+            <span className="muted small">Envío</span>
+            <strong>{original?.transportadora || botEnvio?.transportadora || "—"}</strong>
+          </div>
+        </div>
+      </section>
 
       <ErrorBanner error={error} />
 
-      <BloqueEtiquetas idPedido={form.id ?? id} numero={form.idPedido ?? id} />
-
-      <div className="grid-2 pedido-resumen-grid">
-        <section className="card pedido-card pedido-cliente-card">
-          <div className="card-title">Cliente</div>
-          <div className="form-grid">
-            <div className="field">
-              <label>Nombre</label>
-              <input value={form.Nombre} onChange={(e) => set("Nombre", e.target.value)} />
-            </div>
-            <div className="field">
-              <label>Apellido</label>
-              <input value={form.Apellido} onChange={(e) => set("Apellido", e.target.value)} />
-            </div>
-            <div className="field">
-              <label>Movil</label>
-              <input value={form.Movil} onChange={(e) => set("Movil", e.target.value)} />
-              {(() => {
-                const tel = telefono(form.Movil);
-                const url = inbox(form.Movil);
-                if (!tel && !url) return null;
-                return (
-                  <div className="tel-links" style={{ marginTop: 4 }}>
-                    {tel && (
-                      <a href={`tel:${tel.tel}`} title="Llamar">
-                        📞 Llamar
-                      </a>
-                    )}
-                    {tel && (
-                      <a
-                        href={`https://wa.me/${tel.wa}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        title="WhatsApp"
-                      >
-                        WhatsApp
-                      </a>
-                    )}
-                    {url && (
-                      <a
-                        className="inbox-link"
-                        href={url}
-                        target="_blank"
-                        rel="noreferrer"
-                        title="Abrir la conversacion en el inbox de LucidBot"
-                      >
-                        💬 Chat del bot
-                      </a>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
-            <div className="field">
-              <label>Correo</label>
-              <input value={form.Correo} onChange={(e) => set("Correo", e.target.value)} />
-            </div>
-            <div className="field">
-              <label>NIT</label>
-              <input value={form.NIT} onChange={(e) => set("NIT", e.target.value)} />
-            </div>
-            <div className="field">
-              <label>Referencias</label>
-              <input value={form.Referencias} onChange={(e) => set("Referencias", e.target.value)} />
-            </div>
-          </div>
-
-          <div className="field">
-            <label>Direccion</label>
-            <input value={form.Direccion} onChange={(e) => set("Direccion", e.target.value)} />
-            <ValidarDireccion
-              id={form.id ?? id!}
-              direccion={String(form.Direccion ?? "")}
-              onUsar={(dir) => {
-                set("Direccion", dir);
-                toast.success("Dirección puesta en el formulario (no olvides guardar)");
-              }}
-              onGuardada={(dir) => {
-                set("Direccion", dir);
-                setOriginal((o: any) => (o ? { ...o, Direccion: dir } : o));
-              }}
-            />
-          </div>
-
-          <div className="form-grid">
-            <LocationPicker value={ubicacion} onChange={setUbicacion} />
-            <div className="field">
-              <label>Codigo postal</label>
-              <input
-                value={form.codigoPostal}
-                onChange={(e) => set("codigoPostal", e.target.value)}
-              />
-            </div>
-          </div>
-        </section>
-
-        <section className="card pedido-card pedido-estado-card">
-          <div className="card-title">Estado y pago</div>
-          <div className="form-grid">
-            <div className="field">
-              <label title="Campo EstadoFullfilment del pedido">
-                Estado de envío
-              </label>
-              <div className="valor-solo">
-                <EnvioConBot
-                  valor={original?.EstadoFullfilment}
-                  bot={enviosBot[String(original?.id ?? original?.idPedido ?? "")]}
-                />
-                {!original?.EstadoFullfilment && !enviosBot[String(original?.id ?? original?.idPedido ?? "")] && (
-                  <span className="muted small">Aun sin envio asignado</span>
-                )}
-              </div>
-            </div>
-            <div className="field">
-              <label>Transportadora</label>
-              <div className="valor-solo">
-                {original?.transportadora ? (
-                  <strong>{original.transportadora}</strong>
-                ) : (
-                  <span className="muted">Sin transportadora</span>
-                )}
-              </div>
-            </div>
-            <div className="field">
-              <label>Estado del pedido</label>
-              <select
-                value={form.EstadoPedido}
-                onChange={(e) => set("EstadoPedido", Number(e.target.value))}
+      <div className="pd-layout">
+        {/* ===== Columna principal: qué compró, a dónde va y la subida ===== */}
+        <div className="pd-main">
+          <section className="card pedido-card pedido-productos-card">
+            <div className="card-title">
+              <span>🛍️ Productos</span>
+              <button
+                className="btn sm"
+                onClick={() => setItems((arr) => [...arr, { product_id: "", price: 0, variations: [], quantity: 1 }])}
               >
-                {Object.entries(ESTADOS_PEDIDO).map(([v, label]) => (
-                  <option key={v} value={Number(v)}>
-                    {label}
-                  </option>
-                ))}
-              </select>
+                + Agregar producto
+              </button>
             </div>
-            <div className="field">
-              <label>Tipo de pago</label>
-              <select
-                value={form.TipoPago}
-                onChange={(e) => set("TipoPago", Number(e.target.value))}
-              >
-                {Object.entries(TIPOS_PAGO).map(([valor, label]) => (
-                  <option key={valor} value={valor}>
-                    {valor} · {label}
-                  </option>
-                ))}
-                {![1, 2].includes(Number(form.TipoPago)) && (
-                  <option value={form.TipoPago}>
-                    {form.TipoPago} · (valor actual)
-                  </option>
-                )}
-              </select>
-            </div>
-            <div className="field">
-              <label>Estado de pago</label>
-              <input
-                type="number"
-                value={form.EstadoPago}
-                onChange={(e) => set("EstadoPago", Number(e.target.value))}
-              />
-            </div>
-            <div className="field">
-              <label>Logistica</label>
-              <input value={form.logistic} onChange={(e) => set("logistic", e.target.value)} />
-            </div>
-          </div>
-
-          <LineaTiempoEnvio pedido={original} />
-
-          <div className="card-title" style={{ marginTop: 8 }}>
-            Totales
-          </div>
-          <table className="table tabla-compacta">
-            <tbody>
-              <tr>
-                <td>Subtotal (calculado)</td>
-                <td>{money(totales.sub)}</td>
-              </tr>
-              <tr>
-                <td>Costo de envio</td>
-                <td>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={form.CostoEnvio}
-                    onChange={(e) => set("CostoEnvio", e.target.value)}
-                    style={{ maxWidth: 160 }}
-                  />
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <strong>Total</strong>
-                </td>
-                <td>
-                  <strong>{money(totales.total)}</strong>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-      </div>
-
-      <section className="card pedido-card pedido-otros-card">
-        <div className="row between wrap">
-          <div className="card-title" style={{ marginBottom: 0 }}>
-            Otros pedidos{nombreCliente ? ` de ${nombreCliente}` : ""}
-          </div>
-          {nombreCliente ? (
-            <Link
-              className="btn sm"
-              to={`/pedidos?cliente=${encodeURIComponent(nombreCliente)}${
-                telCliente ? `&tel=${telCliente}` : ""
-              }`}
-            >
-              Ver todos →
-            </Link>
-          ) : null}
-        </div>
-
-        {cargandoOtros ? (
-          <Spinner label="Buscando los pedidos de este cliente..." />
-        ) : errorOtros ? (
-          <ErrorBanner error={errorOtros} />
-        ) : otros.length === 0 ? (
-          <p className="muted">Sin más pedidos de este cliente en esta tienda.</p>
-        ) : (
-          <>
-            <p className="muted small" style={{ marginTop: 8 }}>
-              {totalOtros} pedido(s) con ese nombre · se muestran {otros.length} y se descartan
-              los homónimos con otro teléfono.
-            </p>
             <div className="table-wrap">
               <table className="table">
                 <thead>
                   <tr>
-                    <th>#</th>
-                    <th>Fecha</th>
-                    <th className="hide-sm">Teléfono</th>
-                    <th>Estado</th>
-                    <th>Envío</th>
-                    <th className="hide-sm">Total</th>
+                    <th>Producto</th>
+                    <th>Precio</th>
+                    <th>Cant.</th>
+                    <th>Total</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {otros.map((p) => {
-                    const pid = p?.id ?? p?.idPedido;
-                    const tel = telefono(p?.Movil);
-                    return (
-                      <tr key={String(pid)}>
-                        <td>
-                          <Link to={`/pedidos/${pid}`}>
-                            <strong>#{p?.idPedido ?? pid}</strong>
-                          </Link>
-                        </td>
-                        <td>{haceCuanto(p?.Fecha) || fmtFecha(p?.Fecha) || "—"}</td>
-                        <td className="hide-sm">{tel ? tel.visible : "—"}</td>
-                        <td>
-                          <EstadoBadge value={p?.EstadoPedido} />
-                        </td>
-                        <td>
-                          <EnvioConBot valor={p?.EstadoFullfilment} bot={enviosBot[String(pid)]} />
-                        </td>
-                        <td className="hide-sm">{money(p?.Total)}</td>
-                        <td>
-                          <Link className="btn sm" to={`/pedidos/${pid}`}>
-                            Abrir →
-                          </Link>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-      </section>
-
-      <section className="card pedido-card pedido-envio-card">
-        <div className="card-title">Envío y guías</div>
-        {envio.length > 0 ? (
-          <>
-            <div className="form-grid">
-              {envio.map((d) => (
-                <div className="field" key={d.label}>
-                  <label title={d.fuente ? `Dato de ${d.fuente}` : `Campo ${d.label} del pedido (solo lectura)`}>{d.label}</label>
-                  <div className="valor-solo">
-                    {d.valor}
-                    {d.fuente ? (
-                      <span className="fuente-zunto" title={`LucidSales no tiene este dato; lo guardó Zunto (${d.fuente})`}>
-                        {" "}
-                        · {d.fuente.startsWith("Lucid Bot") ? "Lucid Bot" : "Dropi"}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <p className="muted small" style={{ marginBottom: 0 }}>
-              Datos de solo lectura de LucidSales. Los marcados «Dropi» o «Lucid Bot» los guardó Zunto
-              (LucidSales no los tiene cuando el pedido se sube por fuera de su integración).
-            </p>
-          </>
-        ) : (
-          <p className="muted small" style={{ marginBottom: 0 }}>
-            Este pedido todavia no tiene guia: todavia no lo ha tomado ningun proveedor de
-            envios (Dropi, Rocket, Hoko...).
-          </p>
-        )}
-      </section>
-
-      <EntregaProgramadaCard
-        key={`prog-${form.id ?? id}`}
-        id={String(form.id ?? id)}
-        numero={original?.idPedido ?? null}
-        tienda={original?.idEmpresa ?? null}
-        cliente={{ nombre: [original?.Nombre, original?.Apellido].filter(Boolean).join(" "), telefono: String(original?.Movil ?? "") }}
-      />
-
-      <SubirPedidoDropi
-        id={form.id ?? id}
-        onConfirmado={() => {
-          setForm((f) => ({ ...f, EstadoPedido: 2, EstadoFullfilment: "Creado" }));
-          setOriginal((o: any) => (o ? { ...o, EstadoPedido: 2, EstadoFullfilment: "Creado" } : o));
-        }}
-      />
-
-      <BloqueOficinaInter
-        departamento={
-          ubicacion.pais !== null && ubicacion.pais !== 47 ? null : ubicacion.departamento
-        }
-        ciudad={ubicacion.ciudad}
-        resaltar={/interrap/i.test(String(original?.transportadora ?? ""))}
-        direccionActual={String(form.Direccion ?? "")}
-        onUsarDireccion={(dir) => {
-          set("Direccion", dir);
-          toast.success("Dirección cambiada por la oficina de Inter (no olvides guardar)");
-        }}
-      />
-
-      <section className="card pedido-card pedido-productos-card">
-        <div className="card-title">Productos del pedido</div>
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Producto</th>
-                <th>Precio</th>
-                <th>Cant.</th>
-                <th>Total</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
               {items.map((it, i) => (
                 <tr key={i}>
                   <td>
@@ -1207,77 +933,256 @@ export function PedidoDetallePage() {
                   </td>
                 </tr>
               )}
-            </tbody>
-          </table>
-        </div>
-        <button
-          className="btn sm"
-          style={{ marginTop: 10 }}
-          onClick={() =>
-            setItems((arr) => [...arr, { product_id: "", price: 0, variations: [], quantity: 1 }])
-          }
-        >
-          + Agregar linea
-        </button>
-        <p className="muted small" style={{ marginBottom: 0 }}>
-          {catalogoCargando
-            ? "Cargando catalogo de productos..."
-            : catalogo.length > 0
-              ? `${catalogo.length} productos disponibles en el catalogo (POST /productos/getproductos).`
-              : "Catalogo no disponible: se puede escribir el product_id a mano."}
-        </p>
-      </section>
-
-      <details className="card pedido-card pedido-cotizador-card">
-        <summary className="card-title">Cotizador de envios (este pedido)</summary>
-        <p className="muted small">
-          Elige transportador y pulsa <strong>Cotizar</strong> para ver el precio del envío de{" "}
-          <strong>este</strong> pedido.
-        </p>
-        <CotizadorPedido
-          pedido={original}
-          compacto
-          antesDeSubir={async () => (sucio ? guardar() : true)}
-          onSubido={subidoEnDropi}
-        />
-      </details>
-
-      <section className="card pedido-card pedido-historial-card">
-        <div className="card-title">Historial y observaciones</div>
-        {obs.length === 0 && <p className="muted">Sin observaciones todavia.</p>}
-        <div className="timeline">
-          {obs.map((o, i) => (
-            <div className="observacion" key={i}>
-              <span className="obs-avatar">{String(o?.user ?? "S").charAt(0).toUpperCase()}</span>
-              <div className="obs-body">
-                <div className="obs-head">
-                  <strong>{o?.user ?? "Sistema"}</strong>
-                  <span className="meta" title={fmtFecha(o?.update)}>
-                    {haceCuanto(o?.update) || fmtFecha(o?.update)}
-                  </span>
-                </div>
-                <div>{o?.desc ?? String(o)}</div>
+                </tbody>
+              </table>
+            </div>
+            <div className="pd-totales">
+              <div>
+                <span>Subtotal</span>
+                <span>{money(totales.sub)}</span>
+              </div>
+              <div>
+                <span>Costo de envío</span>
+                <input type="number" step="0.01" value={form.CostoEnvio} onChange={(e) => set("CostoEnvio", e.target.value)} />
+              </div>
+              <div className="pd-totales-total">
+                <span>Total</span>
+                <span>{money(totales.total)}</span>
               </div>
             </div>
-          ))}
-        </div>
-        <div className="row gap" style={{ marginTop: 8 }}>
-          <input
-            placeholder="Nueva observacion..."
-            value={nuevaObs}
-            onChange={(e) => setNuevaObs(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && agregarObservacion()}
-          />
-          <button className="btn" onClick={agregarObservacion} disabled={!nuevaObs.trim()}>
-            Agregar
-          </button>
-        </div>
-      </section>
+            {!catalogoCargando && catalogo.length === 0 ? (
+              <p className="muted small" style={{ marginBottom: 0 }}>
+                Catálogo no disponible: se puede escribir el product_id a mano.
+              </p>
+            ) : null}
+          </section>
 
-      <details className="card pedido-card pedido-json-card">
-        <summary className="card-title">Datos técnicos del pedido</summary>
-        <JsonView data={original} />
-      </details>
+          <section className="card pedido-card pedido-cliente-card">
+            <div className="card-title">📍 Cliente y dirección de entrega</div>
+            <div className="form-grid">
+              <div className="field">
+                <label>Nombre</label>
+                <input value={form.Nombre} onChange={(e) => set("Nombre", e.target.value)} />
+              </div>
+              <div className="field">
+                <label>Apellido</label>
+                <input value={form.Apellido} onChange={(e) => set("Apellido", e.target.value)} />
+              </div>
+              <div className="field">
+                <label>Teléfono</label>
+                <input value={form.Movil} onChange={(e) => set("Movil", e.target.value)} />
+              </div>
+              <div className="field">
+                <label>Correo</label>
+                <input value={form.Correo} onChange={(e) => set("Correo", e.target.value)} />
+              </div>
+            </div>
+            <div className="field pd-direccion">
+              <label>Dirección</label>
+              <input value={form.Direccion} onChange={(e) => set("Direccion", e.target.value)} />
+              <ValidarDireccion
+                id={form.id ?? id!}
+                direccion={String(form.Direccion ?? "")}
+                onUsar={(dir) => {
+                  set("Direccion", dir);
+                  toast.success("Dirección puesta en el formulario (no olvides guardar)");
+                }}
+                onGuardada={(dir) => {
+                  set("Direccion", dir);
+                  setOriginal((o: any) => (o ? { ...o, Direccion: dir } : o));
+                }}
+              />
+            </div>
+            <div className="form-grid">
+              <LocationPicker value={ubicacion} onChange={setUbicacion} />
+              <div className="field">
+                <label>Barrio / referencias</label>
+                <input value={form.Referencias} onChange={(e) => set("Referencias", e.target.value)} />
+              </div>
+            </div>
+            <details className="pd-mas">
+              <summary>Más datos del cliente (NIT, código postal)</summary>
+              <div className="form-grid">
+                <div className="field">
+                  <label>NIT / documento</label>
+                  <input value={form.NIT} onChange={(e) => set("NIT", e.target.value)} />
+                </div>
+                <div className="field">
+                  <label>Código postal</label>
+                  <input value={form.codigoPostal} onChange={(e) => set("codigoPostal", e.target.value)} />
+                </div>
+              </div>
+            </details>
+          </section>
+
+          <BloqueOficinaInter
+            departamento={ubicacion.pais !== null && ubicacion.pais !== 47 ? null : ubicacion.departamento}
+            ciudad={ubicacion.ciudad}
+            resaltar={/interrap/i.test(String(original?.transportadora ?? ""))}
+            direccionActual={String(form.Direccion ?? "")}
+            onUsarDireccion={(dir) => {
+              set("Direccion", dir);
+              toast.success("Dirección cambiada por la oficina de Inter (no olvides guardar)");
+            }}
+          />
+
+          <SubirPedidoDropi
+            id={form.id ?? id}
+            onConfirmado={() => {
+              setForm((f) => ({ ...f, EstadoPedido: 2, EstadoFullfilment: "Creado" }));
+              setOriginal((o: any) => (o ? { ...o, EstadoPedido: 2, EstadoFullfilment: "Creado" } : o));
+            }}
+          />
+
+          <section className="card pedido-card pedido-historial-card">
+            <div className="card-title">🗒️ Historial y notas</div>
+            {obs.length === 0 && <p className="muted">Sin observaciones todavía.</p>}
+            <div className="timeline">
+              {obs.map((o, i) => (
+                <div className="observacion" key={i}>
+                  <span className="obs-avatar">{String(o?.user ?? "S").charAt(0).toUpperCase()}</span>
+                  <div className="obs-body">
+                    <div className="obs-head">
+                      <strong>{o?.user ?? "Sistema"}</strong>
+                      <span className="meta" title={fmtFecha(o?.update)}>
+                        {haceCuanto(o?.update) || fmtFecha(o?.update)}
+                      </span>
+                    </div>
+                    <div>{o?.desc ?? String(o)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="row gap" style={{ marginTop: 8 }}>
+              <input
+                placeholder="Escribe una nota y presiona Enter…"
+                value={nuevaObs}
+                onChange={(e) => setNuevaObs(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && agregarObservacion()}
+              />
+              <button className="btn" onClick={agregarObservacion} disabled={!nuevaObs.trim()}>
+                Agregar
+              </button>
+            </div>
+          </section>
+
+          <details className="card pedido-card pedido-cotizador-card">
+            <summary className="card-title">🧮 Cotizador de envíos de este pedido</summary>
+            <p className="muted small">
+              Elige transportador y pulsa <strong>Cotizar</strong> para ver el precio del envío de <strong>este</strong> pedido.
+            </p>
+            <CotizadorPedido pedido={original} compacto antesDeSubir={async () => (sucio ? guardar() : true)} onSubido={subidoEnDropi} />
+          </details>
+
+          <details className="card pedido-card pedido-json-card">
+            <summary className="card-title">Datos técnicos del pedido</summary>
+            <JsonView data={original} />
+          </details>
+        </div>
+
+        {/* ===== Columna lateral: estado, envío y contexto ===== */}
+        <aside className="pd-side">
+          <section className="card pedido-card pd-estado">
+            <div className="card-title">🚚 Estado y envío</div>
+            <div className="field">
+              <label>Estado del pedido</label>
+              <select value={form.EstadoPedido} onChange={(e) => set("EstadoPedido", Number(e.target.value))}>
+                {Object.entries(ESTADOS_PEDIDO).map(([v, label]) => (
+                  <option key={v} value={Number(v)}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <dl className="pd-datos">
+              <dt>Envío</dt>
+              <dd>
+                <EnvioConBot valor={original?.EstadoFullfilment} bot={botEnvio} />
+                {!original?.EstadoFullfilment && !botEnvio ? <span className="muted small">Aún sin envío</span> : null}
+              </dd>
+              <dt>Transportadora</dt>
+              <dd>{original?.transportadora || botEnvio?.transportadora || <span className="muted">—</span>}</dd>
+              {envioExtra.map((d) => (
+                <FilaDato key={d.label} d={d} />
+              ))}
+            </dl>
+            {envio.length === 0 ? <p className="muted small">Todavía no tiene guía: ningún proveedor de envíos lo ha tomado.</p> : null}
+            <LineaTiempoEnvio pedido={original} />
+          </section>
+
+          <section className="card pedido-card pd-pago">
+            <div className="card-title">💳 Pago</div>
+            <div className="field">
+              <label>Tipo de pago</label>
+              <select value={form.TipoPago} onChange={(e) => set("TipoPago", Number(e.target.value))}>
+                {Object.entries(TIPOS_PAGO).map(([valor, label]) => (
+                  <option key={valor} value={valor}>
+                    {label}
+                  </option>
+                ))}
+                {![1, 2].includes(Number(form.TipoPago)) && <option value={form.TipoPago}>{form.TipoPago} · (valor actual)</option>}
+              </select>
+            </div>
+            <details className="pd-mas">
+              <summary>Estado de pago y logística</summary>
+              <div className="field">
+                <label>Estado de pago</label>
+                <input type="number" value={form.EstadoPago} onChange={(e) => set("EstadoPago", Number(e.target.value))} />
+              </div>
+              <div className="field">
+                <label>Logística</label>
+                <input value={form.logistic} onChange={(e) => set("logistic", e.target.value)} />
+              </div>
+            </details>
+          </section>
+
+          <BloqueEtiquetas idPedido={form.id ?? id} numero={form.idPedido ?? id} />
+
+          <EntregaProgramadaCard
+            key={`prog-${form.id ?? id}`}
+            id={String(form.id ?? id)}
+            numero={original?.idPedido ?? null}
+            tienda={original?.idEmpresa ?? null}
+            cliente={{ nombre: [original?.Nombre, original?.Apellido].filter(Boolean).join(" "), telefono: String(original?.Movil ?? "") }}
+          />
+
+          <section className="card pedido-card pedido-otros-card">
+            <div className="card-title">
+              <span>👤 Otros pedidos del cliente</span>
+              {nombreCliente ? (
+                <Link className="btn sm" to={`/pedidos?cliente=${encodeURIComponent(nombreCliente)}${telCliente ? `&tel=${telCliente}` : ""}`}>
+                  Ver todos
+                </Link>
+              ) : null}
+            </div>
+            {cargandoOtros ? (
+              <Spinner label="Buscando..." />
+            ) : errorOtros ? (
+              <ErrorBanner error={errorOtros} />
+            ) : otros.length === 0 ? (
+              <p className="muted small" style={{ margin: 0 }}>
+                Es su primer pedido en esta tienda.
+              </p>
+            ) : (
+              <div className="pd-otros">
+                {otros.map((p) => {
+                  const pid = p?.id ?? p?.idPedido;
+                  return (
+                    <Link key={String(pid)} className="pd-otro" to={`/pedidos/${pid}`} onClick={(e) => { if (sucio) { e.preventDefault(); irA(Number(pid)); } }}>
+                      <strong>#{p?.idPedido ?? pid}</strong>
+                      <span className="muted small">{haceCuanto(p?.Fecha) || fmtFecha(p?.Fecha) || "—"}</span>
+                      <EstadoBadge value={p?.EstadoPedido} />
+                      <EnvioConBot valor={p?.EstadoFullfilment} bot={enviosBot[String(pid)]} />
+                      <span className="small pd-otro-total">{money(p?.Total)}</span>
+                    </Link>
+                  );
+                })}
+                {totalOtros > otros.length + 1 ? <p className="muted small" style={{ margin: 0 }}>y más en «Ver todos»</p> : null}
+              </div>
+            )}
+          </section>
+        </aside>
+      </div>
 
       {/* Barra fija mientras haya cambios sin guardar */}
       {sucio && (
