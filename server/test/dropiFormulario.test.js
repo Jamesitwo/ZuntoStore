@@ -723,6 +723,13 @@ test("Mesitas del Colegio en Dropi es El Colegio (mesitas)", () => {
   assert.equal(coincideUbicacion("Colegio", v, "Cundinamarca"), false);
 });
 
+test("Ansermanuevo en Dropi es Anserma Nuevo (y no Anserma de Caldas)", () => {
+  assert.equal(coincideUbicacion("Anserma Nuevo", variantesUbicacion("Ansermanuevo"), "Valle"), true);
+  assert.equal(coincideUbicacion("Anserma Nuevo", variantesUbicacion("Anserma Nuevo"), "Valle"), true);
+  assert.equal(coincideUbicacion("Anserma", variantesUbicacion("Ansermanuevo"), "Caldas"), false);
+  assert.equal(coincideUbicacion("Anserma Nuevo", variantesUbicacion("Anserma"), "Valle"), false);
+});
+
 test("Isnos en Dropi es San Jose De Isnos", () => {
   const v = variantesUbicacion("Isnos");
   assert.equal(coincideUbicacion("San Jose De Isnos", v, "Huila"), true);

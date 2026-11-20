@@ -202,6 +202,8 @@ const EQUIVALENTES_UBICACION = [
   ["tolu viejo", "toluviejo"],
   // Mesitas del Colegio (Cundinamarca): en Dropi es "El Colegio (mesitas)"
   ["el colegio mesitas", "el colegio", "mesitas del colegio", "mesitas", "colegio mesitas", "mesitas el colegio"],
+  // Ansermanuevo (Valle): en Dropi es "Anserma Nuevo" (Anserma, Caldas, es otro)
+  ["anserma nuevo", "ansermanuevo"],
   // Isnos (Huila): en Dropi es "San Jose De Isnos"
   ["san jose de isnos", "isnos", "san jose isnos"],
   // La Cruzada (corregimiento de Remedios, Antioquia): en Dropi es "La Cruzada (remedios)"
