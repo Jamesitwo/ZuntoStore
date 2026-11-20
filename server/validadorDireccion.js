@@ -82,6 +82,13 @@ export function candidatosNumeroPegado(direccion) {
     const p = parsearDireccion(`${cp[1]} # ${cp[2].replace(/\s+/g, "")}-${cp[3]}${cp[4]}`);
     if (p) return [p.normalizada];
   }
+  // tres numeros sin "#" ni guion, con las letras pegadas al siguiente
+  // ("Calle 52 D7 H23" = "Calle 52 D # 7 H-23"; "Calle 5 12 30" = "Calle 5 # 12-30")
+  const tres = /^([a-záéíóúñ.]+\s+\d{1,3}\s*(?:[a-z]\b|[a-z](?=\d))?(?:\s*bis\b)?)(?:\s+|(?<=[a-z]))(\d{1,3}(?:\s*[a-z]\b|\s*[a-z](?=\d))?)(?:\s+|(?<=[a-z]))(\d{1,3}[a-z]?)\b(?!\s*[-#\d])(.*)$/i.exec(t);
+  if (tres && !/[#-]/.test(t.split(",")[0])) {
+    const p = parsearDireccion(`${tres[1].trim()} # ${tres[2].replace(/\s+/g, "")}-${tres[3]}${tres[4]}`);
+    if (p) return [p.normalizada];
+  }
   // con "#" ("Cra 21 #1212") o sin el ("Calle 7A 1375": via y luego 3-4 digitos)
   let m = /^(.*?#\s*)(\d{3,4})([a-z]?)\b(.*)$/i.exec(t);
   if (!m) {

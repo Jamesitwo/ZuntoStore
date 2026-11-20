@@ -440,3 +440,14 @@ test("cruce antes del # y placa después: «Krera 1 Bis 9 # 10» = Cra 1 Bis # 9
   assert.deepEqual(candidatosNumeroPegado("Calle 5 # 12-30"), []);
   assert.deepEqual(candidatosNumeroPegado("Calle 10 No. 1957"), ["Calle 10 # 19-57", "Calle 10 # 1-957"]);
 });
+
+test("tres números sin # ni guion: «Calle 52 D7 H23» = Calle 52D # 7H-23 (lo confirma el mapa)", () => {
+  assert.deepEqual(candidatosNumeroPegado("Calle 52 D7 H23, diagonal a mercadito El Guerrero"), [
+    "Calle 52D # 7H-23, Diagonal a mercadito El Guerrero",
+  ]);
+  assert.deepEqual(candidatosNumeroPegado("Calle 52D 7H 23"), ["Calle 52D # 7H-23"]);
+  assert.deepEqual(candidatosNumeroPegado("Calle 5 12 30"), ["Calle 5 # 12-30"]);
+  // los casos de antes siguen igual
+  assert.deepEqual(candidatosNumeroPegado("Calle 7A 1375"), ["Calle 7A # 13-75", "Calle 7A # 1-375"]);
+  assert.deepEqual(candidatosNumeroPegado("Carrera 3 # 4-5"), []);
+});
