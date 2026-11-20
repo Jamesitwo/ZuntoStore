@@ -745,6 +745,17 @@ export function PedidoDetallePage() {
 
       <ErrorBanner error={error} />
 
+      <div className="pd-arriba">
+        <BloqueEtiquetas idPedido={form.id ?? id} numero={form.idPedido ?? id} />
+        <EntregaProgramadaCard
+          key={`prog-${form.id ?? id}`}
+          id={String(form.id ?? id)}
+          numero={original?.idPedido ?? null}
+          tienda={original?.idEmpresa ?? null}
+          cliente={{ nombre: [original?.Nombre, original?.Apellido].filter(Boolean).join(" "), telefono: String(original?.Movil ?? "") }}
+        />
+      </div>
+
       <div className="pd-layout">
         {/* ===== Columna principal: qué compró, a dónde va y la subida ===== */}
         <div className="pd-main">
@@ -1135,16 +1146,6 @@ export function PedidoDetallePage() {
               </div>
             </details>
           </section>
-
-          <BloqueEtiquetas idPedido={form.id ?? id} numero={form.idPedido ?? id} />
-
-          <EntregaProgramadaCard
-            key={`prog-${form.id ?? id}`}
-            id={String(form.id ?? id)}
-            numero={original?.idPedido ?? null}
-            tienda={original?.idEmpresa ?? null}
-            cliente={{ nombre: [original?.Nombre, original?.Apellido].filter(Boolean).join(" "), telefono: String(original?.Movil ?? "") }}
-          />
 
           <section className="card pedido-card pedido-otros-card">
             <div className="card-title">

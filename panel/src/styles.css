@@ -5789,3 +5789,6 @@ textarea.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; fon
   .pd-buscador-item { grid-template-columns: auto 1fr auto; }
   .pd-buscador-item > .small:last-child { display: none; }
 }
+.pd-arriba { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.pd-arriba > * { margin: 0; }
+@media (max-width: 900px) { .pd-arriba { grid-template-columns: 1fr; } }
