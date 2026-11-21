@@ -44,13 +44,14 @@ const FINALES = new Set([
   "direccion-invalida",
   "envio-caro",
   "sin-transportadora",
+  "sin-stock",
   // otro pedido reciente del mismo cliente y el chat no muestra otra compra
   "posible-duplicado",
   // una persona ya lo resolvio (lo subio a mano o lo confirmo en LucidSales)
   "resuelto-a-mano",
 ]);
 /** Resultados en revision que se dan por resueltos si una persona mueve el pedido. */
-const RESOLUBLES = new Set(["esperando-direccion", "requiere-revision", "direccion-invalida", "envio-caro", "sin-transportadora", "posible-duplicado", "entrega-programada"]);
+const RESOLUBLES = new Set(["esperando-direccion", "requiere-revision", "direccion-invalida", "envio-caro", "sin-transportadora", "sin-stock", "posible-duplicado", "entrega-programada"]);
 /**
  * Lo que tarda un envio normal (dias). Una fecha pedida dentro de ese margen
  * no es entrega futura; una mas lejana se programa y se sube cuando faltan
@@ -161,7 +162,7 @@ export function otrosPedidosDelCliente(p, lista = [], { procesados = {}, ahora =
     }));
 }
 /** Finales que se pueden volver a intentar desde el panel sin mas confirmacion. */
-const REARMABLES = new Set(["requiere-revision", "direccion-invalida", "envio-caro", "sin-transportadora"]);
+const REARMABLES = new Set(["requiere-revision", "direccion-invalida", "envio-caro", "sin-transportadora", "sin-stock"]);
 /** Cada cuanto se revisa: de 30 s a 12 h. */
 export const MIN_SEGUNDOS = 30;
 export const MAX_SEGUNDOS = 12 * 3600;
@@ -375,6 +376,7 @@ export const MOTIVOS_ASIGNABLES = [
   "requiere-humano",
   "envio-caro",
   "sin-transportadora",
+  "sin-stock",
   "posible-duplicado",
   "resultado-incierto",
 ];
@@ -451,6 +453,7 @@ const NOMBRE_MOTIVO = {
   "entrega-programada": "Entrega programada para otro día",
   "envio-caro": "Envío demasiado caro",
   "sin-transportadora": "Sin transportadora disponible",
+  "sin-stock": "Producto agotado en Dropi",
   "requiere-login": "Dropi pidió iniciar sesión",
   "requiere-captcha": "Dropi pidió captcha",
   "resultado-incierto": "Resultado incierto (verificar en Dropi)",
@@ -1605,8 +1608,8 @@ export function crearSubidaAutomatica({
           }
           // envio caro, sin transportadora o varias oficinas: es un resultado
           // del PEDIDO (reintentar no lo cambia). Queda final y se avisa.
-          if (rNav?.envioCaro || rNav?.sinTransportadora || rNav?.oficinaHumano || rNav?.corregimientoHumano || rNav?.varianteHumano) {
-            const accion = rNav.envioCaro ? "envio-caro" : rNav.sinTransportadora ? "sin-transportadora" : "requiere-humano";
+          if (rNav?.envioCaro || rNav?.sinTransportadora || rNav?.sinStock || rNav?.oficinaHumano || rNav?.corregimientoHumano || rNav?.varianteHumano) {
+            const accion = rNav.envioCaro ? "envio-caro" : rNav.sinTransportadora ? "sin-transportadora" : rNav.sinStock ? "sin-stock" : "requiere-humano";
             const det = `${rNav.detalle}${plan.motivoTope && rNav.envioCaro ? ` (tope: ${plan.motivoTope})` : ""}`;
             if (!c.dryRun) await notificarUnaVez(c, id, contactoPedido, "fallido", det);
             marcarP(accion, det);

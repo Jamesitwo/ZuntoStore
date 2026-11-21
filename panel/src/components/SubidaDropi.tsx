@@ -44,11 +44,12 @@ const MOTIVOS_ASIGNABLES: Array<[string, string]> = [
   ["requiere-humano", "Revisión manual (oficina, prepago, variantes)"],
   ["envio-caro", "Envío demasiado caro"],
   ["sin-transportadora", "Sin transportadora disponible"],
+  ["sin-stock", "Producto agotado en Dropi"],
   ["posible-duplicado", "Posible pedido duplicado"],
   ["resultado-incierto", "Resultado incierto (verificar en Dropi)"],
 ];
 
-const REINTENTABLES = ["requiere-revision", "direccion-invalida", "envio-caro", "sin-transportadora"];
+const REINTENTABLES = ["requiere-revision", "direccion-invalida", "envio-caro", "sin-transportadora", "sin-stock"];
 const EN_ALERTA = [...REINTENTABLES, "resultado-incierto", "posible-duplicado"];
 
 /** "2 h 30 min", "45 min", "90 s". */
@@ -1498,6 +1499,7 @@ export function SubidaDropi() {
                 ["direccion-invalida", "con dirección inválida"],
                 ["envio-caro", "con envío muy caro"],
                 ["sin-transportadora", "sin transportadora disponible"],
+                ["sin-stock", "con el producto agotado en Dropi"],
               ]
                 .map(([a, t]) => [ultimos.filter((u) => u.accion === a).length, t] as const)
                 .filter(([n]) => n > 0)

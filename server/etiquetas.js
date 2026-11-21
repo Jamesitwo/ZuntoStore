@@ -21,6 +21,7 @@ export const ETIQUETAS_SUBIDA = {
   "requiere-revision": ["Dropi · En revisión", "#dc2626"],
   "envio-caro": ["Dropi · Envío caro", "#ea580c"],
   "sin-transportadora": ["Dropi · Sin transportadora", "#ea580c"],
+  "sin-stock": ["Dropi · Agotado", "#ea580c"],
   "requiere-humano": ["Dropi · Lo sube una persona", "#d97706"],
   "posible-duplicado": ["Dropi · Posible repetido", "#db2777"],
   "resultado-incierto": ["Dropi · Resultado incierto", "#7c3aed"],

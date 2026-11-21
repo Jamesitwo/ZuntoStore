@@ -58,6 +58,7 @@ const VEREDICTOS: Record<string, { texto: string; tono: "ok" | "warn" | "alerta"
   "posible-duplicado": { texto: "POSIBLE REPETIDO — el cliente ya tiene otro pedido reciente; revísalo", tono: "alerta" },
   "envio-caro": { texto: "Envío muy caro — no se subió", tono: "warn" },
   "sin-transportadora": { texto: "Sin transportadora disponible", tono: "warn" },
+  "sin-stock": { texto: "PRODUCTO AGOTADO EN DROPI — no se subió", tono: "warn" },
   "pedido-antiguo": { texto: "PEDIDO ANTIGUO — pasó el límite de días; no se sube solo (súbelo desde aquí si hay que enviarlo)", tono: "warn" },
   "entrega-programada": { texto: "PROGRAMADO — el cliente lo pidió para otra fecha; se envía cuando se acerque", tono: "warn" },
   "resuelto-a-mano": { texto: "RESUELTO — una persona lo subió a mano o lo movió en LucidSales; no se reintenta", tono: "ok" },
@@ -149,7 +150,7 @@ function VeredictoAutomatico({ id, recarga }: { id: number | string; recarga: nu
           Es una compra nueva: subirlo
         </button>
       ) : null}
-      {reg.accion === "requiere-revision" || reg.accion === "direccion-invalida" || reg.accion === "esperando-direccion" ? (
+      {reg.accion === "requiere-revision" || reg.accion === "direccion-invalida" || reg.accion === "esperando-direccion" || reg.accion === "sin-stock" ? (
         <button className="btn sm" style={{ marginTop: 8 }} onClick={() => void reintentar()}>
           Reintentar en la subida automática
         </button>

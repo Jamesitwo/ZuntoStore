@@ -43,6 +43,7 @@ const RESULTADO: Record<string, { texto: string; tono: "ok" | "warn" | "mal" }> 
   "requiere-humano": { texto: "Lo sube una persona", tono: "warn" },
   "envio-caro": { texto: "Envío muy caro", tono: "warn" },
   "sin-transportadora": { texto: "Sin transportadora", tono: "warn" },
+  "sin-stock": { texto: "Agotado en Dropi", tono: "warn" },
   "requiere-login": { texto: "Sesión de Dropi vencida", tono: "warn" },
   "requiere-captcha": { texto: "Captcha en Dropi", tono: "warn" },
   "estado-incompatible": { texto: "Estado que no se sube", tono: "warn" },

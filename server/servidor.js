@@ -1598,8 +1598,8 @@ export function crearManejador({
 
         // envio caro / sin transportadora / varias oficinas: el pedido no se
         // sube; queda marcado igual que en la subida automatica
-        if (rNav?.envioCaro || rNav?.sinTransportadora || rNav?.oficinaHumano || rNav?.corregimientoHumano || rNav?.varianteHumano) {
-          const accion = rNav.envioCaro ? "envio-caro" : rNav.sinTransportadora ? "sin-transportadora" : "requiere-humano";
+        if (rNav?.envioCaro || rNav?.sinTransportadora || rNav?.sinStock || rNav?.oficinaHumano || rNav?.corregimientoHumano || rNav?.varianteHumano) {
+          const accion = rNav.envioCaro ? "envio-caro" : rNav.sinTransportadora ? "sin-transportadora" : rNav.sinStock ? "sin-stock" : "requiere-humano";
           const det = `${rNav.detalle}${rNav.envioCaro && plan.motivoTope ? ` (tope: ${plan.motivoTope})` : ""}`;
           if (cuerpo?.dryRun !== true) registrarConTienda(id, accion, det);
           json(res, 409, {

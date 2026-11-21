@@ -1938,6 +1938,22 @@ export function crearDropiNavegador(config = {}) {
         };
       }
       const btnAbrir = p.locator('[data-cy="send-to-client-button"]');
+      // sin stock, Dropi deja el boton «Enviar al cliente» deshabilitado:
+      // reintentar no sirve hasta que el proveedor reponga
+      await p.waitForTimeout(800);
+      if (await btnAbrir.isDisabled().catch(() => false)) {
+        const stock = (await p.locator('[data-cy="product-info-stock"]').first().innerText({ timeout: 2000 }).catch(() => "")).trim();
+        const privado = (await p.locator('[data-cy="product-info-private-stock"]').first().innerText({ timeout: 1000 }).catch(() => "")).trim();
+        const sinStock = !stock || /agotad|^0$|sin stock/i.test(stock) || /:\s*0\b/.test(privado);
+        return {
+          ok: false,
+          creado: false,
+          sinStock,
+          detalle: sinStock
+            ? `el producto está agotado en Dropi${stock ? ` («${stock}»${privado ? `, ${privado}` : ""})` : ""}: el botón «Enviar al cliente» está deshabilitado. Se puede reintentar cuando el proveedor reponga o cambiar el producto. Link: ${datos.productoUrl}`
+            : `Dropi tiene deshabilitado el botón «Enviar al cliente»${stock ? ` (stock: «${stock}»)` : ""}. Link: ${datos.productoUrl}`,
+        };
+      }
       await btnAbrir.click();
 
       // 3) espera a que se abra el formulario Crear Orden
