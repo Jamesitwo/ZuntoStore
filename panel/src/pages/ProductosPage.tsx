@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { errMsg, pickArray } from "../api/client";
 import { productos } from "../api/endpoints";
 import { ErrorBanner, JsonTable, JsonView, PageHeader, Spinner } from "../components/ui";
+import { ProductosAgotados } from "../components/ProductosAgotados";
 import { JsonPost as JsonPostEditor } from "../components/JsonPost";
 import { ListaProductos } from "../components/ListaProductos";
 import { ImportarDropi } from "../components/ImportarDropi";
@@ -97,6 +98,7 @@ export function ProductosPage() {
           </div>
         }
       />
+      <ProductosAgotados compacto />
 
       <ErrorBanner error={error} />
 

@@ -1949,6 +1949,8 @@ export function crearDropiNavegador(config = {}) {
           ok: false,
           creado: false,
           sinStock,
+          productoUrl: datos.productoUrl,
+          stockDropi: stock || null,
           detalle: sinStock
             ? `el producto está agotado en Dropi${stock ? ` («${stock}»${privado ? `, ${privado}` : ""})` : ""}: el botón «Enviar al cliente» está deshabilitado. Se puede reintentar cuando el proveedor reponga o cambiar el producto. Link: ${datos.productoUrl}`
             : `Dropi tiene deshabilitado el botón «Enviar al cliente»${stock ? ` (stock: «${stock}»)` : ""}. Link: ${datos.productoUrl}`,

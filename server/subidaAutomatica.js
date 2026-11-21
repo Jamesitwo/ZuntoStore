@@ -471,6 +471,32 @@ function motivoGeneral(t) {
     .slice(0, 110);
 }
 
+/**
+ * Lista de productos agotados en Dropi: los pedidos que quedaron en
+ * "sin-stock", agrupados por producto (id de Dropi del link).
+ * -> [{ clave, idDropi, nombre, url, stock, pedidos: [{id, numero, cliente, ts}], desde, hasta }]
+ */
+export function agruparAgotados(procesados = {}) {
+  const grupos = new Map();
+  for (const [id, v] of Object.entries(procesados ?? {})) {
+    if (v?.accion !== "sin-stock") continue;
+    const url = v.producto?.url ?? (String(v.detalle ?? "").match(/https?:\/\/\S*product-details\/\d+\S*/)?.[0] ?? null);
+    const idDropi = String(url ?? "").match(/product-details\/(\d+)/)?.[1] ?? null;
+    const clave = idDropi ?? v.producto?.id ?? v.producto?.nombre ?? "desconocido";
+    const g = grupos.get(clave) ?? { clave: String(clave), idDropi, nombre: null, url, stock: null, pedidos: [], desde: v.ts, hasta: v.ts };
+    g.nombre = g.nombre ?? v.producto?.nombre ?? v.analisis?.pedido?.producto ?? null;
+    g.url = g.url ?? url;
+    g.stock = g.stock ?? v.producto?.stock ?? null;
+    g.pedidos.push({ id, numero: v.producto?.pedido ?? null, cliente: v.cliente?.nombre ?? "", telefono: v.cliente?.telefono ?? "", ts: v.ts, tienda: v.tienda ?? null });
+    if (String(v.ts) < String(g.desde)) g.desde = v.ts;
+    if (String(v.ts) > String(g.hasta)) g.hasta = v.ts;
+    grupos.set(clave, g);
+  }
+  return [...grupos.values()]
+    .map((g) => ({ ...g, pedidos: g.pedidos.sort((a, b) => String(b.ts).localeCompare(String(a.ts))) }))
+    .sort((a, b) => b.pedidos.length - a.pedidos.length || String(b.hasta).localeCompare(String(a.hasta)));
+}
+
 /** Motivo legible de un resultado de la vuelta; null si se subio. */
 export function motivoDeResultado(d) {
   const a = d?.accion;
@@ -836,6 +862,8 @@ export function crearSubidaAutomatica({
       ...(notificado ? { notificado } : {}),
       ...(clienteDatos ? { cliente: clienteDatos } : {}),
       ...(extra.analisis ? { analisis: extra.analisis } : {}),
+      // producto agotado en Dropi (accion sin-stock)
+      ...(accionFinal === "sin-stock" && (extra.producto ?? previo.producto) ? { producto: extra.producto ?? previo.producto } : {}),
       // lo que mostro Dropi al subir: id de la orden, ganancia y envio
       ...(extra.dropi ?? previo.dropi ? { dropi: extra.dropi ?? previo.dropi } : {}),
       // tienda de LucidSales del pedido (para separar por tienda despues)
@@ -1612,7 +1640,14 @@ export function crearSubidaAutomatica({
             const accion = rNav.envioCaro ? "envio-caro" : rNav.sinTransportadora ? "sin-transportadora" : rNav.sinStock ? "sin-stock" : "requiere-humano";
             const det = `${rNav.detalle}${plan.motivoTope && rNav.envioCaro ? ` (tope: ${plan.motivoTope})` : ""}`;
             if (!c.dryRun) await notificarUnaVez(c, id, contactoPedido, "fallido", det);
-            marcarP(accion, det);
+            // agotado: se guarda cual producto, para la lista de agotados
+            const urlAgotado = rNav.sinStock ? rNav.productoUrl ?? productoUrl : null;
+            const lineaAgotada = urlAgotado ? (resumen?.productos ?? [])[Math.max(0, urls.indexOf(urlAgotado))] : null;
+            marcarP(
+              accion,
+              det,
+              rNav.sinStock ? { producto: { nombre: lineaAgotada?.nombre ?? null, id: lineaAgotada?.id ?? null, url: urlAgotado, stock: rNav.stockDropi ?? null, pedido: p?.idPedido ?? null } } : {},
+            );
             detalle.push({ id, accion, detalle: det });
             frenados++;
             continue;
@@ -1957,6 +1992,11 @@ export function crearSubidaAutomatica({
       this.detener();
       this.arrancar();
       return this.config();
+    },
+
+    /** Productos agotados en Dropi con los pedidos que frenaron (accion sin-stock). */
+    agotados() {
+      return agruparAgotados(leer().procesados ?? {});
     },
 
     /** Ultimos pedidos tratados, mas recientes primero. */

@@ -8,6 +8,7 @@ import { useEtiquetaTienda } from "../lib/tiendas";
 import { useInboxBot } from "../lib/botInbox";
 import { AnalisisPedido } from "./AnalisisPedido";
 import { IdPedidoLucidBot } from "./IdPedidoLucidBot";
+import { ProductosAgotados } from "./ProductosAgotados";
 import { ReglasEnvio, type ConfigEnvio, type ReglaProducto } from "./ReglasEnvio";
 import { SesionesSubida } from "./SesionesSubida";
 import { SheetProductos } from "./SheetProductos";
@@ -1491,6 +1492,8 @@ export function SubidaDropi() {
               ? `${config.procesados} pedido(s) tratados en total.`
               : "Todavía no ha tratado ningún pedido."}
           </p>
+
+          <ProductosAgotados />
 
           {ultimos.some((u) => REINTENTABLES.includes(u.accion)) ? (
             <div className="banner warn" style={{ marginTop: 4 }}>

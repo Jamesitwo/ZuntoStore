@@ -1814,6 +1814,31 @@ export function crearManejador({
       return;
     }
 
+    // ---- GET /api/subida/agotados ----
+    // Productos agotados en Dropi con sus pedidos frenados; si la foto del
+    // catalogo de anoche ya lo trae con stock, se avisa que repuso.
+    if (req.method === "GET" && ruta === "/api/subida/agotados") {
+      autorizar(req);
+      const lista = subida.agotados?.() ?? [];
+      let fecha = null;
+      let foto = null;
+      try {
+        fecha = catalogo?.dias?.().at(-1) ?? null;
+        foto = fecha ? await catalogo.dia(fecha) : null;
+      } catch {
+        foto = null;
+      }
+      json(res, 200, {
+        ok: true,
+        fotoCatalogo: fecha,
+        productos: lista.map((g) => {
+          const fila = foto && g.idDropi ? foto.get(Number(g.idDropi)) : null;
+          return { ...g, stockCatalogo: fila ? fila[0] : foto ? 0 : null };
+        }),
+      });
+      return;
+    }
+
     // ---- GET /api/subida/pedido/:id ----
     // Ultimo veredicto de la subida automatica para un pedido: resultado,
     // intentos, detalle y el analisis de la IA (si paso por ella).
