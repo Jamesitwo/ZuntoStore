@@ -169,6 +169,10 @@ function parsearDesdeElInicio(original) {
     .replace(/^([a-zA-Z.]+(?:\s+[a-zA-Z.]+)?)\s*(?:#|n[o°º]\.)\s*(\d{1,3}\s*[a-zA-Z]?)(?=\s+(?:casa|csa|cs)\b|\s*(?:#|n[o°º]\.?)\s*\d)/i, (todo, tipo, num) =>
       tipoViaCanonico(tipo) ? `${tipo} ${num}` : todo,
     )
+    // letra de la via pegada al cruce, sin "#": "Calle 11C9-33" = Calle 11C # 9-33
+    .replace(/^([a-zA-Z.]+(?:\s+[a-zA-Z.]+)?\s+\d{1,3})([a-zA-Z])(\d{1,3})(\s*[-–]\s*\d{1,3}\b)/i, (todo, via, letra, cruce, placa) =>
+      tipoViaCanonico(via.split(/\s+/)[0]) ? `${via}${letra} ${cruce}${placa}` : todo,
+    )
     // sin "#" y con punto en vez de guion: "Carrera 8 B 18.36" = Cra 8B # 18-36
     .replace(/^([a-zA-Z.]+(?:\s+[a-zA-Z.]+)?\s+\d{1,3}(?:\s?[a-zA-Z](?![a-zA-Z]))?(?:\s+(?:bis|sur|este|oeste|norte))?)\s+(\d{1,3}\s?[a-zA-Z]?)\s*\.\s*(\d{1,3})\b(?!\s*[.,]?\d)/i, (todo, via, cruce, placa) =>
       tipoViaCanonico(via.split(/\s+/)[0]) ? `${via} # ${cruce}-${placa}` : todo,

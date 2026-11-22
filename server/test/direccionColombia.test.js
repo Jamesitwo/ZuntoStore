@@ -474,3 +474,8 @@ test("«K» sola es Carrera: «K 34 Número 34 A 28» = Cra 34 # 34A-28", () => 
   assert.equal(validarDireccion("Calle 5 # 3-2 bloque K").normalizada, "Calle 5 # 3-2, Bloque K");
   assert.equal(validarDireccion("Mz K casa 5").ok, false);
 });
+
+test("letra de la vía pegada al cruce sin #: «Calle 11C9-33» = Calle 11C # 9-33", () => {
+  assert.equal(validarDireccion("Calle 11C9-33, 1er piso").normalizada, "Calle 11C # 9-33, 1er piso");
+  assert.equal(validarDireccion("Carrera 7b12-40").normalizada, "Cra 7B # 12-40");
+});
