@@ -467,3 +467,10 @@ test("«Krera», «Kerrera», «Crera»… también son Carrera", () => {
     assert.equal(validarDireccion(`${t} 27 A # 20-52, Mirador del Norte`).normalizada, "Cra 27A # 20-52, Mirador del Norte", t);
   }
 });
+
+test("«K» sola es Carrera: «K 34 Número 34 A 28» = Cra 34 # 34A-28", () => {
+  assert.equal(validarDireccion("K 34 Número 34 A 28").normalizada, "Cra 34 # 34A-28");
+  assert.equal(validarDireccion("K 34 # 34A-28").normalizada, "Cra 34 # 34A-28");
+  assert.equal(validarDireccion("Calle 5 # 3-2 bloque K").normalizada, "Calle 5 # 3-2, Bloque K");
+  assert.equal(validarDireccion("Mz K casa 5").ok, false);
+});

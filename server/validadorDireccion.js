@@ -76,6 +76,12 @@ export function candidatosNumeroPegado(direccion) {
     .replace(/(\d)\.\s+(?=(?:sur|este|oeste|norte|bis)\b)/gi, "$1 ")
     // "No. 1957" / "n 1957" / "Nro 1957" = "# 1957"
     .replace(/\s(?:n[o°º]\.?|nro\.?|n[uú]mero|num\.?|n)\s*(?=\d{3,4}\b)/i, " # ");
+  // letra del cruce separada y placa sin guion ("K 34 # 34 A 28" = "Cra 34 # 34A-28")
+  const sep = /^(.*?#\s*)(\d{1,3})\s+([a-z])\s+(\d{1,3})\b(?!\s*-)(.*)$/i.exec(t);
+  if (sep) {
+    const p = parsearDireccion(`${sep[1]}${sep[2]}${sep[3]}-${sep[4]}${sep[5]}`);
+    if (p) return [p.normalizada];
+  }
   // cruce antes del "#" y placa despues ("Krera 1 Bis 9 # 10" = "Cra 1 Bis # 9-10")
   const cp = /^(.*?\b\d{1,3}\s*[a-z]?(?:\s+bis)?(?:\s+[a-z]\b)?)\s+(\d{1,3}\s*[a-z]?)\s*#\s*(\d{1,3}[a-z]?)\b(?!\s*-)(.*)$/i.exec(t);
   if (cp) {
