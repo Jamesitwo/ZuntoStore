@@ -536,6 +536,24 @@ export function fechaFuturaEnTexto(t) {
   return null;
 }
 
+/** Dia (ms, UTC) de la marca de un mensaje ("2026-10-28 12:54pm" o ISO); null si no se entiende. */
+function diaDeMensaje(ts) {
+  const m = String(ts ?? "").match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  return m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+}
+
+/**
+ * Los mensajes de la compra actual: los de los ultimos `dias` dias contados
+ * desde el ultimo mensaje del chat. Sin fechas legibles, todos.
+ */
+export function mensajesRecientes(mensajes = [], dias = 3) {
+  const conDia = mensajes.map((m) => diaDeMensaje(m?.ts));
+  const ultimo = Math.max(...conDia.filter((d) => d !== null));
+  if (!Number.isFinite(ultimo)) return mensajes;
+  const desde = ultimo - dias * 86_400_000;
+  return mensajes.filter((m, i) => conDia[i] === null || conDia[i] >= desde);
+}
+
 /**
  * Otros pedidos recientes del mismo cliente, en texto para la IA.
  * otros: [{ idPedido, producto, Total, fecha, estado, subido }]
@@ -582,7 +600,9 @@ export async function ejecutarAgente({ resumen, mensajes, extraer, oficina = nul
       : {}),
     ...(hayOtros ? { otrosPedidos: textoOtrosPedidos(otrosPedidos) } : {}),
   });
-  const fechaSolicitadaEnChat = (Array.isArray(mensajes) ? mensajes : [])
+  // solo los mensajes de ESTA compra: un "para el 30" de hace semanas (otra
+  // conversacion que no termino en pedido) no programa este pedido
+  const fechaSolicitadaEnChat = mensajesRecientes(Array.isArray(mensajes) ? mensajes : [])
     .filter((m) => m?.de === "cliente")
     .map((m) => normalizarTexto(m?.texto))
     .map((t) => fechaFuturaEnTexto(t))

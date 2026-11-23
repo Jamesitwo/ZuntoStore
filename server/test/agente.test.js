@@ -495,3 +495,18 @@ test("entrega futura: 'para 4 personas' no es una fecha; 'para el 4' sí", async
   assert.equal(fechaFuturaEnTexto("me lo mandan para el viernes"), "para el viernes");
   assert.equal(fechaFuturaEnTexto("para 4 personas, y entregar el lunes"), "entregar el lunes");
 });
+
+test("entrega futura: un «para el 30» de una conversación vieja no programa la compra de hoy", async () => {
+  const { mensajesRecientes } = await import("../agente.js");
+  const msgs = [
+    { de: "cliente", ts: "2026-10-29 5:22am", texto: "lo pido ahorita que paguen para el 30" },
+    { de: "cliente", ts: "2026-11-5 11:06am", texto: "si me llega una plata la llamo" },
+    { de: "cliente", ts: "2026-11-22 2:45pm", texto: "me puede enviar uno" },
+    { de: "cliente", ts: "2026-11-22 2:54pm", texto: "Sí, la dirección y todo está bien." },
+  ];
+  assert.deepEqual(mensajesRecientes(msgs).map((m) => m.ts), ["2026-11-22 2:45pm", "2026-11-22 2:54pm"]);
+  // sin fechas legibles se usan todos
+  assert.equal(mensajesRecientes([{ texto: "a" }, { texto: "b" }]).length, 2);
+  // los de los ultimos 3 dias si cuentan
+  assert.equal(mensajesRecientes([{ ts: "2026-11-20 9:00am" }, { ts: "2026-11-22 9:00am" }]).length, 2);
+});
