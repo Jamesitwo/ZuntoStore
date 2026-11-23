@@ -2534,7 +2534,7 @@ export function crearManejador({
       const c = creador.para(usuario, {
         llm: { base: config.LLM_BASE, modelo: config.LLM_MODELO, apiKey: config.LLM_API_KEY },
       });
-      const m = ruta.match(/^\/api\/creador\/proyectos\/([a-z0-9_]+)(?:\/(planear|generar|campana|activar|creativos))?$/i);
+      const m = ruta.match(/^\/api\/creador\/proyectos\/([a-z0-9_]+)(?:\/(planear|generar|campana|activar|creativos|publicar))?$/i);
       const responder = async (fn) => {
         try {
           json(res, 200, { ok: true, ...(await fn()) });
@@ -2619,6 +2619,9 @@ export function crearManejador({
           }
           if (accion === "generar") return responder(async () => ({ proyecto: await c.generar(id, { ids: cuerpo?.ids ?? null }) }));
           if (accion === "campana") return responder(() => ({ proyecto: c.crearCampana(id) }));
+          if (accion === "publicar") {
+            return responder(async () => ({ proyecto: await c.publicarEnPagina(id, { cid: cuerpo?.cid, texto: cuerpo?.texto }) }));
+          }
           if (accion === "activar") {
             return responder(async () => ({ proyecto: await c.activar(id, { pausar: Boolean(cuerpo?.pausar) }) }));
           }

@@ -44,10 +44,10 @@ const actDe = (cuenta) => (String(cuenta).startsWith("act_") ? String(cuenta) : 
 export function crearMetaCampanas({ token, version = "v25.0", fetcher = globalThis.fetch } = {}) {
   if (!token) throw new Error("No hay token de Meta: conéctalo en Anuncios > Cuenta");
 
-  async function pedir(ruta, { method = "GET", params = {}, intentos = 2 } = {}) {
+  async function pedir(ruta, { method = "GET", params = {}, intentos = 2, tokenUsar = token } = {}) {
     const url = new URL(`https://graph.facebook.com/${version}/${ruta}`);
     const cuerpo = new URLSearchParams();
-    const todos = { ...params, access_token: token };
+    const todos = { ...params, access_token: tokenUsar };
     for (const [k, v] of Object.entries(todos)) {
       if (v === undefined || v === null) continue;
       const val = typeof v === "object" ? JSON.stringify(v) : String(v);
@@ -108,6 +108,48 @@ export function crearMetaCampanas({ token, version = "v25.0", fetcher = globalTh
     async paginas() {
       const r = await pedir("me/accounts", { params: { fields: "id,name", limit: 100 } });
       return (r?.data ?? []).map((p) => ({ id: String(p.id), nombre: p.name }));
+    },
+
+    /**
+     * Publicacion normal (organica) en la pagina de Facebook con una imagen o
+     * un video desde una URL publica. Usa el token de la pagina (el usuario
+     * debe administrarla; permisos pages_manage_posts y pages_read_engagement).
+     * -> { id, postId, enlace }
+     */
+    async publicarEnPagina(paginaId, { tipo, url, texto = "", titulo = "" }) {
+      let tokenPagina;
+      try {
+        tokenPagina = (await pedir(String(paginaId), { params: { fields: "access_token" } }))?.access_token;
+      } catch (e) {
+        throw new Error(`No se pudo entrar a la página de Facebook: ${e?.message ?? e}`);
+      }
+      if (!tokenPagina) {
+        throw new Error("Meta no dio acceso para publicar en esa página: el token necesita los permisos pages_manage_posts y pages_read_engagement, y tu usuario debe administrar la página");
+      }
+      try {
+        if (tipo === "video") {
+          const r = await pedir(`${paginaId}/videos`, {
+            method: "POST",
+            params: { file_url: url, description: texto, ...(titulo ? { title: titulo } : {}), published: true },
+            intentos: 1,
+            tokenUsar: tokenPagina,
+          });
+          if (!r?.id) throw new Error("Meta no devolvió el id del video");
+          return { id: String(r.id), postId: null, enlace: `https://www.facebook.com/${paginaId}/videos/${r.id}` };
+        }
+        const r = await pedir(`${paginaId}/photos`, {
+          method: "POST",
+          params: { url, caption: texto, published: true },
+          intentos: 1,
+          tokenUsar: tokenPagina,
+        });
+        if (!r?.id) throw new Error("Meta no devolvió el id de la foto");
+        const postId = r.post_id ? String(r.post_id) : null;
+        return { id: String(r.id), postId, enlace: postId ? `https://www.facebook.com/${postId}` : `https://www.facebook.com/photo/?fbid=${r.id}` };
+      } catch (e) {
+        const msg = e?.message ?? String(e);
+        throw new Error(/permission|permiso|\(#200\)|código 200/i.test(msg) ? `${msg}. Para publicar en la página el token necesita pages_manage_posts.` : msg);
+      }
     },
 
     /** Claves de Meta de las exclusiones geograficas (regiones y ciudades de Colombia). */

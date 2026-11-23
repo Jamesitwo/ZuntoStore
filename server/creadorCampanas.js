@@ -1410,6 +1410,25 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
         return p;
       },
 
+      /**
+       * Publicacion normal en la pagina de Facebook con un creativo listo
+       * (imagen o video). texto: el del post (por defecto, el copy).
+       */
+      async publicarEnPagina(id, { cid, texto } = {}) {
+        const p = proyecto(id);
+        const c = p.creativos.find((x) => x.id === cid);
+        if (!c) throw new Error("No encontré ese creativo");
+        if (c.estado !== "listo" || !c.resultado?.url) throw new Error("Ese creativo todavía no está listo");
+        const a = leerAjustes(slug);
+        const paginaId = p.meta?.paginaId || a.paginaId;
+        if (!paginaId) throw new Error("Elige la página de Facebook del proyecto");
+        const { meta } = metaDe(usuario);
+        const cuerpo = String(texto ?? c.copy?.texto ?? "").trim().slice(0, 5000);
+        const r = await meta.publicarEnPagina(paginaId, { tipo: c.tipo, url: c.resultado.url, texto: cuerpo, titulo: c.copy?.titulo ?? "" });
+        p.publicaciones = [...(p.publicaciones ?? []), { creativo: c.id, tipo: c.tipo, angulo: c.angulo ?? "", paginaId, ...r, en: ahora() }];
+        return guardarP(slug, p);
+      },
+
       /** Enciende (o pausa) campana, conjunto y anuncios. */
       async activar(id, { pausar = false } = {}) {
         const p = proyecto(id);

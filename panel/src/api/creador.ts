@@ -83,6 +83,8 @@ export interface Proyecto {
   ia?: string;
   errorPlan?: string;
   ocupado?: boolean;
+  /** publicaciones normales en la pagina de Facebook */
+  publicaciones?: Array<{ creativo: string; tipo: string; angulo: string; enlace: string; en: string }>;
   campana: null | {
     estado: "creando" | "creada" | "activa" | "error";
     pasos: PasoCampana[];
@@ -185,6 +187,8 @@ export const creador = {
     backend<{ ok: boolean; proyecto: Proyecto }>(`${P}/proyectos/${id}/generar`, { method: "POST", body: ids ? { ids } : {} }),
   crearCampana: (id: string) =>
     backend<{ ok: boolean; proyecto: Proyecto }>(`${P}/proyectos/${id}/campana`, { method: "POST", body: {} }),
+  publicar: (id: string, cid: string, texto: string) =>
+    backend<{ ok: boolean; proyecto: Proyecto }>(`${P}/proyectos/${id}/publicar`, { method: "POST", body: { cid, texto } }),
   activar: (id: string, pausar = false) =>
     backend<{ ok: boolean; proyecto: Proyecto }>(`${P}/proyectos/${id}/activar`, { method: "POST", body: { pausar } }),
   borrar: (id: string) => backend<{ ok: boolean }>(`${P}/proyectos/${id}`, { method: "DELETE" }),

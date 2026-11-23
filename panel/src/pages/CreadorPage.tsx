@@ -1048,6 +1048,8 @@ function DetalleProyecto({ id }: { id: string }) {
   const [editando, setEditando] = useState<Creativo | null>(null);
   // creativo que la IA va a escribir: nuevo (tipo) o uno existente (cid)
   const [idear, setIdear] = useState<{ tipo: "imagen" | "video"; cid?: string; nombre?: string; indicacion: string } | null>(null);
+  // publicacion normal en la pagina de Facebook
+  const [publicar, setPublicar] = useState<{ c: Creativo; texto: string } | null>(null);
   const [descargando, setDescargando] = useState<string | null>(null);
   const { session } = useAuth();
   const preguntar = useConfirmar();
@@ -1365,6 +1367,8 @@ function DetalleProyecto({ id }: { id: string }) {
                 onCopiar={copiar}
                 descargando={descargando === c.id}
                 onDescargar={() => void descargar(`/api/creador/proyectos/${id}/descargar?c=${encodeURIComponent(c.id)}`, c.id)}
+                publicaciones={(p.publicaciones ?? []).filter((x) => x.creativo === c.id)}
+                onPublicar={() => setPublicar({ c, texto: c.copy.texto })}
               />
             ))}
           </div>
@@ -1384,6 +1388,44 @@ function DetalleProyecto({ id }: { id: string }) {
               </button>
             </div>
           ) : null}
+          <Modal
+            open={Boolean(publicar)}
+            title={`Publicar en la página de Facebook`}
+            onClose={() => setPublicar(null)}
+            footer={
+              <>
+                <button type="button" className="btn ghost" onClick={() => setPublicar(null)}>
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={!publicar?.texto.trim() || trabajando === "publicar"}
+                  onClick={() => {
+                    const d = publicar;
+                    setPublicar(null);
+                    if (d) void accion("publicar", () => creador.publicar(id, d.c.id, d.texto), "Publicado en la página de Facebook");
+                  }}
+                >
+                  📣 Publicar ahora
+                </button>
+              </>
+            }
+          >
+            <p className="muted small">
+              Se publica de inmediato como una publicación normal (no es un anuncio) en la página del proyecto, con{" "}
+              {publicar?.c.tipo === "video" ? "este video" : "esta imagen"}: «{publicar?.c.angulo}». Revisa el texto antes de publicar.
+            </p>
+            <Campo id="pub-texto" label="Texto de la publicación">
+              <textarea
+                id="pub-texto"
+                rows={8}
+                value={publicar?.texto ?? ""}
+                onChange={(e) => setPublicar((x) => (x ? { ...x, texto: e.target.value } : x))}
+              />
+            </Campo>
+          </Modal>
+
           <Modal
             open={Boolean(idear)}
             title={idear?.cid ? `Reescribir «${idear.nombre ?? ""}» con IA` : `Nuevo ${idear?.tipo === "video" ? "video" : "imagen"} con IA`}
@@ -1845,7 +1887,11 @@ function TarjetaCreativo({
   onCopiar,
   onDescargar,
   descargando,
+  publicaciones = [],
+  onPublicar,
 }: {
+  publicaciones?: Array<{ enlace: string; en: string }>;
+  onPublicar: () => void;
   onIdear: () => void;
   onDescargar: () => void;
   descargando: boolean;
@@ -1929,7 +1975,22 @@ function TarjetaCreativo({
             {descargando ? "Bajando…" : "⬇ Descargar"}
           </button>
         ) : null}
+        {c.estado === "listo" && c.resultado?.url ? (
+          <button type="button" className="btn ghost sm" onClick={onPublicar} title="Publicación normal en la página de Facebook (no es anuncio)">
+            📣 Publicar en la página
+          </button>
+        ) : null}
       </div>
+      {publicaciones.length ? (
+        <p className="small" style={{ margin: "2px 0 6px" }}>
+          ✅ Publicado en la página:{" "}
+          {publicaciones.map((x, i) => (
+            <a key={i} href={x.enlace} target="_blank" rel="noreferrer" style={{ marginRight: 8 }}>
+              ver publicación{publicaciones.length > 1 ? ` ${i + 1}` : ""}
+            </a>
+          ))}
+        </p>
+      ) : null}
       <textarea
         aria-label={`Texto principal de ${c.angulo}`}
         rows={6}
