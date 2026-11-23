@@ -244,7 +244,7 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
   const [fotos, setFotos] = useState<string[]>([]);
   const [imagenes, setImagenes] = useState(4);
   const [videos, setVideos] = useState(3);
-  const [conPersonaje, setConPersonaje] = useState(Boolean(ajustes.fotoModelo));
+  const [conPersonaje, setConPersonaje] = useState(true);
   const [creatividad, setCreatividad] = useState<Creatividad>("equilibrada");
   const [textosVideo, setTextosVideo] = useState(false);
   const [modeloVideo, setModeloVideo] = useState("");
@@ -280,6 +280,8 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
   } | null>(null);
   const [creandoLucid, setCreandoLucid] = useState(false);
   const [tiendaLucid, setTiendaLucid] = useState<TiendaBot>("zunto");
+  // cada tienda tiene su modelo
+  const fotoModeloTienda = tiendaLucid === "nueva" ? ajustes.fotoModeloSegunda ?? "" : ajustes.fotoModelo;
   /** Crea en LucidSales el producto que se trajo de Dropi y lo deja elegido. */
   const crearEnLucid = async () => {
     setCreandoLucid(true);
@@ -405,7 +407,7 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
         fotos,
         imagenes,
         videos,
-        conPersonaje,
+        conPersonaje: conPersonaje && Boolean(fotoModeloTienda),
         creatividad,
         textosVideo,
         modeloVideo,
@@ -569,8 +571,9 @@ function NuevoProyecto({ ajustes }: { ajustes: AjustesCreador }) {
         </Campo>
       ) : null}
       <label className="check-linea">
-        <input type="checkbox" checked={conPersonaje} disabled={!ajustes.fotoModelo} onChange={(e) => setConPersonaje(e.target.checked)} />
-        Videos con la modelo {ajustes.fotoModelo ? "" : "(sube su foto en Ajustes)"}
+        <input type="checkbox" checked={conPersonaje && Boolean(fotoModeloTienda)} disabled={!fotoModeloTienda} onChange={(e) => setConPersonaje(e.target.checked)} />
+        Videos con la modelo{tiendaLucid === "nueva" ? ` de ${ajustes.marcaSegunda || ajustes.marcaSegundaDefecto}` : ""}{" "}
+        {fotoModeloTienda ? "" : "(sube su foto en Ajustes del Creador)"}
       </label>
       {videos > 0 ? (
         <Campo id="np-modelo-video" label="Modelo de IA para los videos">
@@ -649,6 +652,7 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
   const [presupuesto, setPresupuesto] = useState(String(ajustes.presupuesto));
   const [marca, setMarca] = useState(ajustes.marca);
   const [fotoModelo, setFotoModelo] = useState(ajustes.fotoModelo);
+  const [fotoModeloSegunda, setFotoModeloSegunda] = useState(ajustes.fotoModeloSegunda ?? "");
   const [contraEntrega, setContraEntrega] = useState(ajustes.contraEntrega);
   const [modeloVideoDef, setModeloVideoDef] = useState(ajustes.modelos.video);
   const [marcaSegunda, setMarcaSegunda] = useState(ajustes.marcaSegunda ?? "");
@@ -681,6 +685,7 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
         presupuesto: Number(presupuesto),
         marca,
         fotoModelo,
+        fotoModeloSegunda,
         contraEntrega,
         modeloVideo: modeloVideoDef,
         marcaSegunda,
@@ -1012,12 +1017,31 @@ function AjustesPanel({ ajustes, onCambio }: { ajustes: AjustesCreador; onCambio
 
       <div className="card">
         <h3 className="card-title">Modelo de los videos</h3>
-        <p className="muted small">Foto de frente de la persona que presenta los productos en los videos (opcional).</p>
+        <p className="muted small">Foto de frente de la persona que presenta los productos en los videos (opcional). Cada tienda usa la suya.</p>
+        <p className="small" style={{ margin: "6px 0 4px" }}>
+          <strong>Zunto</strong>
+        </p>
         <div className="row gap creador-modelo">
           {fotoModelo ? <img src={fotoModelo} alt="Modelo" /> : <div className="creador-modelo-vacia">Sin foto</div>}
           <SubirMedia texto={fotoModelo ? "Cambiar foto" : "⬆ Subir foto"} multiple={false} onSubido={(u) => u[0] && setFotoModelo(u[0])} />
           {fotoModelo ? (
             <button type="button" className="btn ghost" onClick={() => setFotoModelo("")}>
+              Quitar
+            </button>
+          ) : null}
+        </div>
+        <p className="small" style={{ margin: "12px 0 4px" }}>
+          <strong>{ajustes.marcaSegunda || ajustes.marcaSegundaDefecto}</strong> (segunda tienda)
+        </p>
+        <div className="row gap creador-modelo">
+          {fotoModeloSegunda ? <img src={fotoModeloSegunda} alt="Modelo de la segunda tienda" /> : <div className="creador-modelo-vacia">Sin foto</div>}
+          <SubirMedia
+            texto={fotoModeloSegunda ? "Cambiar foto" : "⬆ Subir foto"}
+            multiple={false}
+            onSubido={(u) => u[0] && setFotoModeloSegunda(u[0])}
+          />
+          {fotoModeloSegunda ? (
+            <button type="button" className="btn ghost" onClick={() => setFotoModeloSegunda("")}>
               Quitar
             </button>
           ) : null}

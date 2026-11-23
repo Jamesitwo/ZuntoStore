@@ -418,3 +418,11 @@ test("las declaraciones de la etiqueta van en el mensaje a la IA", async () => {
   assert.doesNotMatch(promptUsuario(base), /Declaraciones de la etiqueta/);
   assert.match(promptUsuario({ ...base, declaraciones: "El magnesio contribuye al funcionamiento normal de los músculos." }), /Declaraciones de la etiqueta \(aprobadas/);
 });
+
+test("cada tienda usa su modelo en los videos", async () => {
+  const { modeloDe } = await import("../creadorCampanas.js");
+  const a = { fotoModelo: "https://x/zunto.jpg", fotoModeloSegunda: "https://x/diauno.jpg" };
+  assert.equal(modeloDe(a, { tienda: "zunto" }), "https://x/zunto.jpg");
+  assert.equal(modeloDe(a, { tienda: "nueva" }), "https://x/diauno.jpg");
+  assert.equal(modeloDe({ fotoModelo: "z" }, { tienda: "nueva" }), "", "Día Uno sin modelo propia no usa la de Zunto");
+});

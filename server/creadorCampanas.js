@@ -27,6 +27,11 @@ const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 export const COSTO_CREDITOS = { imagen: 0.2, video: 6.7 };
 export const PRESUPUESTO_DEFECTO = 25000;
 
+/** Foto de la modelo segun la tienda del proyecto (cada tienda tiene la suya). */
+export function modeloDe(a = {}, p = {}) {
+  return (p.tienda === "nueva" ? a.fotoModeloSegunda : a.fotoModelo) || "";
+}
+
 /** Marca y rubro de los creativos segun la tienda del proyecto. */
 export function marcaDe(a = {}, p = {}) {
   return p.tienda === "nueva"
@@ -691,7 +696,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
   async function referencias(slug, p, tv, conPersonaje) {
     p.referencias = p.referencias ?? {};
     const urls = [...p.fotos];
-    const modelo = conPersonaje ? leerAjustes(slug).fotoModelo : null;
+    const modelo = conPersonaje ? modeloDe(leerAjustes(slug), p) : null;
     if (modelo) urls.push(modelo);
     const ids = [];
     for (const u of urls) {
@@ -956,6 +961,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
           paginaNombre: a.paginaNombre ?? "",
           presupuesto: Number(a.presupuesto) || PRESUPUESTO_DEFECTO,
           fotoModelo: a.fotoModelo ?? "",
+          fotoModeloSegunda: a.fotoModeloSegunda ?? "",
           marca: a.marca || "ZUNTO",
           contraEntrega: Boolean(a.contraEntrega),
           meta: { conectada: Boolean(c?.token), cuentas: c?.cuentas ?? [] },
@@ -989,7 +995,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
           mcps.delete(slug);
         }
         if (cambios.topviewModo === "api" || cambios.topviewModo === "cuenta") a.topviewModo = cambios.topviewModo;
-        for (const k of ["cuentaId", "paginaId", "paginaNombre", "fotoModelo", "marca"]) {
+        for (const k of ["cuentaId", "paginaId", "paginaNombre", "fotoModelo", "fotoModeloSegunda", "marca"]) {
           if (typeof cambios[k] === "string") a[k] = cambios[k].trim().slice(0, 500);
         }
         if (cambios.presupuesto !== undefined) {
@@ -1112,7 +1118,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
             precioSugerido: Number(pr.precioSugerido) > 0 ? Math.round(Number(pr.precioSugerido)) : null,
           },
           fotos,
-          conPersonaje: datos.conPersonaje !== false && Boolean(a.fotoModelo),
+          conPersonaje: datos.conPersonaje !== false && Boolean(modeloDe(a, { tienda: datos.tienda })),
           cantidades: {
             imagenes: Math.max(0, Math.min(MAX_IMAGENES, Number(datos.imagenes ?? 4) || 0)),
             videos: Math.max(0, Math.min(MAX_VIDEOS, Number(datos.videos ?? 3) || 0)),
@@ -1154,7 +1160,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
         ocupados.add(clave);
         void (async () => {
           try {
-            const conPersonaje = p.conPersonaje && Boolean(a.fotoModelo);
+            const conPersonaje = p.conPersonaje && Boolean(modeloDe(a, p));
             const sistema = promptSistema({
               ...marcaDe(a, p),
               contraEntrega: Boolean(a.contraEntrega),
@@ -1169,7 +1175,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
                   fetcher,
                   sistema,
                   usuario: usuarioIA,
-                  fotos: [...p.fotos, ...(conPersonaje ? [a.fotoModelo] : [])],
+                  fotos: [...p.fotos, ...(conPersonaje ? [modeloDe(a, p)] : [])],
                 })
               : await pedirPlanIA({ ...llm, fetcher, sistema, usuario: usuarioIA });
             const plan = normalizarPlan(crudo, p.cantidades);
@@ -1222,7 +1228,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
         const pista = txt(indicacion, 500);
         void (async () => {
           try {
-            const conPersonaje = p.conPersonaje && Boolean(a.fotoModelo);
+            const conPersonaje = p.conPersonaje && Boolean(modeloDe(a, p));
             const sistema = promptSistema({
               ...marcaDe(a, p),
               contraEntrega: Boolean(a.contraEntrega),
@@ -1248,7 +1254,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
                   fetcher,
                   sistema,
                   usuario: usuarioIA,
-                  fotos: [...p.fotos, ...(conPersonaje ? [a.fotoModelo] : [])],
+                  fotos: [...p.fotos, ...(conPersonaje ? [modeloDe(a, p)] : [])],
                 })
               : await pedirPlanIA({ ...llm, fetcher, sistema, usuario: usuarioIA });
             const lista = Array.isArray(crudo?.creativos) ? crudo.creativos : [];

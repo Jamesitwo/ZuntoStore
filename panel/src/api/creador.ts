@@ -122,6 +122,8 @@ export interface AjustesCreador {
   paginaNombre: string;
   presupuesto: number;
   fotoModelo: string;
+  /** modelo de la segunda tienda (Día Uno) */
+  fotoModeloSegunda?: string;
   marca: string;
   contraEntrega: boolean;
   meta: { conectada: boolean; cuentas: Array<{ id: string; nombre: string; moneda: string; activa: boolean }> };
