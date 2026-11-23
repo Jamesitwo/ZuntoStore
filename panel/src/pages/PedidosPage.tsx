@@ -21,6 +21,7 @@ import { AvisoEntregas, ChipEntrega, claseProgramado, useProgramados } from "../
 import { useEtiquetaTienda } from "../lib/tiendas";
 import { useInboxBot } from "../lib/botInbox";
 import { useEtiquetas } from "../lib/etiquetas";
+import { useTiendaDePedido } from "../lib/tiendaPedido";
 import {
   ChipsDeEtiquetas,
   GestorEtiquetas,
@@ -159,6 +160,9 @@ export function PedidosPage() {
 
   // Etiquetas (funcion propia, local): filtro + modales
   const [filtroEtiqueta, setFiltroEtiqueta] = useState("");
+  // ventas de Zunto o de la segunda tienda (Día Uno), por los productos
+  const tiendaPedido = useTiendaDePedido();
+  const [filtroTiendaBot, setFiltroTiendaBot] = useState<"" | "zunto" | "nueva">("");
   const [gestorAbierto, setGestorAbierto] = useState(false);
   const [pickerPara, setPickerPara] = useState<{
     id: string | number;
@@ -405,6 +409,9 @@ export function PedidosPage() {
         return Number.isNaN(t) || (t >= ini && t <= fin);
       });
     }
+    if (filtroTiendaBot && tiendaPedido.segunda) {
+      out = out.filter((p) => tiendaPedido.tiendaDe(p.producto) === filtroTiendaBot);
+    }
     if (filtroAsign) {
       out = out.filter((p) => {
         const a = asig[String(p.id ?? p.idPedido)];
@@ -415,7 +422,7 @@ export function PedidosPage() {
       });
     }
     return out;
-  }, [rows, filtroEtiqueta, et, filtroAsign, asig, miCorreo, filtros.desde, filtros.hasta]);
+  }, [rows, filtroEtiqueta, et, filtroAsign, asig, miCorreo, filtros.desde, filtros.hasta, filtroTiendaBot, tiendaPedido]);
 
   /** Texto del filtro de asignacion para avisos ("asignados a Ana", ...). */
   const etiquetaFiltroAsign =
@@ -759,6 +766,16 @@ export function PedidosPage() {
             onChange={(e) => setSearchInput(e.target.value)}
           />
         </div>
+        {tiendaPedido.segunda ? (
+          <div className="field">
+            <label htmlFor="tienda-bot">Tienda</label>
+            <select id="tienda-bot" value={filtroTiendaBot} onChange={(e) => setFiltroTiendaBot(e.target.value as "" | "zunto" | "nueva")}>
+              <option value="">Todas</option>
+              <option value="zunto">Zunto</option>
+              <option value="nueva">{tiendaPedido.segunda}</option>
+            </select>
+          </div>
+        ) : null}
         <div className="field">
           <label htmlFor="orden">Orden fecha</label>
           <select
@@ -1102,7 +1119,7 @@ export function PedidosPage() {
                     const mias = et.etiquetasDe(p.id ?? p.idPedido);
                     const asignado = asig[String(p.id ?? p.idPedido)];
                     return (
-                      <tr key={p.id ?? p.idPedido} className={`fila-estado ${claseEstado(p.EstadoPedido ?? 0)}${claseProgramado(programados.porId[String(p.id ?? p.idPedido)])}${marcados.has(String(p.id ?? p.idPedido)) ? " fila-marcada" : ""}`}>
+                      <tr key={p.id ?? p.idPedido} className={`fila-estado ${claseEstado(p.EstadoPedido ?? 0)}${claseProgramado(programados.porId[String(p.id ?? p.idPedido)])}${marcados.has(String(p.id ?? p.idPedido)) ? " fila-marcada" : ""}${tiendaPedido.segunda && tiendaPedido.tiendaDe(p.producto) === "nueva" ? " fila-tienda-nueva" : ""}`}>
                         <td className="col-marca">
                           <input
                             type="checkbox"
@@ -1132,6 +1149,11 @@ export function PedidosPage() {
                           ) : null}
                         </td>
                         <td className="wrap prod-celda" title={p.producto || ""}>
+                          {tiendaPedido.segunda && tiendaPedido.tiendaDe(p.producto) === "nueva" ? (
+                            <span className="chip-tienda-nueva" title={`Venta de ${tiendaPedido.segunda}`}>
+                              {tiendaPedido.segunda}
+                            </span>
+                          ) : null}
                           {p.producto || "—"}
                         </td>
                         <td className="hide-sm">
