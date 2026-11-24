@@ -479,3 +479,9 @@ test("letra de la vía pegada al cruce sin #: «Calle 11C9-33» = Calle 11C # 9-
   assert.equal(validarDireccion("Calle 11C9-33, 1er piso").normalizada, "Calle 11C # 9-33, 1er piso");
   assert.equal(validarDireccion("Carrera 7b12-40").normalizada, "Cra 7B # 12-40");
 });
+
+test("punto después de la vía: «Cra 29A. 36DSur-11» = Cra 29A # 36D Sur-11", () => {
+  assert.equal(validarDireccion("Cra 29A. 36DSur-11 apto 1210 ciudadela San Gabriel").normalizada, "Cra 29A # 36D Sur-11, Apto 1210 ciudadela San Gabriel");
+  assert.equal(validarDireccion("Cra 29A. # 36D-11").normalizada, "Cra 29A # 36D-11");
+  assert.equal(validarDireccion("Calle 4. Sur #.1193").ok, false);
+});
