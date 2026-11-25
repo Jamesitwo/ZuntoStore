@@ -538,6 +538,32 @@ test("formulario nuevo: departamento y ciudad en el selector con shadow DOM", as
   }
 });
 
+test("un aviso de Dropi encima del formulario se cierra (sin tocar descartar)", async (t) => {
+  if (motivoSalto) return t.skip(motivoSalto);
+  const html = `<!doctype html><html><body>
+    <button id="atras" onclick="window.clic='atras'">Botón del formulario</button>
+    <div class="cdk-overlay-container">
+      <div class="dropi-modal__mask" style="position:fixed;inset:0;background:rgba(0,0,0,.4)"></div>
+      <div id="m" style="position:fixed;top:40px;left:40px;background:#fff;padding:20px">
+        Historial del comprador: 2 pedidos anteriores
+        <button data-cy="order-create-discard-alert-confirm-field" onclick="window.descartado=true">Descartar</button>
+        <button onclick="document.querySelector('.cdk-overlay-container').innerHTML=''">Entendido</button>
+      </div>
+    </div></body></html>`;
+  const p = await pagina(html);
+  try {
+    // el Escape no lo cierra: tiene que dar con "Entendido" y no con "Descartar"
+    const vistos = await nav.cerrarModalesDropi(p);
+    assert.match(vistos.join(" "), /Historial del comprador/);
+    assert.equal(await p.evaluate(() => Boolean(window.descartado)), false);
+    await p.locator("#atras").click({ timeout: 2000 });
+    assert.equal(await p.evaluate(() => window.clic), "atras");
+    assert.deepEqual(await nav.cerrarModalesDropi(p), []);
+  } finally {
+    await p.close();
+  }
+});
+
 test("formulario nuevo: tienda en el selector con shadow DOM", async (t) => {
   if (motivoSalto) return t.skip(motivoSalto);
   const p = await pagina(paginaSelectLib({ "order-create-client-store": ["Zunto Store", "Dia Uno"] }));

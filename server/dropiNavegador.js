@@ -690,6 +690,74 @@ export function crearDropiNavegador(config = {}) {
    *   2) un p-dropdown con data-cy de shop/store/tienda, o cuyo texto sea "Tienda"
    * Solo se da por buena si al final el campo MUESTRA la tienda pedida.
    */
+  /**
+   * Cierra los avisos de Dropi que tapan el formulario (un modal con
+   * .dropi-modal__mask encima: historial del comprador, "sin centros de
+   * servicio", novedades...). Nunca toca los de descartar o crear la orden.
+   * -> [textos de los avisos que habia] ([] si no habia ninguno)
+   */
+  async function cerrarModalesDropi(p, { intentos = 3 } = {}) {
+    const vistos = [];
+    const mascara = p.locator(".cdk-overlay-container .dropi-modal__mask");
+    for (let i = 0; i < intentos; i++) {
+      if (!(await mascara.first().isVisible().catch(() => false))) break;
+      const texto = await p
+        .evaluate(() => {
+          const cont = document.querySelector(".cdk-overlay-container");
+          if (!cont) return "";
+          const t = [];
+          const leer = (r) => {
+            t.push(r.textContent ?? "");
+            for (const e of r.querySelectorAll("*")) if (e.shadowRoot) leer(e.shadowRoot);
+          };
+          leer(cont);
+          return t.join(" ").replace(/\s+/g, " ").trim().slice(0, 200);
+        })
+        .catch(() => "");
+      if (texto && !vistos.includes(texto)) vistos.push(texto);
+      // 1) Escape
+      await p.keyboard.press("Escape").catch(() => {});
+      await p.waitForTimeout(400);
+      if (!(await mascara.first().isVisible().catch(() => false))) break;
+      // 2) boton de cerrar del aviso (nunca descartar/confirmar la orden)
+      const botones = p.locator(".cdk-overlay-container button, .cdk-overlay-container [role='button'], .cdk-overlay-container dropi-icon-lib");
+      const n = Math.min(await botones.count().catch(() => 0), 30);
+      let cerrado = false;
+      for (let k = 0; k < n && !cerrado; k++) {
+        const b = botones.nth(k);
+        if (!(await b.isVisible().catch(() => false))) continue;
+        const info = await b
+          .evaluate((el) => {
+            const host = el.getRootNode()?.host;
+            const cy = [el.getAttribute("data-cy"), host?.getAttribute?.("data-cy"), el.closest?.("[data-cy]")?.getAttribute("data-cy")].filter(Boolean).join(" ");
+            return {
+              cy,
+              txt: (el.textContent ?? "").replace(/\s+/g, " ").trim().toLowerCase(),
+              aria: (el.getAttribute("aria-label") ?? "").toLowerCase(),
+              cls: String(el.className ?? "").toLowerCase(),
+              icono: el.tagName.toLowerCase() === "dropi-icon-lib" ? String(el.getAttribute("name") ?? el.getAttribute("icon") ?? "").toLowerCase() : "",
+            };
+          })
+          .catch(() => null);
+        if (!info) continue;
+        if (/discard|footer-alert|footer-create|create-order/.test(info.cy) || /descartar|eliminar|borrar|confirmar|crear|enviar/.test(info.txt)) continue;
+        const esCerrar =
+          /close|cerrar|cancel-icon|\bx\b/.test(`${info.aria} ${info.cls} ${info.icono}`) ||
+          /^(cerrar|entendido|ok|aceptar|omitir|ahora no|no,? gracias|continuar|volver|x|×)$/.test(info.txt);
+        if (!esCerrar) continue;
+        await b.click({ timeout: 3000 }).catch(() => {});
+        await p.waitForTimeout(500);
+        cerrado = !(await mascara.first().isVisible().catch(() => false));
+      }
+      if (cerrado) break;
+      // 3) clic en la mascara (cierra los que se cierran por fuera)
+      await mascara.first().click({ position: { x: 5, y: 5 }, timeout: 2000 }).catch(() => {});
+      await p.waitForTimeout(400);
+    }
+    if (vistos.length) console.log("[dropi] avisos de Dropi encima del formulario:", vistos.join(" || "));
+    return vistos;
+  }
+
   async function seleccionarTienda(p, nombre) {
     const objetivo = normalizarTexto(nombre);
     const dlg = p.locator('[data-cy="create-order"]').first();
@@ -1637,6 +1705,9 @@ export function crearDropiNavegador(config = {}) {
     },
 
     /** Elige la tienda en un formulario Crear Orden ya abierto (se usa en pruebas). */
+    cerrarModalesDropi(p) {
+      return cerrarModalesDropi(p);
+    },
     seleccionarTienda(p, nombre) {
       return seleccionarTienda(p, nombre);
     },
@@ -1977,7 +2048,17 @@ export function crearDropiNavegador(config = {}) {
       await p.waitForTimeout(600);
 
       // 4.2) tienda en Dropi (la configurada para la tienda de LucidSales)
-      const tiendaSel = await seleccionarTienda(p, tienda);
+      // (al escribir el telefono Dropi puede abrir un aviso encima: se cierra)
+      const avisosDropi = await cerrarModalesDropi(p);
+      let tiendaSel;
+      try {
+        tiendaSel = await seleccionarTienda(p, tienda);
+      } catch (e) {
+        // un aviso de Dropi aparecio justo encima: se cierra y se intenta otra vez
+        if (!/intercepts pointer events/i.test(String(e?.message ?? e))) throw e;
+        avisosDropi.push(...(await cerrarModalesDropi(p)));
+        tiendaSel = await seleccionarTienda(p, tienda);
+      }
       if (!tiendaSel.ok) {
         return {
           ok: false,
@@ -1985,7 +2066,8 @@ export function crearDropiNavegador(config = {}) {
           detalle:
             `No se envió a Dropi: no se pudo seleccionar la tienda "${tienda}" (${tiendaSel.paso})` +
             (tiendaSel.opciones?.length ? `. Opciones vistas: ${tiendaSel.opciones.join(" | ")}` : "") +
-            (tiendaSel.diagnostico ? `. Formulario: ${JSON.stringify(tiendaSel.diagnostico)}` : ""),
+            (tiendaSel.diagnostico ? `. Formulario: ${JSON.stringify(tiendaSel.diagnostico)}` : "") +
+            (avisosDropi.length ? `. Dropi mostró un aviso encima: "${avisosDropi.join(" | ")}"` : ""),
         };
       }
 
@@ -2029,6 +2111,7 @@ export function crearDropiNavegador(config = {}) {
           .catch(() => {});
       }
 
+      await cerrarModalesDropi(p);
       // 5) departamento por NOMBRE (autocomplete)
       const ubicacion = {
         departamento: datos.departamento
@@ -2087,6 +2170,7 @@ export function crearDropiNavegador(config = {}) {
       // la direccion sigue escrita? (Dropi la borra a veces al cambiar la ciudad)
       if (await asegurarDireccion(p, direccionEscrita)) console.log("[dropi] la dirección se había borrado al elegir la ciudad: se volvió a escribir");
 
+      await cerrarModalesDropi(p);
       // 6) transportadora: la primera de la lista que este disponible y cuyo
       //    envio no pase el tope (hay que esperar a que Dropi cotice)
       const selCarrier = await elegirTransportadora(p, candidatas, {
