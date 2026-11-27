@@ -310,10 +310,10 @@ const SIN_NOMENCLATURA = /\b(vereda|finca|corregimiento|km|kilometro|sector rura
 const CONJUNTO = /\b(conjunto|conj|urbanizacion|urb|villas?|condominio|residencial|residencias|ciudadela|parcelacion|agrupacion|multifamiliar|unidad|etapa|portal|reserva|altos|jardines)\b/;
 const ID = String.raw`(\d{1,4}[a-z]?|[a-z]{1,2}\d{0,2})`;
 const PARTES_MZ = {
-  supermanzana: new RegExp(String.raw`\b(?:supermanzana|super manzana|supermz|smz|sm)\.?\s*(?:n[o°º]\.?\s*)?` + ID + String.raw`\b`),
-  manzana: new RegExp(String.raw`\b(?:manzana|manz|mza|mz)\.?\s*(?:n[o°º]\.?\s*)?` + ID + String.raw`\b`),
-  casa: new RegExp(String.raw`\b(?:casa|csa|cs)\.?\s*(?:n[o°º]\.?\s*)?` + ID + String.raw`\b`),
-  lote: new RegExp(String.raw`\b(?:lote|lte|lt)\.?\s*(?:n[o°º]\.?\s*)?` + ID + String.raw`\b`),
+  supermanzana: new RegExp(String.raw`\b(?:supermanzana|super manzana|supermz|smz|sm)\.?\s*(?:(?:n[o°º]\.?|#)\s*)?` + ID + String.raw`\b`),
+  manzana: new RegExp(String.raw`\b(?:manzana|manz|mza|mz)\.?\s*(?:(?:n[o°º]\.?|#)\s*)?` + ID + String.raw`\b`),
+  casa: new RegExp(String.raw`\b(?:casa|csa|cs)\.?\s*(?:(?:n[o°º]\.?|#)\s*)?` + ID + String.raw`\b`),
+  lote: new RegExp(String.raw`\b(?:lote|lte|lt)\.?\s*(?:(?:n[o°º]\.?|#)\s*)?` + ID + String.raw`\b`),
 };
 const ETIQUETA_MZ = { supermanzana: "Smz", manzana: "Mz", casa: "Cs", lote: "Lt" };
 
@@ -365,6 +365,9 @@ export function numerosEnLetras(texto) {
   });
 }
 
+/** Lo que va despues de la casa/lote y es un punto de referencia, no un barrio. */
+const REFERENCIA_NO_BARRIO = /^(al lado|a lado|junto|frente|en frente|enfrente|cerca|diagonal|detras|atras|por|enseguida|despues|antes|entrada|cruzando|a una cuadra|a media cuadra|a dos cuadras|al pie|al fondo|contiguo|pegado)\b/;
+
 export function parsearManzana(direccion) {
   const original = numerosEnLetras(String(direccion ?? ""))
     .replace(/\s+/g, " ")
@@ -394,7 +397,13 @@ export function parsearManzana(direccion) {
     }
   }
   if (!(partes.casa || partes.lote)) return null;
-  const barrio = limpiarBarrio(capitalizarResto(resto));
+  let barrio = limpiarBarrio(capitalizarResto(resto));
+  // "al lado del CDI", "frente a la iglesia": es una referencia, no el barrio
+  let referencia = "";
+  if (REFERENCIA_NO_BARRIO.test(normalizarTextoDir(barrio))) {
+    referencia = barrio;
+    barrio = "";
+  }
   // sin manzana: casa/lote dentro de un conjunto o urbanizacion con nombre
   // ("Villas de Vizcaya, Lote 5 Casa 49"). Hace falta el nombre del sitio y
   // numeros de verdad; con solo "casa" el nombre debe ser de un conjunto.
@@ -407,7 +416,8 @@ export function parsearManzana(direccion) {
     if (!conLote && !soloCasa) return null;
   }
   const base = armarManzana(partes, orden);
-  return { partes, barrio, normalizada: barrio ? `${base}, ${barrio}` : base };
+  const extra = barrio || referencia;
+  return { partes, barrio, referencia, normalizada: extra ? `${base}, ${extra}` : base };
 }
 
 /**

@@ -485,3 +485,14 @@ test("punto después de la vía: «Cra 29A. 36DSur-11» = Cra 29A # 36D Sur-11",
   assert.equal(validarDireccion("Cra 29A. # 36D-11").normalizada, "Cra 29A # 36D-11");
   assert.equal(validarDireccion("Calle 4. Sur #.1193").ok, false);
 });
+
+test("manzana con «Casa #1» y una referencia que no es barrio", () => {
+  // "al lado del CDI" es referencia: sin barrio no pasa
+  assert.equal(validarDireccion("Manzana B Casa #1 al lado del CDI").ok, false);
+  // con el barrio (del chat o de las referencias) pasa y conserva la referencia
+  assert.equal(
+    validarDireccion("Manzana B Casa #1 al lado del CDI", null, { referencias: "Urbanización Nuevo Milenio" }).normalizada,
+    "Mz B Cs 1, Al lado del CDI, Urbanización Nuevo Milenio",
+  );
+  assert.equal(validarDireccion("Manzana B Casa #1 Nuevo Milenio").normalizada, "Mz B Cs 1, Nuevo Milenio");
+});
