@@ -505,7 +505,10 @@ export function crearDropiNavegador(config = {}) {
     const plano = String(texto).replace(/\s+/g, " ").trim();
     let motivo = "el botón «Enviar al cliente» no apareció";
     // primero DONDE quedo: si Dropi redirigio, el texto es de otra pagina
-    if (!/product-details/i.test(url)) motivo = "Dropi no abrió la ficha del producto y redirigió a otra página";
+    if (/\/dashboard\/home\b/i.test(url)) {
+      // Dropi manda al inicio cuando el producto no se puede ver con esta cuenta
+      motivo = "Dropi no deja ver ese producto con esta cuenta y mandó al inicio: puede estar inactivo o eliminado, ser privado de otro proveedor o no ser de Colombia (ábrelo en Dropi para confirmar)";
+    } else if (!/product-details/i.test(url)) motivo = "Dropi no abrió la ficha del producto y redirigió a otra página";
     else if (/agotad|sin stock|no disponible|sin existencias/i.test(plano)) motivo = "el producto aparece agotado o no disponible en Dropi";
     else if (/no (existe|encontr)|not found|404/i.test(plano)) motivo = "Dropi dice que el producto no existe (revisa el dropiLink del sheet)";
     else if (plano.length < 40) motivo = "la ficha de Dropi no terminó de cargar (página en blanco)";
