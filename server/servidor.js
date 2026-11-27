@@ -2579,7 +2579,7 @@ export function crearManejador({
       }
       if (req.method === "POST" && ruta === "/api/creador/ficha-ia") {
         const cuerpo = await leerCuerpo(req);
-        return responder(() => c.fichaIA({ producto: cuerpo?.producto ?? {}, precio: cuerpo?.precio, tienda: cuerpo?.tienda }));
+        return responder(() => c.fichaIA({ producto: cuerpo?.producto ?? {}, precio: cuerpo?.precio, tienda: cuerpo?.tienda, buscarWeb: cuerpo?.buscarWeb ?? "corta" }));
       }
       if (req.method === "POST" && ruta === "/api/creador/topview/conectar") {
         // la vuelta tiene que llegar a ESTE dominio (zunto.store o localhost)

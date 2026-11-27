@@ -19,6 +19,7 @@ interface Fila {
   nombre?: string;
   idLucid?: string;
   faltan?: string[];
+  fuentes?: { url: string; titulo: string }[];
   error?: string;
   avisos?: string[];
 }
@@ -31,6 +32,7 @@ interface FichaIA {
   contenido: string;
   bienvenida: string;
   faltan: string[];
+  fuentes?: { url: string; titulo: string }[];
 }
 
 /** Links o IDs de Dropi, uno por linea (o separados por coma/espacio). */
@@ -53,6 +55,8 @@ export function ImportarConIA({ open, onClose, onListo }: { open: boolean; onClo
   const [tienda, setTienda] = useState<TiendaBot>("zunto");
   const [conBienvenida, setConBienvenida] = useState(true);
   const [alSheet, setAlSheet] = useState(true);
+  // buscar mas informacion del producto en internet
+  const [buscarWeb, setBuscarWeb] = useState<"no" | "corta" | "siempre">("corta");
   const [trabajando, setTrabajando] = useState<"" | "leyendo" | "creando">("");
 
   const poner = (i: number, cambio: Partial<Fila>) => setFilas((fs) => fs.map((f, k) => (k === i ? { ...f, ...cambio } : f)));
@@ -111,6 +115,7 @@ export function ImportarConIA({ open, onClose, onListo }: { open: boolean; onClo
             producto: { id: f.ficha.idDropi, nombre: f.ficha.nombre, descripcion: f.ficha.descripcion, imagenes: f.ficha.imagenes },
             precio,
             tienda,
+            buscarWeb,
           },
         });
         const nombre = (ficha.nombre || f.nombre || f.ficha.nombre).trim();
@@ -147,7 +152,7 @@ export function ImportarConIA({ open, onClose, onListo }: { open: boolean; onClo
             avisos.push(`no se agregó al Google Sheets: ${e instanceof Error ? e.message : String(e)}`);
           }
         }
-        poner(i, { estado: "listo", idLucid: id, nombre, faltan: ficha.faltan, avisos });
+        poner(i, { estado: "listo", idLucid: id, nombre, faltan: ficha.faltan, fuentes: ficha.fuentes ?? [], avisos });
         creados++;
       } catch (e) {
         poner(i, { estado: "error", error: e instanceof Error ? e.message : String(e), avisos });
@@ -184,7 +189,8 @@ export function ImportarConIA({ open, onClose, onListo }: { open: boolean; onClo
       <p className="muted small" style={{ marginTop: 0 }}>
         Pega los links (o los IDs) de los productos de Dropi, uno por línea (máximo 50). Zunto lee cada ficha, la IA escribe solo los campos
         de LucidSales (nombre, descripción, modo de uso, características, contenido y mensaje de bienvenida) y crea el producto con las fotos
-        y el precio que pongas. No genera creativos. Deja esta ventana abierta mientras trabaja.
+        y el precio que pongas. Si la descripción de Dropi se queda corta, la IA puede buscar el producto en internet (solo usa lo que sea de ese
+        mismo modelo). No genera creativos. Deja esta ventana abierta mientras trabaja.
       </p>
       {!filas.length ? (
         <textarea
@@ -205,6 +211,14 @@ export function ImportarConIA({ open, onClose, onListo }: { open: boolean; onClo
           <input type="checkbox" checked={alSheet} onChange={(e) => setAlSheet(e.target.checked)} />
           Agregar al Google Sheets
         </label>
+        <label className="small">
+          Buscar más información en internet{" "}
+          <select value={buscarWeb} disabled={Boolean(trabajando)} onChange={(e) => setBuscarWeb(e.target.value as "no" | "corta" | "siempre")}>
+            <option value="corta">Solo si la descripción de Dropi es corta</option>
+            <option value="siempre">Siempre</option>
+            <option value="no">No buscar</option>
+          </select>
+        </label>
       </div>
       {filas.length ? (
         <div className="importar-ia-lista">
@@ -221,6 +235,16 @@ export function ImportarConIA({ open, onClose, onListo }: { open: boolean; onClo
                 {f.estado === "listo" ? (
                   <span className="small" style={{ color: "#146c3a" }}>
                     ✅ Creado en LucidSales (id {f.idLucid}){f.faltan?.length ? ` · revisa: ${f.faltan.join(", ")}` : ""}
+                  </span>
+                ) : null}
+                {f.fuentes?.length ? (
+                  <span className="muted small">
+                    🌐 Completado con:{" "}
+                    {f.fuentes.map((x, k) => (
+                      <a key={k} href={x.url} target="_blank" rel="noreferrer" style={{ marginRight: 6 }}>
+                        {x.titulo || new URL(x.url).hostname}
+                      </a>
+                    ))}
                   </span>
                 ) : null}
                 {f.avisos?.length ? <span className="muted small">{f.avisos.join(" · ")}</span> : null}

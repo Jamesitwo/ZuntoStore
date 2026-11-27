@@ -31,7 +31,7 @@ export const PRESUPUESTO_DEFECTO = 25000;
  * Solo los campos que LucidSales necesita para vender un producto (sin
  * creativos): nombre comercial, ficha y bienvenida de WhatsApp.
  */
-export function promptFicha({ marca = "ZUNTO", rubro = "general", contraEntrega = false } = {}) {
+export function promptFicha({ marca = "ZUNTO", rubro = "general", contraEntrega = false, buscarWeb = false } = {}) {
   const bien = rubro === "bienestar";
   return `Eres el encargado de catálogo de ${marca}, una tienda online colombiana${bien ? " de bienestar y suplementos" : ""} que vende por WhatsApp${contraEntrega ? " con pago contra entrega" : ""} y envío gratis.
 Con los datos del producto de Dropi escribes SOLO los campos de la ficha del producto en LucidSales. Español colombiano, trato de "tú". Devuelves SOLO un JSON.
@@ -40,6 +40,11 @@ Reglas:
 1. Nada inventado: ni especificaciones, ni medidas, ni potencias, ni accesorios, ni garantías de tiempo que no estén en la descripción o se vean en las fotos. Lo que no sepas va en "faltan".
 2. Si la descripción de Dropi dice que algo NO viene incluido (p. ej. "no trae control"), dilo en "contenido" ("X no incluido").
 3. Nada de copiar textos de otras marcas ni nombrar al proveedor.${
+    buscarWeb
+      ? `
+3b. Puedes buscar en internet (máximo 3 búsquedas, por marca + modelo o el nombre exacto) para completar lo que la descripción de Dropi no dice: especificaciones, qué trae la caja, cómo se usa. Usa SOLO lo que sea claramente de ESTE mismo producto (misma marca, modelo y aspecto que las fotos); si hay versiones distintas o dudas, no lo uses y ponlo en "faltan". Lo de Dropi manda sobre lo de internet. Redacta con tus palabras, sin copiar textos.`
+      : ""
+  }${
     bien
       ? `
 4. Suplementos (INVIMA y Meta): nada de prevenir, aliviar, tratar o curar; sin plazos ni cifras de resultados; para qué sirve solo con declaraciones de función aceptadas del nutriente que contiene ("El magnesio contribuye a disminuir el cansancio y la fatiga"). La descripción y la bienvenida terminan con: "${LEYENDA_SUPLEMENTO}"`
@@ -58,6 +63,9 @@ Campos:
 JSON: {"nombre":"","descripcion":"","modoUso":"","caracteristicas":"","contenido":"","bienvenida":"","faltan":[]}`;
 }
 
+/** Por debajo de esto (caracteres) la descripcion de Dropi se considera corta. */
+export const DESCRIPCION_CORTA = 400;
+
 /** Ficha de la IA, limpia y con largos acotados. */
 export function normalizarFicha(crudo = {}) {
   const t = (v, max) => String(v ?? "").trim().slice(0, max);
@@ -69,6 +77,8 @@ export function normalizarFicha(crudo = {}) {
     contenido: t(crudo.contenido, 600),
     bienvenida: t(crudo.bienvenida, 1500),
     faltan: (Array.isArray(crudo.faltan) ? crudo.faltan : []).map((x) => t(x, 160)).filter(Boolean).slice(0, 8),
+    // paginas de internet que consulto la IA (sin repetir)
+    fuentes: [...new Map((Array.isArray(crudo.fuentesWeb) ? crudo.fuentesWeb : []).filter((f) => /^https?:\/\//.test(f?.url ?? "")).map((f) => [f.url, { url: f.url, titulo: t(f.titulo, 120) }])).values()].slice(0, 6),
   };
 }
 
@@ -348,6 +358,16 @@ export function jsonDeTexto(c) {
         /* sigue */
       }
     }
+    // texto antes del JSON con llaves sueltas (p. ej. tras buscar en internet):
+    // se prueba desde cada "{" hasta la ultima "}"
+    const fin = t.lastIndexOf("}");
+    for (let i = t.indexOf("{"); i >= 0 && i < fin; i = t.indexOf("{", i + 1)) {
+      try {
+        return JSON.parse(t.slice(i, fin + 1));
+      } catch {
+        /* siguiente */
+      }
+    }
   }
   throw new Error("La IA no devolvió un JSON válido");
 }
@@ -362,6 +382,7 @@ export function jsonDeTexto(c) {
 function leerStreamClaude(texto) {
   let salida = "";
   let stop = null;
+  const fuentes = [];
   for (const bloque of String(texto).split(/\r?\n\r?\n/)) {
     const datos = bloque
       .split(/\r?\n/)
@@ -375,17 +396,20 @@ function leerStreamClaude(texto) {
     } catch {
       continue;
     }
+    if (ev.type === "content_block_start" && ev.content_block?.type === "web_search_tool_result" && Array.isArray(ev.content_block.content)) {
+      for (const r of ev.content_block.content) if (r?.url) fuentes.push({ url: r.url, titulo: r.title ?? "" });
+    }
     if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") salida += ev.delta.text ?? "";
     else if (ev.type === "message_delta" && ev.delta?.stop_reason) stop = ev.delta.stop_reason;
     else if (ev.type === "error") throw new Error(`Claude: ${ev.error?.message ?? "error en la respuesta"}`);
   }
-  return { texto: salida, stop };
+  return { texto: salida, stop, fuentes };
 }
 
 /** Respuestas largas: 7 creativos con prompts detallados pasan facil de 16 mil tokens. */
 const MAX_TOKENS_PLAN = 32000;
 
-export async function pedirPlanClaude({ apiKey, modelo, sistema, usuario, fotos = [], fetcher = globalThis.fetch, timeoutMs = 600000 }) {
+export async function pedirPlanClaude({ apiKey, modelo, sistema, usuario, fotos = [], fetcher = globalThis.fetch, timeoutMs = 600000, buscarWeb = false }) {
   if (!apiKey) throw new Error("No hay API key de Claude (Creador IA > Ajustes)");
   const llamar = async (conFotos, breve = false) => {
     const contenido = [
@@ -411,6 +435,8 @@ export async function pedirPlanClaude({ apiKey, modelo, sistema, usuario, fotos 
           stream: true,
           system: sistema,
           messages: [{ role: "user", content: contenido }],
+          // busqueda en internet (la hace Anthropic; hay que tenerla activa en su consola)
+          ...(buscarWeb ? { tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }] } : {}),
         }),
         signal: AbortSignal.timeout(timeoutMs),
       });
@@ -438,15 +464,23 @@ export async function pedirPlanClaude({ apiKey, modelo, sistema, usuario, fotos 
       err.porFoto = r.status === 400 && /image|url|media/i.test(msg);
       throw err;
     }
-    const { texto, stop } = d
-      ? { texto: (d.content ?? []).filter((b) => b?.type === "text").map((b) => b.text).join(""), stop: d.stop_reason }
+    const { texto, stop, fuentes = [] } = d
+      ? {
+          texto: (d.content ?? []).filter((b) => b?.type === "text").map((b) => b.text).join(""),
+          stop: d.stop_reason,
+          fuentes: (d.content ?? [])
+            .filter((b) => b?.type === "web_search_tool_result" && Array.isArray(b.content))
+            .flatMap((b) => b.content.filter((r) => r?.url).map((r) => ({ url: r.url, titulo: r.title ?? "" }))),
+        }
       : leerStreamClaude(crudo);
     if (stop === "max_tokens") {
       const err = new Error("Claude se quedó sin espacio para responder aun pidiéndole prompts más cortos: pide menos creativos");
       err.largo = true;
       throw err;
     }
-    return jsonDeTexto(texto);
+    const json = jsonDeTexto(texto);
+    if (fuentes.length && json && typeof json === "object") json.fuentesWeb = fuentes;
+    return json;
   };
   // si se corta por largo, se repite una vez pidiendo prompts mas cortos
   const conFotos = fotos.length > 0;
@@ -477,6 +511,43 @@ export async function probarClaude({ apiKey, modelo, fetcher = globalThis.fetch 
   const d = await r.json().catch(() => null);
   if (!r.ok) throw new Error(`Claude respondió ${r.status}: ${String(d?.error?.message ?? "").slice(0, 200)}`);
   return true;
+}
+
+/**
+ * Igual que pedirPlanIA pero con busqueda en internet (API de Responses de
+ * OpenAI, herramienta web_search). Devuelve el JSON + fuentesWeb.
+ */
+export async function pedirConBusquedaOpenAI({ base, modelo, apiKey, sistema, usuario, fetcher = globalThis.fetch, timeoutMs = 180000 }) {
+  if (!apiKey) throw new Error("No hay API key de la IA (Ajustes > Subida a Dropi > IA que lee los chats)");
+  const url = `${String(base || "https://api.openai.com/v1").replace(/\/+$/, "")}/responses`;
+  let r;
+  try {
+    r = await fetcher(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: modelo || "gpt-5-mini",
+        instructions: sistema,
+        input: `${usuario}\n\nResponde SOLO con el JSON, sin texto antes ni después.`,
+        tools: [{ type: "web_search" }],
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (e) {
+    throw new Error(e?.name === "TimeoutError" ? "La IA tardó demasiado en responder" : `No se pudo llamar a la IA: ${e?.message ?? e}`);
+  }
+  if (!r.ok) {
+    const t = await r.text().catch(() => "");
+    throw new Error(`La IA respondió ${r.status} al buscar en internet${r.status === 404 ? " (esta IA no tiene búsqueda: apágala o usa Claude/OpenAI)" : ""}: ${t.slice(0, 160)}`);
+  }
+  const d = await r.json().catch(() => null);
+  const mensajes = (d?.output ?? []).filter((o) => o?.type === "message");
+  const partes = mensajes.flatMap((m) => (m.content ?? []).filter((c) => c?.type === "output_text"));
+  const texto = d?.output_text ?? partes.map((c) => c.text).join("");
+  const json = jsonDeTexto(texto);
+  const fuentes = partes.flatMap((c) => (c.annotations ?? []).filter((a) => a?.type === "url_citation" && a.url).map((a) => ({ url: a.url, titulo: a.title ?? "" })));
+  if (fuentes.length && json && typeof json === "object") json.fuentesWeb = fuentes;
+  return json;
 }
 
 /** Llama a la IA (API compatible con OpenAI) y devuelve el JSON. */
@@ -1256,27 +1327,32 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
        * escribe solo la ficha de LucidSales (nombre, descripcion, modo de
        * uso, caracteristicas, contenido y bienvenida). No crea nada.
        */
-      async fichaIA({ producto = {}, precio = 0, tienda = "zunto" } = {}) {
+      async fichaIA({ producto = {}, precio = 0, tienda = "zunto", buscarWeb = "corta" } = {}) {
         const a = leerAjustes(slug);
         const conClaude = iaDe(a) === "claude";
         if (conClaude && !a.claudeKey) throw new Error("Falta la API key de Claude (Creador IA > Ajustes)");
         if (!conClaude && !llm?.apiKey) throw new Error("No hay API key de la IA (Ajustes > Subida a Dropi > IA que lee los chats)");
-        const sistema = promptFicha({ ...marcaDe(a, { tienda }), contraEntrega: Boolean(a.contraEntrega) });
+        // "no" | "corta" (solo si la descripcion de Dropi es corta) | "siempre"
+        const descripcion = txt(producto.descripcion, 5000);
+        const buscar = buscarWeb === true || buscarWeb === "siempre" || (buscarWeb === "corta" && descripcion.length < DESCRIPCION_CORTA);
+        const sistema = promptFicha({ ...marcaDe(a, { tienda }), contraEntrega: Boolean(a.contraEntrega), buscarWeb: buscar });
         const fotos = (Array.isArray(producto.imagenes) ? producto.imagenes : []).filter((u) => /^https:\/\//.test(u)).slice(0, 3);
         const usuarioIA = [
           `Producto en Dropi: ${txt(producto.nombre, 200)}`,
           producto.id ? `ID Dropi: ${producto.id}` : "",
           Number(precio) > 0 ? `Precio de venta: ${precioTexto(Number(precio))}` : "",
-          `Descripción del proveedor:\n${txt(producto.descripcion, 5000) || "(sin descripción)"}`,
+          `Descripción del proveedor:\n${descripcion || "(sin descripción)"}`,
         ]
           .filter(Boolean)
           .join("\n");
         const crudo = conClaude
-          ? await pedirPlanClaude({ apiKey: a.claudeKey, modelo: a.claudeModelo, fetcher, sistema, usuario: usuarioIA, fotos, timeoutMs: 180000 })
-          : await pedirPlanIA({ ...llm, fetcher, sistema, usuario: usuarioIA });
+          ? await pedirPlanClaude({ apiKey: a.claudeKey, modelo: a.claudeModelo, fetcher, sistema, usuario: usuarioIA, fotos, timeoutMs: 240000, buscarWeb: buscar })
+          : buscar
+            ? await pedirConBusquedaOpenAI({ ...llm, fetcher, sistema, usuario: usuarioIA })
+            : await pedirPlanIA({ ...llm, fetcher, sistema, usuario: usuarioIA });
         const ficha = normalizarFicha(crudo);
         if (!ficha.descripcion) throw new Error("La IA no devolvió la ficha");
-        return { ficha };
+        return { ficha, buscoEnInternet: buscar };
       },
 
       idearCreativo(id, { cid = null, tipo = "imagen", indicacion = "" } = {}) {

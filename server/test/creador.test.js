@@ -440,14 +440,73 @@ test("importación masiva: la IA escribe solo la ficha de LucidSales", async () 
   };
   const creador = crearCreadorCampanas({ baseDir: dir, credencialMeta: () => null, fetcher, log: { warn() {} } });
   const c = creador.para("ana@zunto.co", { llm: { apiKey: "k", modelo: "m" } });
-  const r = await c.fichaIA({ producto: { id: "930615", nombre: "Parlante Gts 1248", descripcion: "EL PRODUCTO NO LLEVA CONTROL INCLUIDO" }, precio: 99900 });
+  const r = await c.fichaIA({ producto: { id: "930615", nombre: "Parlante Gts 1248", descripcion: "EL PRODUCTO NO LLEVA CONTROL INCLUIDO" }, precio: 99900, buscarWeb: "no" });
   assert.equal(r.ficha.nombre, "Parlante GTS 1248 con micrófono");
   assert.match(r.ficha.contenido, /no incluido/);
   assert.match(sistema, /SOLO los campos de la ficha/);
   assert.match(usuario, /NO LLEVA CONTROL/);
   assert.match(usuario, /\$99\.900/);
   // segunda tienda: reglas de suplementos y su marca
-  await c.fichaIA({ producto: { nombre: "Magnesio" }, tienda: "nueva" });
+  await c.fichaIA({ producto: { nombre: "Magnesio" }, tienda: "nueva", buscarWeb: "no" });
   assert.match(sistema, /DÍA UNO/);
   assert.match(sistema, /suplemento dietario/);
+});
+
+test("importación con IA: busca en internet solo si se activa (Claude y OpenAI)", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "creador-"));
+  const llamadas = [];
+  const ficha = { nombre: "Parlante", descripcion: "Parlante de 8 pulgadas.", modoUso: "", caracteristicas: "", contenido: "", bienvenida: "", faltan: [] };
+  const fetcher = async (url, op = {}) => {
+    const body = JSON.parse(op.body);
+    llamadas.push({ url: String(url), body });
+    if (String(url).endsWith("/responses")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          output: [
+            { type: "web_search_call" },
+            { type: "message", content: [{ type: "output_text", text: "Busqué. " + JSON.stringify(ficha), annotations: [{ type: "url_citation", url: "https://fabricante.test/gts1248", title: "GTS 1248" }] }] },
+          ],
+        }),
+      };
+    }
+    if (String(url).includes("anthropic")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          stop_reason: "end_turn",
+          content: [
+            { type: "text", text: "Voy a buscar {el modelo}." },
+            { type: "server_tool_use", name: "web_search" },
+            { type: "web_search_tool_result", content: [{ type: "web_search_result", url: "https://tienda.test/p", title: "Ficha" }] },
+            { type: "text", text: JSON.stringify(ficha) },
+          ],
+        }),
+      };
+    }
+    return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: JSON.stringify(ficha) } }] }) };
+  };
+  const creador = crearCreadorCampanas({ baseDir: dir, credencialMeta: () => null, fetcher, log: { warn() {} } });
+  const c = creador.para("ana@zunto.co", { llm: { apiKey: "k", modelo: "m" } });
+  const larga = "x".repeat(800);
+  // descripcion larga + "corta": no busca
+  await c.fichaIA({ producto: { nombre: "P", descripcion: larga } });
+  assert.match(llamadas.at(-1).url, /chat\/completions/);
+  // descripcion corta: busca (OpenAI -> Responses con web_search) y trae las fuentes
+  const r = await c.fichaIA({ producto: { nombre: "P", descripcion: "corta" } });
+  assert.match(llamadas.at(-1).url, /\/responses$/);
+  assert.equal(llamadas.at(-1).body.tools[0].type, "web_search");
+  assert.deepEqual(r.ficha.fuentes.map((f) => f.url), ["https://fabricante.test/gts1248"]);
+  assert.match(llamadas.at(-1).body.instructions, /buscar en internet/);
+  // apagado: nunca busca
+  await c.fichaIA({ producto: { nombre: "P", descripcion: "corta" }, buscarWeb: "no" });
+  assert.match(llamadas.at(-1).url, /chat\/completions/);
+  // con Claude: herramienta web_search de Anthropic y fuentes de sus resultados
+  c.guardarAjustes({ claudeKey: "sk-ant-x" });
+  const r2 = await c.fichaIA({ producto: { nombre: "P", descripcion: larga }, buscarWeb: "siempre" });
+  assert.equal(llamadas.at(-1).body.tools[0].type, "web_search_20250305");
+  assert.equal(r2.ficha.nombre, "Parlante");
+  assert.deepEqual(r2.ficha.fuentes.map((f) => f.url), ["https://tienda.test/p"]);
 });
