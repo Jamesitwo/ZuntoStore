@@ -66,6 +66,20 @@ JSON: {"nombre":"","descripcion":"","modoUso":"","caracteristicas":"","contenido
 /** Por debajo de esto (caracteres) la descripcion de Dropi se considera corta. */
 export const DESCRIPCION_CORTA = 400;
 
+/**
+ * ¿La descripcion de Dropi se queda corta? Corta de largo, o larga pero sin
+ * ningun dato concreto (medidas, ml, gramos, potencias, cantidades): puro
+ * texto de venta.
+ */
+export function descripcionPobre(texto = "") {
+  const t = String(texto ?? "").trim();
+  if (t.length < DESCRIPCION_CORTA) return true;
+  const dato =
+    /\d+(?:[.,]\d+)?\s*(?:ml|l\b|litros?|cc|g\b|gr|gramos?|kg|mg|mm|cm|mts?|metros?|m\b|pulgadas?|"|w\b|watts?|v\b|voltios?|mah|hz|rpm|psi|bar|piezas?|pzs?|unidades?|und|cápsulas?|capsulas?|tabletas?|horas?|h\b|min|minutos?|niveles?|velocidades?|%)/i;
+  const conPuntosTecnicos = /(?:^|\n)\s*[•*\-–]?\s*[a-záéíóúñ ]{3,30}:\s*\S/im.test(t) && /\d/.test(t);
+  return !(dato.test(t) || conPuntosTecnicos);
+}
+
 /** Ficha de la IA, limpia y con largos acotados. */
 export function normalizarFicha(crudo = {}) {
   const t = (v, max) => String(v ?? "").trim().slice(0, max);
@@ -1334,7 +1348,7 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
         if (!conClaude && !llm?.apiKey) throw new Error("No hay API key de la IA (Ajustes > Subida a Dropi > IA que lee los chats)");
         // "no" | "corta" (solo si la descripcion de Dropi es corta) | "siempre"
         const descripcion = txt(producto.descripcion, 5000);
-        const buscar = buscarWeb === true || buscarWeb === "siempre" || (buscarWeb === "corta" && descripcion.length < DESCRIPCION_CORTA);
+        const buscar = buscarWeb === true || buscarWeb === "siempre" || (buscarWeb === "corta" && descripcionPobre(descripcion));
         const sistema = promptFicha({ ...marcaDe(a, { tienda }), contraEntrega: Boolean(a.contraEntrega), buscarWeb: buscar });
         const fotos = (Array.isArray(producto.imagenes) ? producto.imagenes : []).filter((u) => /^https:\/\//.test(u)).slice(0, 3);
         const usuarioIA = [

@@ -214,7 +214,7 @@ export function ImportarConIA({ open, onClose, onListo }: { open: boolean; onClo
         <label className="small">
           Buscar más información en internet{" "}
           <select value={buscarWeb} disabled={Boolean(trabajando)} onChange={(e) => setBuscarWeb(e.target.value as "no" | "corta" | "siempre")}>
-            <option value="corta">Solo si la descripción de Dropi es corta</option>
+            <option value="corta">Solo si la descripción de Dropi es corta o no trae datos</option>
             <option value="siempre">Siempre</option>
             <option value="no">No buscar</option>
           </select>

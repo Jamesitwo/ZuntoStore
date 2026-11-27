@@ -490,7 +490,7 @@ test("importación con IA: busca en internet solo si se activa (Claude y OpenAI)
   };
   const creador = crearCreadorCampanas({ baseDir: dir, credencialMeta: () => null, fetcher, log: { warn() {} } });
   const c = creador.para("ana@zunto.co", { llm: { apiKey: "k", modelo: "m" } });
-  const larga = "x".repeat(800);
+  const larga = `Parlante de 8 pulgadas, batería de 1200 mAh. ${"x".repeat(800)}`;
   // descripcion larga + "corta": no busca
   await c.fichaIA({ producto: { nombre: "P", descripcion: larga } });
   assert.match(llamadas.at(-1).url, /chat\/completions/);
@@ -509,4 +509,20 @@ test("importación con IA: busca en internet solo si se activa (Claude y OpenAI)
   assert.equal(llamadas.at(-1).body.tools[0].type, "web_search_20250305");
   assert.equal(r2.ficha.nombre, "Parlante");
   assert.deepEqual(r2.ficha.fuentes.map((f) => f.url), ["https://tienda.test/p"]);
+});
+
+test("descripción pobre: corta, o larga sin ningún dato concreto", async () => {
+  const { descripcionPobre } = await import("../creadorCampanas.js");
+  const stain = `STAIN MOUTHWASH es un enjuague bucal pensado para complementar la rutina diaria de higiene oral, ayudando a mantener una sensación de limpieza y frescura después del cepillado.
+Su uso frecuente permite llegar a zonas de difícil acceso, dejando una sensación agradable en la boca y convirtiéndose en un excelente complemento para quienes buscan cuidar la apariencia de su sonrisa y mantener un aliento fresco.
+Ideal para:
+* Complementar el cepillado diario.
+* Mantener una sensación prolongada de frescura.
+* Apoyar una rutina de higiene bucal más completa.
+* Personas que consumen con frecuencia café, té u otras bebidas que pueden afectar visualmente la apariencia de los dientes.`;
+  assert.equal(descripcionPobre(stain), true, "larga pero sin datos");
+  assert.equal(descripcionPobre("corta"), true);
+  assert.equal(descripcionPobre(`${stain}\nContenido: 500 ml. Sabor menta.`), false);
+  assert.equal(descripcionPobre(`${stain}\nTaladro de 21V con batería de 2000 mAh`), false);
+  assert.equal(descripcionPobre(`${stain}\n• Potencia: 800\n• Velocidad: 3`), false);
 });
