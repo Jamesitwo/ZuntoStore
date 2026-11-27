@@ -2577,6 +2577,10 @@ export function crearManejador({
         json(res, 200, { ok: true, producto: r });
         return;
       }
+      if (req.method === "POST" && ruta === "/api/creador/ficha-ia") {
+        const cuerpo = await leerCuerpo(req);
+        return responder(() => c.fichaIA({ producto: cuerpo?.producto ?? {}, precio: cuerpo?.precio, tienda: cuerpo?.tienda }));
+      }
       if (req.method === "POST" && ruta === "/api/creador/topview/conectar") {
         // la vuelta tiene que llegar a ESTE dominio (zunto.store o localhost)
         const host = String(req.headers["x-forwarded-host"] ?? req.headers.host ?? "").split(",")[0].trim();

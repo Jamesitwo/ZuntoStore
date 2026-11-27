@@ -8,6 +8,7 @@ import { ProductosAgotados } from "../components/ProductosAgotados";
 import { JsonPost as JsonPostEditor } from "../components/JsonPost";
 import { ListaProductos } from "../components/ListaProductos";
 import { ImportarDropi } from "../components/ImportarDropi";
+import { ImportarConIA } from "../components/ImportarConIA";
 import { useEtiquetaTienda } from "../lib/tiendas";
 
 type Origen = "local" | "shopify" | "dropi";
@@ -25,6 +26,7 @@ export function ProductosPage() {
   // fuentes son solo lectura (JSON de Shopify / Dropi).
   const [origen, setOrigen] = useState<Origen>("local");
   const [importarDropi, setImportarDropi] = useState(false);
+  const [importarIA, setImportarIA] = useState(false);
   // /productos?editar=<id> -> abre la ficha (viene de una linea de pedido)
   const [params, setParams] = useSearchParams();
   const editarId = params.get("editar") ?? "";
@@ -75,6 +77,9 @@ export function ProductosPage() {
             >
               Mi catálogo
             </button>
+            <button type="button" className="btn" onClick={() => setImportarIA(true)} title="Pega links de Dropi y la IA crea los productos en LucidSales">
+              ✨ Importar de Dropi con IA
+            </button>
             <button
               type="button"
               role="tab"
@@ -122,9 +127,14 @@ export function ProductosPage() {
               </p>
             </div>
             {origen === "dropi" ? (
-              <button type="button" className="btn primary" onClick={() => setImportarDropi(true)}>
-                Importar desde Dropi
-              </button>
+              <span className="row gap">
+                <button type="button" className="btn primary" onClick={() => setImportarIA(true)}>
+                  ✨ Importar varios con IA
+                </button>
+                <button type="button" className="btn" onClick={() => setImportarDropi(true)}>
+                  Importar desde Dropi
+                </button>
+              </span>
             ) : null}
           </header>
           {loading ? (
@@ -140,6 +150,8 @@ export function ProductosPage() {
           )}
         </section>
       )}
+
+      <ImportarConIA open={importarIA} onClose={() => setImportarIA(false)} onListo={() => undefined} />
 
       <ImportarDropi
         open={importarDropi}

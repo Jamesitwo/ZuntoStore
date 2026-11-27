@@ -27,6 +27,51 @@ const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 export const COSTO_CREDITOS = { imagen: 0.2, video: 6.7 };
 export const PRESUPUESTO_DEFECTO = 25000;
 
+/**
+ * Solo los campos que LucidSales necesita para vender un producto (sin
+ * creativos): nombre comercial, ficha y bienvenida de WhatsApp.
+ */
+export function promptFicha({ marca = "ZUNTO", rubro = "general", contraEntrega = false } = {}) {
+  const bien = rubro === "bienestar";
+  return `Eres el encargado de catálogo de ${marca}, una tienda online colombiana${bien ? " de bienestar y suplementos" : ""} que vende por WhatsApp${contraEntrega ? " con pago contra entrega" : ""} y envío gratis.
+Con los datos del producto de Dropi escribes SOLO los campos de la ficha del producto en LucidSales. Español colombiano, trato de "tú". Devuelves SOLO un JSON.
+
+Reglas:
+1. Nada inventado: ni especificaciones, ni medidas, ni potencias, ni accesorios, ni garantías de tiempo que no estén en la descripción o se vean en las fotos. Lo que no sepas va en "faltan".
+2. Si la descripción de Dropi dice que algo NO viene incluido (p. ej. "no trae control"), dilo en "contenido" ("X no incluido").
+3. Nada de copiar textos de otras marcas ni nombrar al proveedor.${
+    bien
+      ? `
+4. Suplementos (INVIMA y Meta): nada de prevenir, aliviar, tratar o curar; sin plazos ni cifras de resultados; para qué sirve solo con declaraciones de función aceptadas del nutriente que contiene ("El magnesio contribuye a disminuir el cansancio y la fatiga"). La descripción y la bienvenida terminan con: "${LEYENDA_SUPLEMENTO}"`
+      : ""
+  }
+
+Campos:
+- "nombre": nombre comercial corto y claro para el catálogo (máx. 60 caracteres, sin la palabra "Dropi", sin códigos raros; conserva marca y modelo si son parte del producto).
+- "descripcion": 2–4 frases: qué es, para quién, beneficios reales y qué incluye.
+- "modoUso": pasos numerados cortos${bien ? " (dosis solo si la etiqueta o la descripción la dicen; si no, \"Según indicaciones de la etiqueta\" + advertencias de uso)" : " + recomendaciones de seguridad o cuidado si aplican"}.
+- "caracteristicas": líneas "• Campo: valor" solo con datos confirmados.
+- "contenido": qué trae la caja ("1 X + 2 Y"; "Z no incluido" si aplica).
+- "bienvenida": mensaje de WhatsApp para quien pregunta por el producto: saludo de ${marca} con un emoji del producto, 3 puntos fuertes con ✅, 📦 qué incluye, 💰 precio (formato $199.900), 🚚 envío gratis${contraEntrega ? ", 💳 pago contra entrega" : ""} y una pregunta abierta al final. Máx. 90 palabras.
+- "faltan": lista de datos que harían falta (sin inventarlos).
+
+JSON: {"nombre":"","descripcion":"","modoUso":"","caracteristicas":"","contenido":"","bienvenida":"","faltan":[]}`;
+}
+
+/** Ficha de la IA, limpia y con largos acotados. */
+export function normalizarFicha(crudo = {}) {
+  const t = (v, max) => String(v ?? "").trim().slice(0, max);
+  return {
+    nombre: t(crudo.nombre, 80),
+    descripcion: t(crudo.descripcion, 2500),
+    modoUso: t(crudo.modoUso, 2500),
+    caracteristicas: t(crudo.caracteristicas, 2500),
+    contenido: t(crudo.contenido, 600),
+    bienvenida: t(crudo.bienvenida, 1500),
+    faltan: (Array.isArray(crudo.faltan) ? crudo.faltan : []).map((x) => t(x, 160)).filter(Boolean).slice(0, 8),
+  };
+}
+
 /** Foto de la modelo segun la tienda del proyecto (cada tienda tiene la suya). */
 export function modeloDe(a = {}, p = {}) {
   return (p.tienda === "nueva" ? a.fotoModeloSegunda : a.fotoModelo) || "";
@@ -1206,6 +1251,34 @@ export function crearCreadorCampanas({ baseDir, credencialMeta, fetcher = global
        * campaña y distinto de los que ya hay. Sobre uno existente (cid) o uno
        * nuevo del tipo pedido. En segundo plano: el panel consulta el proyecto.
        */
+      /**
+       * Importacion masiva: con los datos de un producto de Dropi la IA
+       * escribe solo la ficha de LucidSales (nombre, descripcion, modo de
+       * uso, caracteristicas, contenido y bienvenida). No crea nada.
+       */
+      async fichaIA({ producto = {}, precio = 0, tienda = "zunto" } = {}) {
+        const a = leerAjustes(slug);
+        const conClaude = iaDe(a) === "claude";
+        if (conClaude && !a.claudeKey) throw new Error("Falta la API key de Claude (Creador IA > Ajustes)");
+        if (!conClaude && !llm?.apiKey) throw new Error("No hay API key de la IA (Ajustes > Subida a Dropi > IA que lee los chats)");
+        const sistema = promptFicha({ ...marcaDe(a, { tienda }), contraEntrega: Boolean(a.contraEntrega) });
+        const fotos = (Array.isArray(producto.imagenes) ? producto.imagenes : []).filter((u) => /^https:\/\//.test(u)).slice(0, 3);
+        const usuarioIA = [
+          `Producto en Dropi: ${txt(producto.nombre, 200)}`,
+          producto.id ? `ID Dropi: ${producto.id}` : "",
+          Number(precio) > 0 ? `Precio de venta: ${precioTexto(Number(precio))}` : "",
+          `Descripción del proveedor:\n${txt(producto.descripcion, 5000) || "(sin descripción)"}`,
+        ]
+          .filter(Boolean)
+          .join("\n");
+        const crudo = conClaude
+          ? await pedirPlanClaude({ apiKey: a.claudeKey, modelo: a.claudeModelo, fetcher, sistema, usuario: usuarioIA, fotos, timeoutMs: 180000 })
+          : await pedirPlanIA({ ...llm, fetcher, sistema, usuario: usuarioIA });
+        const ficha = normalizarFicha(crudo);
+        if (!ficha.descripcion) throw new Error("La IA no devolvió la ficha");
+        return { ficha };
+      },
+
       idearCreativo(id, { cid = null, tipo = "imagen", indicacion = "" } = {}) {
         const clave = `${slug}/${id}`;
         if (ocupados.has(clave)) throw new Error("Este proyecto ya está trabajando: espera un momento");

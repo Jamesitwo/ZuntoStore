@@ -426,3 +426,28 @@ test("cada tienda usa su modelo en los videos", async () => {
   assert.equal(modeloDe(a, { tienda: "nueva" }), "https://x/diauno.jpg");
   assert.equal(modeloDe({ fotoModelo: "z" }, { tienda: "nueva" }), "", "Día Uno sin modelo propia no usa la de Zunto");
 });
+
+test("importación masiva: la IA escribe solo la ficha de LucidSales", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "creador-"));
+  let sistema = "";
+  let usuario = "";
+  const fetcher = async (url, op = {}) => {
+    const body = JSON.parse(op.body);
+    sistema = body.messages[0].content;
+    usuario = body.messages[1].content;
+    const ficha = { nombre: "Parlante GTS 1248 con micrófono", descripcion: "Parlante Bluetooth de 8 pulgadas.", modoUso: "1. Cárgalo", caracteristicas: "• Tamaño: 8 pulgadas", contenido: "1 parlante + 1 micrófono; control no incluido", bienvenida: "¡Hola! 🔊", faltan: ["potencia"] };
+    return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: JSON.stringify(ficha) } }] }) };
+  };
+  const creador = crearCreadorCampanas({ baseDir: dir, credencialMeta: () => null, fetcher, log: { warn() {} } });
+  const c = creador.para("ana@zunto.co", { llm: { apiKey: "k", modelo: "m" } });
+  const r = await c.fichaIA({ producto: { id: "930615", nombre: "Parlante Gts 1248", descripcion: "EL PRODUCTO NO LLEVA CONTROL INCLUIDO" }, precio: 99900 });
+  assert.equal(r.ficha.nombre, "Parlante GTS 1248 con micrófono");
+  assert.match(r.ficha.contenido, /no incluido/);
+  assert.match(sistema, /SOLO los campos de la ficha/);
+  assert.match(usuario, /NO LLEVA CONTROL/);
+  assert.match(usuario, /\$99\.900/);
+  // segunda tienda: reglas de suplementos y su marca
+  await c.fichaIA({ producto: { nombre: "Magnesio" }, tienda: "nueva" });
+  assert.match(sistema, /DÍA UNO/);
+  assert.match(sistema, /suplemento dietario/);
+});
