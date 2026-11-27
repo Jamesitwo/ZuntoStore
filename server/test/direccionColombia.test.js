@@ -496,3 +496,9 @@ test("manzana con «Casa #1» y una referencia que no es barrio", () => {
   );
   assert.equal(validarDireccion("Manzana B Casa #1 Nuevo Milenio").normalizada, "Mz B Cs 1, Nuevo Milenio");
 });
+
+test("vía con nombre y «Casa No.»: «Calle San Carlo, Casa No. 33-33» = Calle San Carlo # 33-33", () => {
+  assert.equal(validarDireccion("Calle San Carlo, Casa No. 33-33").normalizada, "Calle San Carlo # 33-33");
+  assert.equal(validarDireccion("Calle San Carlos casa 33-33").normalizada, "Calle San Carlos # 33-33");
+  assert.equal(validarDireccion("Calle San Carlos, casa 33").ok, false);
+});

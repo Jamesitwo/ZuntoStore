@@ -226,7 +226,7 @@ function parsearDesdeElInicio(original) {
  * numeros y sin otro tipo de via.
  */
 const RE_VIA_NOMBRE = new RegExp(
-  String.raw`^(` + TIPO_PALABRA + String.raw`)\.?\s+([a-zñ][a-zñ ]{1,40}?)\s*(?:#|\bno\.?|n[°º]|\bnro\.?|\bnumero\b)\s*(\d{1,3})\s*([a-z])?(?:\s*(bis))?\s*[-–]\s*(\d{1,3})(?:\s+(sur|este|oeste|norte))?\b\s*[,.]?\s*(.*)$`,
+  String.raw`^(` + TIPO_PALABRA + String.raw`)\.?\s+([a-zñ][a-zñ ]{1,40}?)\s*[,;]?\s*(?:(?:casa|csa|cs)\.?\s*(?:#|\bno\.?|n[°º]|\bnro\.?|\bnumero\b)?|#|\bno\.?|n[°º]|\bnro\.?|\bnumero\b)\s*(\d{1,3})\s*([a-z])?(?:\s*(bis))?\s*[-–]\s*(\d{1,3})(?:\s+(sur|este|oeste|norte))?\b\s*[,.]?\s*(.*)$`,
 );
 function viaConNombre(original) {
   const texto = String(original ?? "").replace(/\s+/g, " ").trim();
