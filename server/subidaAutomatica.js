@@ -471,6 +471,95 @@ function motivoGeneral(t) {
     .slice(0, 110);
 }
 
+const SUBIDOS = new Set(["subido", "subido-pendiente-confirmacion"]);
+const soloDigitos = (t) => String(t ?? "").replace(/\D/g, "").slice(-10);
+const normProd = (t) =>
+  String(t ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+/**
+ * Revision de subidas repetidas a Dropi con lo que guarda Zunto:
+ *  - mismo pedido: dos o mas intentos que terminaron en orden creada (o
+ *    resultado incierto) en vueltas distintas, o dos ordenes de Dropi distintas.
+ *  - mismo cliente: dos pedidos distintos subidos del mismo telefono y el
+ *    mismo producto con menos de `dias` dias entre si (puede ser compra real).
+ * Lo que se subio a mano directo en Dropi (por fuera de Zunto) no se ve aqui.
+ */
+export function revisarDuplicados({ intentos = [], procesados = {}, dias = 7 } = {}) {
+  const porPedido = new Map();
+  for (const it of intentos) {
+    if (!it?.pedido) continue;
+    if (!SUBIDOS.has(it.accion) && it.accion !== "resultado-incierto") continue;
+    if (it.dryRun) continue;
+    const l = porPedido.get(String(it.pedido)) ?? [];
+    l.push(it);
+    porPedido.set(String(it.pedido), l);
+  }
+  const mismoPedido = [];
+  for (const [id, lista] of porPedido) {
+    const creados = lista.filter((x) => SUBIDOS.has(x.accion));
+    const idsDropi = [...new Set(lista.map((x) => x.dropi?.id).filter(Boolean).map(String))];
+    const vueltas = new Set(creados.map((x) => x.clave ?? x.ts));
+    const inciertos = lista.filter((x) => x.accion === "resultado-incierto").length;
+    if (idsDropi.length > 1 || vueltas.size > 1 || (creados.length && inciertos)) {
+      mismoPedido.push({
+        id,
+        numero: lista.find((x) => x.numero)?.numero ?? null,
+        ordenesDropi: idsDropi,
+        subidas: creados.length,
+        inciertos,
+        intentos: lista
+          .map((x) => ({ ts: x.ts, accion: x.accion, origen: x.origen ?? "subida automática", usuario: x.usuario ?? null, dropi: x.dropi?.id ?? null }))
+          .sort((a, b) => String(a.ts).localeCompare(String(b.ts))),
+      });
+    }
+  }
+  // mismo cliente + mismo producto, pedidos distintos
+  const subidos = Object.entries(procesados ?? {})
+    .filter(([, v]) => SUBIDOS.has(v?.accion))
+    .map(([id, v]) => ({
+      id,
+      ts: v.ts,
+      tel: soloDigitos(v.cliente?.telefono),
+      cliente: v.cliente?.nombre ?? "",
+      producto: normProd(v.analisis?.pedido?.producto ?? v.analisis?.extraido?.producto ?? ""),
+      productoTexto: v.analisis?.pedido?.producto ?? v.analisis?.extraido?.producto ?? "",
+      dropi: v.dropi?.id ?? null,
+    }))
+    .filter((x) => x.tel.length >= 7);
+  const grupos = new Map();
+  for (const x of subidos) {
+    const k = `${x.tel}|${x.producto}`;
+    const g = grupos.get(k) ?? [];
+    g.push(x);
+    grupos.set(k, g);
+  }
+  const mismoCliente = [];
+  const ventana = Math.max(1, Number(dias) || 7) * 86_400_000;
+  for (const g of grupos.values()) {
+    if (g.length < 2) continue;
+    g.sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
+    const cerca = g.filter((x, i) => g.some((y, j) => j !== i && Math.abs(Date.parse(x.ts) - Date.parse(y.ts)) <= ventana));
+    if (cerca.length >= 2) {
+      mismoCliente.push({
+        telefono: cerca[0].tel,
+        cliente: cerca[0].cliente,
+        producto: cerca[0].productoTexto,
+        pedidos: cerca.map((x) => ({ id: x.id, ts: x.ts, dropi: x.dropi })),
+      });
+    }
+  }
+  return {
+    mismoPedido: mismoPedido.sort((a, b) => String(b.intentos.at(-1)?.ts).localeCompare(String(a.intentos.at(-1)?.ts))),
+    mismoCliente: mismoCliente.sort((a, b) => String(b.pedidos.at(-1)?.ts).localeCompare(String(a.pedidos.at(-1)?.ts))),
+    revisados: { pedidosSubidos: subidos.length, intentos: intentos.length },
+  };
+}
+
 /**
  * Lista de productos agotados en Dropi: los pedidos que quedaron en
  * "sin-stock", agrupados por producto (id de Dropi del link).
@@ -1992,6 +2081,11 @@ export function crearSubidaAutomatica({
       this.detener();
       this.arrancar();
       return this.config();
+    },
+
+    /** Registro de pedidos tratados (id -> resultado). */
+    procesados() {
+      return leer().procesados ?? {};
     },
 
     /** Productos agotados en Dropi con los pedidos que frenaron (accion sin-stock). */

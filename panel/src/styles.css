@@ -5811,3 +5811,8 @@ textarea.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; fon
   vertical-align: 1px;
 }
 tr.fila-tienda-nueva > td:first-child { box-shadow: inset 3px 0 0 #cbb596; }
+
+/* Subidas repetidas a Dropi */
+.duplicados-lista { display: grid; gap: 8px; }
+.duplicado { border: 1px solid #ece9f2; border-radius: 10px; padding: 10px 12px; background: #fff; }
+.duplicado.alerta { border-color: #f5c2c0; background: #fff7f6; }

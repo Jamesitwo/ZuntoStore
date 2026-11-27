@@ -88,6 +88,11 @@ export function crearRegistroIntentos({ ruta = null, log = console } = {}) {
       return nuevo;
     },
 
+    /** Todos los intentos guardados (de todos los pedidos). */
+    todos() {
+      return [...porPedido.values()].flat();
+    },
+
     /** Intentos de un pedido, del mas nuevo al mas viejo. */
     dePedido(id) {
       return [...(porPedido.get(String(id)) ?? [])].reverse();

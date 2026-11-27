@@ -60,7 +60,7 @@ import { ejecutarAgente, resumenDePedido, textoVariantes } from "./agente.js";
 import { crearClienteDropi, armarPedidoDropi } from "./dropi.js";
 import { crearDropiNavegador, DIRECCION_OFICINA_INTER } from "./dropiNavegador.js";
 import { crearZip } from "./zip.js";
-import { completarNombres, crearSubidaAutomatica, otrosPedidosDelCliente, resumirAnalisis, variantesParaDropi } from "./subidaAutomatica.js";
+import { completarNombres, crearSubidaAutomatica, otrosPedidosDelCliente, resumirAnalisis, revisarDuplicados, variantesParaDropi } from "./subidaAutomatica.js";
 import { faltantesDeConfig } from "./config.js";
 import { crearEstadosEnvio } from "./estadosEnvio.js";
 import { crearPedidosPorEnvio } from "./pedidosPorEnvio.js";
@@ -237,6 +237,7 @@ export function crearManejador({
           registroIntentos.registrar({
             ...intento,
             accion,
+            ...(datos?.idDropi ? { dropi: { ...(intento.dropi ?? {}), id: datos.idDropi } } : {}),
             detalle: String(datos?.detalle || motivos || datos?.msg || datos?.motivo || "").slice(0, 1600),
           });
         }
@@ -1811,6 +1812,23 @@ export function crearManejador({
       autorizar(req);
       const limite = url.searchParams.get("limite") ?? 30;
       json(res, 200, { ok: true, config: subida.config(), ultimos: subida.ultimos(limite) });
+      return;
+    }
+
+    // ---- GET /api/subida/duplicados ----
+    // ¿Se subio algo dos veces a Dropi? Revisa el historial de intentos y lo
+    // subido: mismo pedido con dos subidas y mismo cliente+producto en pocos dias.
+    if (req.method === "GET" && ruta === "/api/subida/duplicados") {
+      autorizar(req);
+      const u = new URL(req.url ?? "/", "http://localhost");
+      json(res, 200, {
+        ok: true,
+        ...revisarDuplicados({
+          intentos: registroIntentos?.todos?.() ?? [],
+          procesados: subida.procesados?.() ?? {},
+          dias: Number(u.searchParams.get("dias")) || 7,
+        }),
+      });
       return;
     }
 
