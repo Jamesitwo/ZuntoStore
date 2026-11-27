@@ -820,3 +820,10 @@ test("ficha de un producto de Dropi para el Creador IA", async () => {
   assert.doesNotMatch(f.descripcion, /Golpes|Incluye|fallas de fábrica/);
   assert.equal(f.imagenes.length, 1);
 });
+
+test("link de Dropi desde el nombre (como lo arma Dropi)", async () => {
+  const { slugDropi } = await import("../dropiNavegador.js");
+  assert.equal(slugDropi("Combo Taladro 3/8 Y Pulidora 4 Dewalt"), "combo-taladro-38-y-pulidora-4-dewalt");
+  assert.equal(slugDropi("Difusor De Aromas Gato TX-5"), "difusor-de-aromas-gato-tx5");
+  assert.equal(slugDropi("Bola voladora con luces de colores"), "bola-voladora-con-luces-de-colores");
+});

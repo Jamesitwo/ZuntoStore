@@ -12,7 +12,10 @@ import { Modal } from "./Modal";
 import { money } from "./ui";
 
 interface Fila {
+  /** id de Dropi */
   entrada: string;
+  /** link completo (o el id si se pego solo el id) */
+  url: string;
   estado: "pendiente" | "leyendo" | "leido" | "creando" | "listo" | "error";
   ficha?: FichaDropi;
   precio?: string;
@@ -35,14 +38,18 @@ interface FichaIA {
   fuentes?: { url: string; titulo: string }[];
 }
 
-/** Links o IDs de Dropi, uno por linea (o separados por coma/espacio). */
-function entradas(texto: string): string[] {
-  const out: string[] = [];
+/**
+ * Links o IDs de Dropi, uno por linea (o separados por coma/espacio). El link
+ * se guarda COMPLETO: Dropi necesita el nombre del final
+ * (/product-details/2350401/combo-taladro...) para abrir la ficha.
+ */
+function entradas(texto: string): { id: string; url: string }[] {
+  const out: { id: string; url: string }[] = [];
   for (const t of texto.split(/[\s,;]+/)) {
     const x = t.trim();
     if (!x) continue;
     const id = x.match(/product-details\/(\d+)/)?.[1] ?? (/^\d{3,9}$/.test(x) ? x : null);
-    if (id && !out.includes(id)) out.push(id);
+    if (id && !out.some((o) => o.id === id)) out.push({ id, url: /^https?:\/\//i.test(x) ? x : id });
   }
   return out.slice(0, 50);
 }
@@ -64,7 +71,7 @@ export function ImportarConIA({ open, onClose, onListo }: { open: boolean; onClo
   const leer = async () => {
     const ids = entradas(texto);
     if (!ids.length) return;
-    const nuevas: Fila[] = ids.map((entrada) => ({ entrada, estado: "pendiente" }));
+    const nuevas: Fila[] = ids.map((e) => ({ entrada: e.id, url: e.url, estado: "pendiente" }));
     setFilas(nuevas);
     setTrabajando("leyendo");
     for (let i = 0; i < nuevas.length; i++) {
@@ -73,7 +80,7 @@ export function ImportarConIA({ open, onClose, onListo }: { open: boolean; onClo
       // Dropi puede estar ocupado subiendo un pedido: se espera y se reintenta
       for (let intento = 0; intento < 4 && !ok; intento++) {
         try {
-          const { producto } = await creador.fichaDropi(nuevas[i].entrada);
+          const { producto } = await creador.fichaDropi(nuevas[i].url);
           poner(i, {
             estado: "leido",
             ficha: producto,

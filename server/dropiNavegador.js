@@ -260,6 +260,17 @@ export function coincideUbicacion(opcion, aceptadas, departamento = "") {
 }
 
 /** Link (o ID) de un producto de Dropi -> URL de su ficha. */
+/** Parte final del link de un producto de Dropi: "Combo Taladro 3/8 y Pulidora" -> "combo-taladro-38-y-pulidora", "Gato TX-5" -> "gato-tx5". */
+export function slugDropi(nombre = "") {
+  return String(nombre)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .trim()
+    .replace(/\s+/g, "-");
+}
+
 export function urlProductoDropi(entrada) {
   const t = String(entrada ?? "").trim();
   if (/^\d{3,12}$/.test(t)) return `https://app.dropi.co/dashboard/product-details/${t}`;

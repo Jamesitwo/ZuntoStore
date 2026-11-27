@@ -60,6 +60,7 @@ import { ejecutarAgente, resumenDePedido, textoVariantes } from "./agente.js";
 import { crearClienteDropi, armarPedidoDropi } from "./dropi.js";
 import { crearDropiNavegador, DIRECCION_OFICINA_INTER } from "./dropiNavegador.js";
 import { crearZip } from "./zip.js";
+import { slugDropi } from "./dropiNavegador.js";
 import { completarNombres, crearSubidaAutomatica, otrosPedidosDelCliente, resumirAnalisis, revisarDuplicados, variantesParaDropi } from "./subidaAutomatica.js";
 import { faltantesDeConfig } from "./config.js";
 import { crearEstadosEnvio } from "./estadosEnvio.js";
@@ -2572,7 +2573,18 @@ export function crearManejador({
       if (req.method === "POST" && ruta === "/api/creador/dropi-producto") {
         const cuerpo = await leerCuerpo(req);
         if (!dropiNavegador?.fichaProducto) throw new ErrorApi(503, "El navegador de Dropi no está disponible en este servidor");
-        const r = await dropiNavegador.fichaProducto(cuerpo?.url);
+        // solo el ID: Dropi necesita el nombre al final del link; se arma con el
+        // nombre del producto en la foto del catalogo (si esta)
+        let entrada = String(cuerpo?.url ?? "").trim();
+        if (/^\d{3,12}$/.test(entrada) && catalogo?.fichas) {
+          try {
+            const nombre = (await catalogo.fichas())?.[entrada]?.[0];
+            if (nombre) entrada = `https://app.dropi.co/dashboard/product-details/${entrada}/${slugDropi(nombre)}`;
+          } catch {
+            /* sin catalogo: va solo el id */
+          }
+        }
+        const r = await dropiNavegador.fichaProducto(entrada);
         if (!r?.ok) throw new ErrorApi(r?.ocupado ? 409 : 400, r?.detalle ?? "No se pudo leer el producto de Dropi");
         json(res, 200, { ok: true, producto: r });
         return;
