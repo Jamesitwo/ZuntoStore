@@ -76,6 +76,21 @@ export function candidatosNumeroPegado(direccion) {
     .replace(/(\d)\.\s+(?=(?:sur|este|oeste|norte|bis)\b)/gi, "$1 ")
     // "No. 1957" / "n 1957" / "Nro 1957" = "# 1957"
     .replace(/\s(?:n[o°º]\.?|nro\.?|n[uú]mero|num\.?|n)\s*(?=\d{3,4}\b)/i, " # ");
+  // esquina + numero de casa ("Calle 10 Sur con Carrera 18, Casa 33"): la casa
+  // queda sobre una de las dos vias; el mapa dice cual ("Calle 10 Sur # 18-33"
+  // o "Cra 18 # 10 Sur-33")
+  const esq = /^([a-záéíóúñ.]+)\s+(\d{1,3}\s*[a-z]?)(\s+(?:bis|sur|este|oeste|norte))?\s+(?:con|x|y|esquina|esq\.?)\s+([a-záéíóúñ.]+)\s+(\d{1,3}\s*[a-z]?)(\s+(?:bis|sur|este|oeste|norte))?\s*[,.]?\s*(?:casa|cs|csa|placa)\.?\s*(?:#|n[o°º]\.?)?\s*(\d{1,3})\b(?!\s*[-–]\s*\d)\s*[,.]?\s*(.*)$/i.exec(t);
+  if (esq) {
+    const [, tipo1, n1, s1 = "", tipo2, n2, s2 = "", casa, resto] = esq;
+    const fin = resto ? `, ${resto}` : "";
+    const cands = [
+      parsearDireccion(`${tipo1} ${n1.replace(/\s+/g, "")}${s1} # ${n2.replace(/\s+/g, "")}${s2}-${casa}${fin}`),
+      parsearDireccion(`${tipo2} ${n2.replace(/\s+/g, "")}${s2} # ${n1.replace(/\s+/g, "")}${s1}-${casa}${fin}`),
+    ]
+      .filter(Boolean)
+      .map((p) => p.normalizada);
+    if (cands.length) return [...new Set(cands)];
+  }
   // letra del cruce separada y placa sin guion ("K 34 # 34 A 28" = "Cra 34 # 34A-28")
   const sep = /^(.*?#\s*)(\d{1,3})\s+([a-z])\s+(\d{1,3})\b(?!\s*-)(.*)$/i.exec(t);
   if (sep) {

@@ -451,3 +451,11 @@ test("tres números sin # ni guion: «Calle 52 D7 H23» = Calle 52D # 7H-23 (lo 
   assert.deepEqual(candidatosNumeroPegado("Calle 7A 1375"), ["Calle 7A # 13-75", "Calle 7A # 1-375"]);
   assert.deepEqual(candidatosNumeroPegado("Carrera 3 # 4-5"), []);
 });
+
+test("esquina + número de casa: el mapa decide sobre cuál vía queda la casa", () => {
+  assert.deepEqual(candidatosNumeroPegado("Calle 10 Sur con Carrera 18, Casa 33, después de la tienda"), [
+    "Calle 10 Sur # 18-33, Después de la tienda",
+    "Cra 18 # 10 Sur-33, Después de la tienda",
+  ]);
+  assert.deepEqual(candidatosNumeroPegado("Cra 5 con calle 8 casa 12"), ["Cra 5 # 8-12", "Calle 8 # 5-12"]);
+});
